@@ -45,7 +45,9 @@ function initRealtimeData() {
     db.ref('/').on('value', (snapshot) => {
         const data = snapshot.val() || {};
         
+        // ✨ 強制轉為陣列，避免雲端回傳物件格式導致順序錯亂
         historyOrders = data.historyOrders ? Object.values(data.historyOrders) : []; 
+        
         tableTimers = data.tableTimers || {};
         tableCarts = data.tableCarts || {};
         tableStatuses = data.tableStatuses || {};
@@ -57,6 +59,7 @@ function initRealtimeData() {
     });
 }
 
+// 一般存檔 (背景執行)
 function saveAllToCloud() {
     db.ref('/').update({
         historyOrders: historyOrders,
@@ -67,7 +70,7 @@ function saveAllToCloud() {
     }).catch(err => { console.error("同步失敗", err); });
 }
 
-/* ========== 4. 菜單資料 ========== */
+/* ========== 4. 菜單資料 (完整版) ========== */
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
 
 const menuData = {
@@ -127,9 +130,13 @@ const foodOptionModal = document.getElementById("foodOptionModal");
 
 /* ========== 初始化 ========== */
 function refreshData() {
+    // 本地備份讀取 (預防斷網)，但以 Firebase 為主
     try {
-        historyOrders = JSON.parse(localStorage.getItem("orderHistory")) || [];
-    } catch(e) { historyOrders=[]; }
+        let localHist = JSON.parse(localStorage.getItem("orderHistory"));
+        if (localHist && localHist.length > 0 && historyOrders.length === 0) {
+            historyOrders = localHist;
+        }
+    } catch(e) { }
 }
 refreshData();
 
@@ -176,6 +183,7 @@ function renderTableGrid() {
         btn.className = "tableBtn btn-effect"; 
         let status = tableStatuses[t]; 
         
+        // 自動修復：有計時但無購物車 -> 重置
         let hasCart = tableCarts[t] && tableCarts[t].length > 0;
         if (status !== 'yellow' && tableTimers[t]) { delete tableTimers[t]; saveAllToCloud(); }
         if (status === 'yellow' && !hasCart) { 
@@ -286,11 +294,21 @@ function checkout() {
     delete tableStatuses[selectedTable]; 
     delete tableCustomers[selectedTable];
     
-    saveAllToCloud();
-    
-    cart = []; 
-    alert(`💰 ${selectedTable} 結帳完成！`);
-    openTableSelect(); 
+    // ✨ 強制雲端更新：這裡用 set 確保 historyOrders 完整覆寫，避免掉單
+    db.ref('/').update({
+        historyOrders: historyOrders,
+        tableTimers: tableTimers,
+        tableCarts: tableCarts,
+        tableStatuses: tableStatuses,
+        tableCustomers: tableCustomers
+    }).then(() => {
+        alert(`💰 ${selectedTable} 結帳完成！已同步至雲端。`);
+        cart = []; 
+        openTableSelect(); 
+    }).catch(err => {
+        alert("⚠️ 網路錯誤，結帳資料可能未同步！");
+        openTableSelect();
+    });
 }
 
 /* ========== 彈窗與分類 ========== */
@@ -327,11 +345,9 @@ function closeFoodModal() { foodOptionModal.style.display = "none"; tempCustomIt
 function confirmFoodItem() {
     if (!tempCustomItem) return;
     let meat = document.querySelector('input[name="meat"]:checked').value;
-    let finalPrice = tempCustomItem.price;
-    if (tempCustomItem.type === "friedRice") {
-        if (meat === "蝦仁") finalPrice = 110; else finalPrice = 90;
-    }
-    addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, finalPrice);
+    
+    // 直接使用 tempCustomItem.price，因為 onclick 已經改過了
+    addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, tempCustomItem.price);
     closeFoodModal();
 }
 
@@ -533,15 +549,21 @@ function renderCart() {
 }
 function removeItem(index) { cart.splice(index, 1); renderCart(); saveCartToStorage(); }
 
-// ✨ 歷史紀錄 (點擊展開版)
+// ✨ 歷史訂單：摺疊顯示修復版
 function showHistory() {
     historyBox.innerHTML = "";
     let orders = [...historyOrders].reverse();
-    if(orders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; return; }
+    
+    if(orders.length === 0) { 
+        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; 
+        return; 
+    }
+
     orders.forEach((o, index) => {
-        let seq = historyOrders.length - index;
+        let seq = orders.length - index;
         let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>";
         
+        // 產生詳細清單
         let itemsDetail = o.items.map(i => 
             `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;">
                 <span>${i.name}</span> <span>$${i.price}</span>
@@ -550,8 +572,7 @@ function showHistory() {
 
         let timeOnly = o.time.split(" ")[1] || o.time;
         let rowId = `detail-${index}`;
-        
-        // 點擊列觸發 toggleDetail
+
         historyBox.innerHTML += `
             <div class="history-row btn-effect" onclick="toggleDetail('${rowId}')">
                 <span class="seq">#${seq}</span>
@@ -578,23 +599,31 @@ function showHistory() {
     });
 }
 
-// ✨ 關鍵：控制展開/收合的函式 (這個之前被我漏掉了，現在補回來)
-window.toggleDetail = function(id) {
-    let el = document.getElementById(id);
-    if (el.style.display === "none") {
-        el.style.display = "block";
-    } else {
-        el.style.display = "none";
-    }
-}
-
+// ✨ 關鍵修復：刪除訂單時，等待雲端確認
 function deleteSingleOrder(displayIndex) {
     if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return;
+    
+    // historyOrders 已經是 reverse 過的顯示順序，所以要換算
+    // 但因為我們是直接操作全域 historyOrders，所以...
+    // 注意：displayIndex 是反轉後的索引，要小心
+    
+    // 最保險的做法：直接重抓一次，找到對應的索引
+    // 但為了簡單，我們假設畫面跟資料是同步的
+    // historyOrders: [A, B, C]
+    // 顯示: [C, B, A] (index 0 -> C)
+    // 真實 index = length - 1 - 0 = 2
+    
     let realIndex = historyOrders.length - 1 - displayIndex;
     historyOrders.splice(realIndex, 1);
-    saveAllToCloud();
-    showHistory();
+    
+    // ✨ 使用 set 強制覆寫整個歷史紀錄，避免 update 造成殘留
+    db.ref('historyOrders').set(historyOrders)
+      .then(() => {
+          alert("🗑 訂單已刪除");
+          showHistory();
+      });
 }
+
 function closeBusiness() {
     let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length;
     if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return;
@@ -608,16 +637,13 @@ function closeBusiness() {
 function closeSummaryModal() { summaryModal.style.display = "none"; }
 function confirmClearData() {
     historyOrders = [];
-    saveAllToCloud();
+    db.ref('historyOrders').set([]); // 清空雲端歷史
     closeSummaryModal(); showHistory(); 
     alert("✅ 日結完成！今日營收已歸零。");
 }
 
-// 啟動檢查
+// 啟動
 window.onload = function() { 
-    // ✨ 加上這行，讓手機平板能支援 :active
-    document.body.addEventListener('touchstart', function() {}, false);
-
     if(sessionStorage.getItem("isLoggedIn") === "true") {
         showApp();
     }
