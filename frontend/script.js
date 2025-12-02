@@ -10,11 +10,13 @@ const firebaseConfig = {
   measurementId: "G-2G680G6GHF"
 };
 
+// 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 /* ========== 2. 系統設定 ========== */
 const SYSTEM_PASSWORD = "58980000"; 
+const CURRENT_VERSION = "pos04"; 
 
 /* ========== 3. 登入與雲端連線 ========== */
 function checkLogin() {
@@ -34,6 +36,7 @@ function checkLogin() {
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-container").style.display = "block";
+    document.getElementById("versionText").innerText = "Version: " + CURRENT_VERSION;
     initRealtimeData();
     goHome();
 }
@@ -42,13 +45,7 @@ function initRealtimeData() {
     db.ref('/').on('value', (snapshot) => {
         const data = snapshot.val() || {};
         
-        // 確保 historyOrders 是陣列
-        if (data.historyOrders) {
-             historyOrders = Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders);
-        } else {
-             historyOrders = [];
-        }
-
+        historyOrders = data.historyOrders ? Object.values(data.historyOrders) : []; 
         tableTimers = data.tableTimers || {};
         tableCarts = data.tableCarts || {};
         tableStatuses = data.tableStatuses || {};
@@ -70,7 +67,7 @@ function saveAllToCloud() {
     }).catch(err => { console.error("同步失敗", err); });
 }
 
-/* ========== 4. 菜單資料 (保持完整) ========== */
+/* ========== 4. 菜單資料 ========== */
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
 
 const menuData = {
@@ -127,13 +124,12 @@ const summaryModal = document.getElementById("summaryModal");
 const customModal = document.getElementById("customModal");
 const drinkModal = document.getElementById("drinkModal");
 const foodOptionModal = document.getElementById("foodOptionModal");
-const customBeerModal = document.getElementById("customBeerModal");
 
 /* ========== 初始化 ========== */
 function refreshData() {
     try {
-        // 僅作為本地緩存讀取，主要依賴 Firebase
-    } catch(e) { }
+        historyOrders = JSON.parse(localStorage.getItem("orderHistory")) || [];
+    } catch(e) { historyOrders=[]; }
 }
 refreshData();
 
@@ -167,6 +163,7 @@ function goHome() {
 /* ========== 座位與點餐功能 ========== */
 function openTableSelect() {
     hideAll();
+    refreshData();
     document.getElementById("tableSelect").style.display = "block";
     renderTableGrid();
 }
@@ -230,7 +227,6 @@ function updateSeatTimerText() {
 }
 
 /* ========== 按鈕邏輯 ========== */
-
 function saveAndExit(){
     if(tableStatuses[selectedTable] === 'yellow') {
         tableCarts[selectedTable] = cart;
@@ -281,8 +277,7 @@ function checkout() {
             customerPhone: info.phone 
         };
 
-        // 確保 historyOrders 存在
-        if (!Array.isArray(historyOrders)) historyOrders = [];
+        if(!historyOrders) historyOrders = [];
         historyOrders.push(newOrder);
     }
     
@@ -538,27 +533,15 @@ function renderCart() {
 }
 function removeItem(index) { cart.splice(index, 1); renderCart(); saveCartToStorage(); }
 
-/* ========== 歷史與報表 ========== */
-
-// ✨ 關鍵：摺疊式顯示歷史訂單
+// ✨ 歷史紀錄 (點擊展開版)
 function showHistory() {
     historyBox.innerHTML = "";
-    
-    // 確保有資料
-    if(!historyOrders || historyOrders.length === 0) {
-        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>";
-        return;
-    }
-
-    let orders = [...historyOrders].reverse(); // 最新的在最上面
-
+    let orders = [...historyOrders].reverse();
+    if(orders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; return; }
     orders.forEach((o, index) => {
-        let seq = orders.length - index; // 顯示序號
-        let custInfo = (o.customerName || o.customerPhone) 
-            ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` 
-            : "<span style='color:#ccc'>-</span>";
-
-        // 產生詳細清單
+        let seq = historyOrders.length - index;
+        let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>";
+        
         let itemsDetail = o.items.map(i => 
             `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;">
                 <span>${i.name}</span> <span>$${i.price}</span>
@@ -566,9 +549,9 @@ function showHistory() {
         ).join("");
 
         let timeOnly = o.time.split(" ")[1] || o.time;
-        let rowId = `detail-${index}`; // 每個詳細區塊的唯一ID
-
-        // HTML 結構
+        let rowId = `detail-${index}`;
+        
+        // 點擊列觸發 toggleDetail
         historyBox.innerHTML += `
             <div class="history-row btn-effect" onclick="toggleDetail('${rowId}')">
                 <span class="seq">#${seq}</span>
@@ -595,8 +578,8 @@ function showHistory() {
     });
 }
 
-// ✨ 切換詳細顯示 (摺疊效果)
-function toggleDetail(id) {
+// ✨ 關鍵：控制展開/收合的函式 (這個之前被我漏掉了，現在補回來)
+window.toggleDetail = function(id) {
     let el = document.getElementById(id);
     if (el.style.display === "none") {
         el.style.display = "block";
@@ -607,18 +590,11 @@ function toggleDetail(id) {
 
 function deleteSingleOrder(displayIndex) {
     if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return;
-    
-    // 因為顯示是反轉的，所以要計算回原始索引
-    // historyOrders: [A, B, C]
-    // Display:       [C, B, A] (index 0 is C)
-    // realIndex = length - 1 - displayIndex
-    
     let realIndex = historyOrders.length - 1 - displayIndex;
     historyOrders.splice(realIndex, 1);
     saveAllToCloud();
     showHistory();
 }
-
 function closeBusiness() {
     let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length;
     if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return;
@@ -637,8 +613,11 @@ function confirmClearData() {
     alert("✅ 日結完成！今日營收已歸零。");
 }
 
-// 啟動
+// 啟動檢查
 window.onload = function() { 
+    // ✨ 加上這行，讓手機平板能支援 :active
+    document.body.addEventListener('touchstart', function() {}, false);
+
     if(sessionStorage.getItem("isLoggedIn") === "true") {
         showApp();
     }

@@ -6,7 +6,7 @@
     <title>POS 點餐系統</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body ontouchstart="">
 
     <div id="login-screen">
         <div class="login-box">
@@ -15,6 +15,7 @@
             <input type="password" id="loginPass" placeholder="密碼" onkeydown="if(event.keyCode==13) checkLogin()">
             <button onclick="checkLogin()" class="btn-effect">登入</button>
             <p id="loginError" style="color:red; display:none; margin-top:10px;">❌ 密碼錯誤</p>
+            <div id="versionText" style="margin-top:15px; color:#888; font-size:12px; font-weight:bold;">Loading...</div>
         </div>
     </div>
 
@@ -150,8 +151,14 @@
         <div id="foodOptionModal" class="modal">
             <div class="modal-content" style="text-align:left;">
                 <h2 style="text-align:center;">🍛 <span id="foodTitle">餐點</span>配料</h2>
-                <div class="custom-section"><div class="custom-label">請選擇配料：</div><div class="radio-group nowrap" id="meatOptions"></div></div>
-                <div class="modal-actions"><button onclick="closeFoodModal()" class="btn-effect" style="background:#888;">取消</button><button onclick="confirmFoodItem()" class="btn-effect" style="background:#28a745;">✅ 確認加入</button></div>
+                <div class="custom-section">
+                    <div class="custom-label">請選擇配料：</div>
+                    <div class="radio-group nowrap" id="meatOptions"></div>
+                </div>
+                <div class="modal-actions">
+                    <button onclick="closeFoodModal()" class="btn-effect" style="background:#888;">取消</button>
+                    <button onclick="confirmFoodItem()" class="btn-effect" style="background:#28a745;">✅ 確認加入</button>
+                </div>
             </div>
         </div>
 
