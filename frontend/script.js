@@ -1,4 +1,4 @@
-/* ========== 🔥 1. Firebase 設定 (已填入你的鑰匙) ========== */
+/* ========== 🔥 1. Firebase 設定 ========== */
 const firebaseConfig = {
   apiKey: "AIzaSyBY3ILlBr5N8a8PxMv3IDSScmNZzvtXXVw",
   authDomain: "pos-system-database.firebaseapp.com",
@@ -10,27 +10,24 @@ const firebaseConfig = {
   measurementId: "G-2G680G6GHF"
 };
 
-// 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* ========== 2. 系統密碼 ========== */
+/* ========== 2. 系統設定 ========== */
 const SYSTEM_PASSWORD = "58980000"; 
 
 /* ========== 3. 登入與雲端連線 ========== */
-// ✨ 修改：新增密碼錯誤提示邏輯
 function checkLogin() {
     let input = document.getElementById("loginPass").value;
     let errorMsg = document.getElementById("loginError");
     
     if (input === SYSTEM_PASSWORD) {
         sessionStorage.setItem("isLoggedIn", "true");
-        errorMsg.style.display = "none"; // 隱藏錯誤
+        errorMsg.style.display = "none"; 
         showApp();
     } else {
-        errorMsg.style.display = "block"; // 顯示錯誤
-        document.getElementById("loginPass").value = ""; // 清空輸入框
-        // 震動動畫效果 (如果有的話)
+        errorMsg.style.display = "block"; 
+        document.getElementById("loginPass").value = ""; 
     }
 }
 
@@ -41,11 +38,17 @@ function showApp() {
     goHome();
 }
 
-// 監聽雲端資料變更
 function initRealtimeData() {
     db.ref('/').on('value', (snapshot) => {
         const data = snapshot.val() || {};
-        historyOrders = data.historyOrders || [];
+        
+        // 確保 historyOrders 是陣列
+        if (data.historyOrders) {
+             historyOrders = Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders);
+        } else {
+             historyOrders = [];
+        }
+
         tableTimers = data.tableTimers || {};
         tableCarts = data.tableCarts || {};
         tableStatuses = data.tableStatuses || {};
@@ -64,12 +67,10 @@ function saveAllToCloud() {
         tableCarts: tableCarts,
         tableStatuses: tableStatuses,
         tableCustomers: tableCustomers
-    }).catch(err => {
-        console.error("同步失敗", err);
-    });
+    }).catch(err => { console.error("同步失敗", err); });
 }
 
-/* ========== 4. 菜單資料 ========== */
+/* ========== 4. 菜單資料 (保持完整) ========== */
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
 
 const menuData = {
@@ -104,7 +105,6 @@ const barCategories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料",
 const bbqCategories = ["燒烤", "主餐", "炸物"];
 const tables = ["吧檯1","吧檯2","吧檯3","吧檯4","吧檯5","圓桌1","圓桌2","六人桌","四人桌1","四人桌2","大理石桌1","備用1","備用2","備用3","備用4"];
 
-/* ========== 全域變數 ========== */
 let selectedTable = null;
 let cart = []; 
 let historyOrders = [];
@@ -127,8 +127,16 @@ const summaryModal = document.getElementById("summaryModal");
 const customModal = document.getElementById("customModal");
 const drinkModal = document.getElementById("drinkModal");
 const foodOptionModal = document.getElementById("foodOptionModal");
+const customBeerModal = document.getElementById("customBeerModal");
 
 /* ========== 初始化 ========== */
+function refreshData() {
+    try {
+        // 僅作為本地緩存讀取，主要依賴 Firebase
+    } catch(e) { }
+}
+refreshData();
+
 setInterval(updateSystemTime, 1000);
 function updateSystemTime() {
     let now = new Date();
@@ -147,8 +155,8 @@ function openPage(pageId) {
     hideAll();
     let el = document.getElementById(pageId);
     if(el) el.style.display = "block";
-    if(pageId === 'historyPage') showHistory();
-    if(pageId === 'reportPage') generateReport('day');
+    if(pageId === 'historyPage') { showHistory(); }
+    if(pageId === 'reportPage') { generateReport('day'); }
 }
 
 function goHome() {
@@ -171,7 +179,6 @@ function renderTableGrid() {
         btn.className = "tableBtn btn-effect"; 
         let status = tableStatuses[t]; 
         
-        // 自動修復幽靈計時
         let hasCart = tableCarts[t] && tableCarts[t].length > 0;
         if (status !== 'yellow' && tableTimers[t]) { delete tableTimers[t]; saveAllToCloud(); }
         if (status === 'yellow' && !hasCart) { 
@@ -202,17 +209,10 @@ function openOrderPage(table) {
 
     cart = tableCarts[table] || [];
     let info = tableCustomers[table] || {name:"", phone:""};
-    custNameInput.value = info.name;
-    custPhoneInput.value = info.phone;
+    custNameInput.value = info.name || "";
+    custPhoneInput.value = info.phone || "";
     buildCategories();
     renderCart();
-}
-
-function autoSaveCustomerInfo() {
-    let name = custNameInput.value;
-    let phone = custPhoneInput.value;
-    tableCustomers[selectedTable] = { name, phone };
-    // 暫存不即時上傳，減少寫入
 }
 
 function startSeatTimerDisplay() {
@@ -229,15 +229,13 @@ function updateSeatTimerText() {
     document.getElementById("seatTimer").innerText = `⏳ 已入座：${h}:${m}:${s}`;
 }
 
-/* ========== 核心按鈕邏輯 (穩定版) ========== */
+/* ========== 按鈕邏輯 ========== */
 
 function saveAndExit(){
     if(tableStatuses[selectedTable] === 'yellow') {
-        // 更新購物車
         tableCarts[selectedTable] = cart;
         tableCustomers[selectedTable] = { name: custNameInput.value, phone: custPhoneInput.value };
     } else {
-        // 未送單則清除
         delete tableCarts[selectedTable];
         delete tableTimers[selectedTable];
         delete tableCustomers[selectedTable];
@@ -254,18 +252,15 @@ function saveOrderManual() {
         saveAndExit(); 
         return;
     }
-    
     if (!tableTimers[selectedTable]) {
         tableTimers[selectedTable] = Date.now();
     }
-    
-    // 更新所有資料
     tableCarts[selectedTable] = cart;
     tableStatuses[selectedTable] = 'yellow';
     tableCustomers[selectedTable] = { name: custNameInput.value, phone: custPhoneInput.value };
 
     saveAllToCloud();
-    alert("✔ 訂單已送出，同步至所有裝置！");
+    alert("✔ 訂單已送出，開始計時！");
     openTableSelect();
 }
 
@@ -277,14 +272,18 @@ function checkout() {
         let total = cart.reduce((a, b) => a + b.price, 0);
         let info = { name: custNameInput.value, phone: custPhoneInput.value };
         
-        historyOrders.push({ 
+        let newOrder = { 
             seat: selectedTable, 
             time: time, 
             items: [...cart], 
             total: total, 
             customerName: info.name, 
             customerPhone: info.phone 
-        });
+        };
+
+        // 確保 historyOrders 存在
+        if (!Array.isArray(historyOrders)) historyOrders = [];
+        historyOrders.push(newOrder);
     }
     
     delete tableCarts[selectedTable]; 
@@ -296,10 +295,10 @@ function checkout() {
     
     cart = []; 
     alert(`💰 ${selectedTable} 結帳完成！`);
-    openTableSelect();
+    openTableSelect(); 
 }
 
-/* ========== 輔助功能 (checkItemType, 彈窗等) ========== */
+/* ========== 彈窗與分類 ========== */
 function checkItemType(name, price, categoryName) {
     if (name === "隱藏特調") { openCustomModal(name, price); return; }
     if (name === "隱藏啤酒" || name === "味繒鮭魚" || name === "酥炸魷魚") return;
@@ -322,7 +321,7 @@ function openFoodModal(name, price, type) {
     let meatOptions = document.getElementById("meatOptions");
     let html = "";
     if (type === "friedRice") {
-        html = `<label class="radio-box"><input type="radio" name="meat" value="牛" checked><div class="radio-btn btn-effect">牛 ($90)</div></label><label class="radio-box"><input type="radio" name="meat" value="豬"><div class="radio-btn btn-effect">豬 ($90)</div></label><label class="radio-box"><input type="radio" name="meat" value="雞"><div class="radio-btn btn-effect">雞 ($90)</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁"><div class="radio-btn btn-effect">蝦仁 ($110)</div></label>`;
+        html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=90" checked><div class="radio-btn btn-effect">牛 ($90)</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=90"><div class="radio-btn btn-effect">豬 ($90)</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=90"><div class="radio-btn btn-effect">雞 ($90)</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=110"><div class="radio-btn btn-effect">蝦仁 ($110)</div></label>`;
     } else {
         html = `<label class="radio-box"><input type="radio" name="meat" value="牛" checked><div class="radio-btn btn-effect">牛</div></label><label class="radio-box"><input type="radio" name="meat" value="豬"><div class="radio-btn btn-effect">豬</div></label><label class="radio-box"><input type="radio" name="meat" value="雞"><div class="radio-btn btn-effect">雞</div></label>`;
     }
@@ -439,7 +438,6 @@ function confirmCustomItem() {
 function addToCart(name, price) {
     cart.push({ name, price });
     renderCart();
-    // 本地端暫不存檔，避免頻繁寫入，等到離開或暫存時再存
 }
 
 function buildCategories() {
@@ -532,42 +530,95 @@ function renderItemList(items, backFunctionStr, backLabel, categoryName) {
 function renderCart() {
     cartList.innerHTML = "";
     let sum = 0;
-    if (cart.length === 0) {
-        cartList.innerHTML = "<div style='color:#888; text-align:center; padding:10px;'>目前無餐點</div>";
-    }
     cart.forEach((c, i) => {
         sum += c.price;
-        cartList.innerHTML += `
-            <div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px; display:flex; justify-content:space-between; align-items:center;">
-                <span>${c.name} - $${c.price}</span>
-                <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button>
-            </div>`;
+        cartList.innerHTML += `<div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px;">${c.name} - $${c.price} <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button></div>`;
     });
     totalText.innerText = "總金額：" + sum + " 元";
 }
-function removeItem(index) { cart.splice(index, 1); renderCart(); }
+function removeItem(index) { cart.splice(index, 1); renderCart(); saveCartToStorage(); }
 
 /* ========== 歷史與報表 ========== */
+
+// ✨ 關鍵：摺疊式顯示歷史訂單
 function showHistory() {
     historyBox.innerHTML = "";
-    let orders = [...historyOrders].reverse();
-    if(orders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; return; }
+    
+    // 確保有資料
+    if(!historyOrders || historyOrders.length === 0) {
+        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>";
+        return;
+    }
+
+    let orders = [...historyOrders].reverse(); // 最新的在最上面
+
     orders.forEach((o, index) => {
-        let seq = historyOrders.length - index;
-        let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>";
-        let itemsDetail = o.items.map(i => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}</span> <span>$${i.price}</span></div>`).join("");
+        let seq = orders.length - index; // 顯示序號
+        let custInfo = (o.customerName || o.customerPhone) 
+            ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` 
+            : "<span style='color:#ccc'>-</span>";
+
+        // 產生詳細清單
+        let itemsDetail = o.items.map(i => 
+            `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;">
+                <span>${i.name}</span> <span>$${i.price}</span>
+             </div>`
+        ).join("");
+
         let timeOnly = o.time.split(" ")[1] || o.time;
-        let rowId = `detail-${index}`;
-        historyBox.innerHTML += `<div class="history-row" onclick="toggleDetail('${rowId}')"><span class="seq">#${seq}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">$${o.total}</span></div><div id="${rowId}" class="history-detail" style="display:none;"><div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#d33;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px;"><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`;
+        let rowId = `detail-${index}`; // 每個詳細區塊的唯一ID
+
+        // HTML 結構
+        historyBox.innerHTML += `
+            <div class="history-row btn-effect" onclick="toggleDetail('${rowId}')">
+                <span class="seq">#${seq}</span>
+                <span class="seat">${o.seat}</span>
+                <span class="cust">${custInfo}</span>
+                <span class="time">${timeOnly}</span>
+                <span class="amt">$${o.total}</span>
+            </div>
+            
+            <div id="${rowId}" class="history-detail" style="display:none;">
+                <div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;">
+                    <b>📅 完整時間：</b>${o.time}<br>
+                    <b>🧾 內容：</b><br>
+                    ${itemsDetail}
+                    <div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#d33;">
+                        總計：$${o.total}
+                    </div>
+                    <div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px;">
+                        <button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button>
+                    </div>
+                </div>
+            </div>
+        `;
     });
 }
+
+// ✨ 切換詳細顯示 (摺疊效果)
+function toggleDetail(id) {
+    let el = document.getElementById(id);
+    if (el.style.display === "none") {
+        el.style.display = "block";
+    } else {
+        el.style.display = "none";
+    }
+}
+
 function deleteSingleOrder(displayIndex) {
     if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return;
+    
+    // 因為顯示是反轉的，所以要計算回原始索引
+    // historyOrders: [A, B, C]
+    // Display:       [C, B, A] (index 0 is C)
+    // realIndex = length - 1 - displayIndex
+    
     let realIndex = historyOrders.length - 1 - displayIndex;
     historyOrders.splice(realIndex, 1);
     saveAllToCloud();
     showHistory();
 }
+
 function closeBusiness() {
     let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length;
     if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return;
@@ -586,7 +637,7 @@ function confirmClearData() {
     alert("✅ 日結完成！今日營收已歸零。");
 }
 
-// 啟動檢查
+// 啟動
 window.onload = function() { 
     if(sessionStorage.getItem("isLoggedIn") === "true") {
         showApp();

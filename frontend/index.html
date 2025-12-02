@@ -14,10 +14,7 @@
             <p>請輸入員工密碼</p>
             <input type="password" id="loginPass" placeholder="密碼" onkeydown="if(event.keyCode==13) checkLogin()">
             <button onclick="checkLogin()" class="btn-effect">登入</button>
-            
-            <p id="loginError" style="display:none; color:#dc3545; font-weight:bold; margin-top:15px; animation: shake 0.3s;">
-                ❌ 密碼錯誤，請重試
-            </p>
+            <p id="loginError" style="color:red; display:none; margin-top:10px;">❌ 密碼錯誤</p>
         </div>
     </div>
 
