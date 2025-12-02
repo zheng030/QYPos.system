@@ -14,7 +14,10 @@
             <p>請輸入員工密碼</p>
             <input type="password" id="loginPass" placeholder="密碼" onkeydown="if(event.keyCode==13) checkLogin()">
             <button onclick="checkLogin()" class="btn-effect">登入</button>
-            <p id="loginError" style="color:red; display:none; margin-top:10px;">❌ 密碼錯誤</p>
+            
+            <p id="loginError" style="display:none; color:#dc3545; font-weight:bold; margin-top:15px; animation: shake 0.3s;">
+                ❌ 密碼錯誤，請重試
+            </p>
         </div>
     </div>
 
@@ -66,6 +69,7 @@
                 <h2>🧾 訂單明細</h2>
                 <div id="cart-list"></div>
                 <p id="total">總金額：0 元</p>
+                
                 <div class="action-buttons">
                     <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 送單暫存 (確認用餐)</button>
                     <button class="checkout-btn btn-effect" onclick="checkout()">💰 結帳 / 清桌</button>
@@ -154,6 +158,11 @@
             </div>
         </div>
 
-    </div> <script src="script.js"></script>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script src="script.js"></script>
 </body>
 </html>

@@ -7,19 +7,14 @@ body {
 }
 button { cursor: pointer; font-size: 16px; user-select: none; }
 
-/* ✨ 按鈕觸控特效 */
+/* ✨ 按鈕觸控特效 (通用) */
 .btn-effect { transition: transform 0.1s, background 0.1s, box-shadow 0.1s; }
 .btn-effect:active { transform: scale(0.92); filter: brightness(0.9); box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
 button:active { transform: scale(0.92); }
 
 /* 登入畫面 */
-#login-screen {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: #2c3e50; display: flex; justify-content: center; align-items: center; z-index: 9999;
-}
-.login-box {
-    background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; width: 300px;
-}
+#login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #2c3e50; display: flex; justify-content: center; align-items: center; z-index: 9999; }
+.login-box { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; width: 300px; }
 .login-box h1 { margin-top: 0; color: #333; }
 .login-box input { width: 100%; padding: 15px; font-size: 20px; margin: 20px 0; border: 2px solid #ddd; border-radius: 8px; text-align: center; }
 .login-box button { width: 100%; padding: 15px; font-size: 18px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; }
@@ -31,20 +26,13 @@ button:active { transform: scale(0.92); }
 .title { font-size: 28px; font-weight: 800; margin-bottom: 5px; display: block; }
 .back { background: #333; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-size: 15px; }
 
-/* 主畫面 */
 #home { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 30px; }
-.menu-btn {
-    background: #ffffff; border-radius: 15px; padding: 25px 10px;
-    font-size: 18px; font-weight: bold; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    display: flex; align-items: center; justify-content: center; min-height: 80px;
-}
+.menu-btn { background: #ffffff; border-radius: 15px; padding: 25px 10px; font-size: 18px; font-weight: bold; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); display: flex; align-items: center; justify-content: center; min-height: 80px; }
 .menu-btn:active { transform: scale(0.95); background: #dfe8ff; }
 
-/* 頁面隱藏 */
 #orderPage, #historyPage, #tableSelect, #reportPage { display: none; padding: 25px; max-width: 1000px; margin: 0 auto; }
 .order-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 
-/* 座位與輸入框 */
 .legend-box { margin-bottom: 15px; font-size: 14px; color: #555; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 5px; }
 .dot { width: 15px; height: 15px; border-radius: 3px; display: inline-block; border: 1px solid #ccc; }
@@ -53,14 +41,7 @@ button:active { transform: scale(0.92); }
 .dot.yellow { background: #ffc107; border: none; }
 
 #tableSelectGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 10px; }
-.tableBtn {
-    padding: 25px; font-size: 22px; border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    cursor: pointer; transition: .25s; font-weight: bold;
-    display: flex; flex-direction: column; justify-content: center; align-items: center;
-    min-height: 80px; border: 2px solid transparent;
-}
-
+.tableBtn { padding: 25px; font-size: 22px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); cursor: pointer; transition: .25s; font-weight: bold; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 80px; border: 2px solid transparent; }
 .status-white { background: white; color: #333; border: 1px solid #ddd; }
 .status-red { background: #dc3545; color: white; box-shadow: 0 0 10px rgba(220, 53, 69, 0.4); }
 .status-yellow { background: #ffc107; color: #333; box-shadow: 0 0 10px rgba(255, 193, 7, 0.4); }
@@ -69,18 +50,15 @@ button:active { transform: scale(0.92); }
 .customer-input-box input { padding: 15px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; outline: none; transition: .2s; }
 .customer-input-box input:focus { border-color: #007bff; background: #f0f8ff; }
 
-/* 選單 */
 #menuGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 10px; }
 .categoryBtn { background: white; border-radius: 10px; padding: 30px; font-size: 22px; font-weight: bold; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); }
 .categoryBtn:active { background: #dff2ff; transform: scale(0.95); }
-
 .sub-cat-title { grid-column: 1 / -1; font-size: 20px; font-weight: bold; color: #333; background: #e9ecef; padding: 10px; border-radius: 6px; margin-top: 20px; margin-bottom: 10px; text-align: left; border-left: 5px solid #007bff; }
 
 .itemsBox { grid-column: 1 / -1; background: white; padding: 20px; border-radius: 8px; margin-top: 10px; text-align: left; }
 .item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee; font-size: 18px; }
-.item button { padding: 8px 20px; border-radius: 6px; background: #28a745; color: white; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.item button { padding: 8px 20px; border-radius: 6px; background: #28a745; color: white; border: none; }
 .back-to-cat { width: 100%; padding: 15px; background: #6c757d; color: white; border: none; border-radius: 8px; margin-bottom: 15px; font-size: 18px; }
-
 .shot-item { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
 .shot-actions { display: flex; gap: 5px; align-items: center; }
 .inline-input { padding: 8px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; margin-right: 5px; }
@@ -97,7 +75,6 @@ button:active { transform: scale(0.92); }
 .delete-single-btn { background: #fff; color: #dc3545; border: 1px solid #dc3545; padding: 8px 15px; border-radius: 6px; font-size: 14px; }
 .end-business-btn { width: 100%; margin-top: 20px; background: #dc3545; color: white; padding: 15px; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3); }
 
-/* 彈窗 */
 .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
 .modal-content { background-color: #fff; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); text-align: center; animation: fadeIn 0.3s; }
 .summary-item { display: flex; justify-content: space-between; font-size: 20px; font-weight: bold; margin: 15px 0; padding: 10px; background: #f9f9f9; border-radius: 8px; }
@@ -107,7 +84,6 @@ button:active { transform: scale(0.92); }
 .custom-section { margin-bottom: 20px; text-align: left; }
 .custom-label { font-weight: bold; margin-bottom: 8px; color: #333; font-size: 18px; }
 
-/* ✨ 單選按鈕 */
 .radio-group { display: flex; flex-wrap: wrap; gap: 10px; }
 .radio-box { cursor: pointer; flex: 1; }
 .radio-box input { display: none; } 
@@ -130,7 +106,6 @@ input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cur
 .accordion-header.active .arrow { transform: rotate(180deg); }
 .accordion-content { display: none; grid-column: 1 / -1; padding: 10px; background-color: #f8f9fa; border-radius: 0 0 8px 8px; border: 1px solid #ddd; border-top: none; }
 
-/* 報表 */
 .report-controls { display: flex; gap: 10px; margin-bottom: 20px; }
 .report-controls button { flex: 1; padding: 12px; background: #e9ecef; border: none; border-radius: 8px; font-weight: bold; color: #555; }
 .report-controls button.active { background: #007bff; color: white; box-shadow: 0 4px 10px rgba(0,123,255,0.3); }

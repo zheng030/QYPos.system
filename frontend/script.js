@@ -1,27 +1,75 @@
-/* ========== 系統密碼 ========== */
-const SYSTEM_PASSWORD = "5898";
+/* ========== 🔥 1. Firebase 設定 (已填入你的鑰匙) ========== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBY3ILlBr5N8a8PxMv3IDSScmNZzvtXXVw",
+  authDomain: "pos-system-database.firebaseapp.com",
+  databaseURL: "https://pos-system-database-default-rtdb.firebaseio.com",
+  projectId: "pos-system-database",
+  storageBucket: "pos-system-database.firebasestorage.app",
+  messagingSenderId: "302159719042",
+  appId: "1:302159719042:web:5efb78fe497cc2f426629b",
+  measurementId: "G-2G680G6GHF"
+};
 
-/* ========== 登入邏輯 ========== */
+// 初始化 Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ========== 2. 系統密碼 ========== */
+const SYSTEM_PASSWORD = "58980000"; 
+
+/* ========== 3. 登入與雲端連線 ========== */
+// ✨ 修改：新增密碼錯誤提示邏輯
 function checkLogin() {
     let input = document.getElementById("loginPass").value;
+    let errorMsg = document.getElementById("loginError");
+    
     if (input === SYSTEM_PASSWORD) {
         sessionStorage.setItem("isLoggedIn", "true");
+        errorMsg.style.display = "none"; // 隱藏錯誤
         showApp();
     } else {
-        let err = document.getElementById("loginError");
-        err.style.display = "block";
-        document.getElementById("loginPass").value = "";
+        errorMsg.style.display = "block"; // 顯示錯誤
+        document.getElementById("loginPass").value = ""; // 清空輸入框
+        // 震動動畫效果 (如果有的話)
     }
 }
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-container").style.display = "block";
-    refreshData();
+    initRealtimeData();
     goHome();
 }
 
-/* ========== 菜單資料 ========== */
+// 監聽雲端資料變更
+function initRealtimeData() {
+    db.ref('/').on('value', (snapshot) => {
+        const data = snapshot.val() || {};
+        historyOrders = data.historyOrders || [];
+        tableTimers = data.tableTimers || {};
+        tableCarts = data.tableCarts || {};
+        tableStatuses = data.tableStatuses || {};
+        tableCustomers = data.tableCustomers || {};
+
+        if(document.getElementById("tableSelect").style.display === "block") renderTableGrid();
+        if(document.getElementById("historyPage").style.display === "block") showHistory();
+        if(document.getElementById("reportPage").style.display === "block") generateReport('day');
+    });
+}
+
+function saveAllToCloud() {
+    db.ref('/').update({
+        historyOrders: historyOrders,
+        tableTimers: tableTimers,
+        tableCarts: tableCarts,
+        tableStatuses: tableStatuses,
+        tableCustomers: tableCustomers
+    }).catch(err => {
+        console.error("同步失敗", err);
+    });
+}
+
+/* ========== 4. 菜單資料 ========== */
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
 
 const menuData = {
@@ -56,6 +104,7 @@ const barCategories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料",
 const bbqCategories = ["燒烤", "主餐", "炸物"];
 const tables = ["吧檯1","吧檯2","吧檯3","吧檯4","吧檯5","圓桌1","圓桌2","六人桌","四人桌1","四人桌2","大理石桌1","備用1","備用2","備用3","備用4"];
 
+/* ========== 全域變數 ========== */
 let selectedTable = null;
 let cart = []; 
 let historyOrders = [];
@@ -78,26 +127,8 @@ const summaryModal = document.getElementById("summaryModal");
 const customModal = document.getElementById("customModal");
 const drinkModal = document.getElementById("drinkModal");
 const foodOptionModal = document.getElementById("foodOptionModal");
-const customBeerModal = document.getElementById("customBeerModal");
 
 /* ========== 初始化 ========== */
-function refreshData() {
-    try {
-        historyOrders = JSON.parse(localStorage.getItem("orderHistory")) || [];
-        tableTimers = JSON.parse(localStorage.getItem("tableTimers")) || {};
-        tableCarts = JSON.parse(localStorage.getItem("tableCarts")) || {};
-        tableStatuses = JSON.parse(localStorage.getItem("tableStatuses")) || {};
-        tableCustomers = JSON.parse(localStorage.getItem("tableCustomers")) || {};
-    } catch(e) {
-        console.error("資料讀取錯誤，重置資料", e);
-        historyOrders = [];
-        tableTimers = {};
-        tableCarts = {};
-        tableStatuses = {};
-        tableCustomers = {};
-    }
-}
-
 setInterval(updateSystemTime, 1000);
 function updateSystemTime() {
     let now = new Date();
@@ -116,8 +147,8 @@ function openPage(pageId) {
     hideAll();
     let el = document.getElementById(pageId);
     if(el) el.style.display = "block";
-    if(pageId === 'historyPage') { refreshData(); showHistory(); }
-    if(pageId === 'reportPage') { refreshData(); generateReport('day'); }
+    if(pageId === 'historyPage') showHistory();
+    if(pageId === 'reportPage') generateReport('day');
 }
 
 function goHome() {
@@ -125,74 +156,14 @@ function goHome() {
     document.getElementById("home").style.display = "grid";
 }
 
-/* ========== 報表功能 ========== */
-function createCategoryMap() {
-    let map = {};
-    for (let cat in menuData) {
-        let data = menuData[cat];
-        if (Array.isArray(data)) {
-            data.forEach(item => map[item.name] = cat);
-        } else {
-            for (let subCat in data) {
-                data[subCat].forEach(item => map[item.name] = cat);
-            }
-        }
-    }
-    return map;
-}
-
-function generateReport(rangeType) {
-    document.querySelectorAll('.report-controls button').forEach(btn => btn.classList.remove('active'));
-    let btnId = rangeType === 'day' ? 'btnDay' : rangeType === 'week' ? 'btnWeek' : 'btnMonth';
-    document.getElementById(btnId).classList.add('active');
-
-    let totalRevenue = 0; let barRevenue = 0; let bbqRevenue = 0; let totalCount = 0;
-    let now = new Date();
-    let businessNow = new Date(now.getTime() - 5 * 60 * 60 * 1000); 
-    let categoryMap = createCategoryMap();
-
-    historyOrders.forEach(order => {
-        let orderDate = new Date(order.time);
-        let businessOrderDate = new Date(orderDate.getTime() - 5 * 60 * 60 * 1000);
-        let include = false;
-
-        if (rangeType === 'day') {
-            if (businessOrderDate.toDateString() === businessNow.toDateString()) include = true;
-        } else if (rangeType === 'week') {
-            let diff = (businessNow - businessOrderDate) / (1000 * 60 * 60 * 24);
-            if (diff >= 0 && diff < 7) include = true;
-        } else if (rangeType === 'month') {
-            if (businessOrderDate.getMonth() === businessNow.getMonth() && businessOrderDate.getFullYear() === businessNow.getFullYear()) include = true;
-        }
-
-        if (include) {
-            totalCount++;
-            totalRevenue += order.total;
-            order.items.forEach(item => {
-                let baseName = item.name.split(" ")[0].split("<")[0].trim();
-                let category = categoryMap[baseName] || "其他";
-                if (item.name.includes("隱藏特調")) category = "調酒";
-                if (item.name.includes("隱藏啤酒")) category = "啤酒";
-                if (item.name.includes("味繒鮭魚")) category = "主餐";
-                if (item.name.includes("酥炸魷魚")) category = "炸物";
-
-                if (barCategories.includes(category)) barRevenue += item.price;
-                else if (bbqCategories.includes(category)) bbqRevenue += item.price;
-            });
-        }
-    });
-
-    document.getElementById("rptTotal").innerText = "$" + totalRevenue;
-    document.getElementById("rptCount").innerText = "總單數: " + totalCount;
-    document.getElementById("rptBar").innerText = "$" + barRevenue;
-    document.getElementById("rptBBQ").innerText = "$" + bbqRevenue;
-}
-
 /* ========== 座位與點餐功能 ========== */
 function openTableSelect() {
     hideAll();
-    refreshData();
     document.getElementById("tableSelect").style.display = "block";
+    renderTableGrid();
+}
+
+function renderTableGrid() {
     let grid = document.getElementById("tableSelectGrid");
     grid.innerHTML = "";
     tables.forEach(t => {
@@ -200,9 +171,12 @@ function openTableSelect() {
         btn.className = "tableBtn btn-effect"; 
         let status = tableStatuses[t]; 
         
-        if (status !== 'yellow' && tableTimers[t]) {
-            delete tableTimers[t];
-            localStorage.setItem("tableTimers", JSON.stringify(tableTimers));
+        // 自動修復幽靈計時
+        let hasCart = tableCarts[t] && tableCarts[t].length > 0;
+        if (status !== 'yellow' && tableTimers[t]) { delete tableTimers[t]; saveAllToCloud(); }
+        if (status === 'yellow' && !hasCart) { 
+            delete tableTimers[t]; delete tableStatuses[t]; delete tableCarts[t]; delete tableCustomers[t]; 
+            saveAllToCloud(); status = null; 
         }
 
         if (status === 'red') { btn.classList.add("status-red"); btn.innerHTML = `<b>${t}</b>`; } 
@@ -230,7 +204,7 @@ function openOrderPage(table) {
     let info = tableCustomers[table] || {name:"", phone:""};
     custNameInput.value = info.name;
     custPhoneInput.value = info.phone;
-    buildCategories(); // ✨ 進入時呼叫建立分類
+    buildCategories();
     renderCart();
 }
 
@@ -238,7 +212,7 @@ function autoSaveCustomerInfo() {
     let name = custNameInput.value;
     let phone = custPhoneInput.value;
     tableCustomers[selectedTable] = { name, phone };
-    localStorage.setItem("tableCustomers", JSON.stringify(tableCustomers));
+    // 暫存不即時上傳，減少寫入
 }
 
 function startSeatTimerDisplay() {
@@ -255,6 +229,77 @@ function updateSeatTimerText() {
     document.getElementById("seatTimer").innerText = `⏳ 已入座：${h}:${m}:${s}`;
 }
 
+/* ========== 核心按鈕邏輯 (穩定版) ========== */
+
+function saveAndExit(){
+    if(tableStatuses[selectedTable] === 'yellow') {
+        // 更新購物車
+        tableCarts[selectedTable] = cart;
+        tableCustomers[selectedTable] = { name: custNameInput.value, phone: custPhoneInput.value };
+    } else {
+        // 未送單則清除
+        delete tableCarts[selectedTable];
+        delete tableTimers[selectedTable];
+        delete tableCustomers[selectedTable];
+        delete tableStatuses[selectedTable];
+        cart = [];
+    }
+    saveAllToCloud();
+    openTableSelect();
+}
+
+function saveOrderManual() {
+    if (cart.length === 0) {
+        alert("購物車是空的，訂單未成立。");
+        saveAndExit(); 
+        return;
+    }
+    
+    if (!tableTimers[selectedTable]) {
+        tableTimers[selectedTable] = Date.now();
+    }
+    
+    // 更新所有資料
+    tableCarts[selectedTable] = cart;
+    tableStatuses[selectedTable] = 'yellow';
+    tableCustomers[selectedTable] = { name: custNameInput.value, phone: custPhoneInput.value };
+
+    saveAllToCloud();
+    alert("✔ 訂單已送出，同步至所有裝置！");
+    openTableSelect();
+}
+
+function checkout() {
+    if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; } else { if(!confirm(`總金額 $${totalText.innerText.replace("總金額：","").replace(" 元","")}，確定結帳？`)) return; }
+    
+    if(cart.length > 0){
+        let time = new Date().toLocaleString('zh-TW', { hour12: false });
+        let total = cart.reduce((a, b) => a + b.price, 0);
+        let info = { name: custNameInput.value, phone: custPhoneInput.value };
+        
+        historyOrders.push({ 
+            seat: selectedTable, 
+            time: time, 
+            items: [...cart], 
+            total: total, 
+            customerName: info.name, 
+            customerPhone: info.phone 
+        });
+    }
+    
+    delete tableCarts[selectedTable]; 
+    delete tableTimers[selectedTable]; 
+    delete tableStatuses[selectedTable]; 
+    delete tableCustomers[selectedTable];
+    
+    saveAllToCloud();
+    
+    cart = []; 
+    alert(`💰 ${selectedTable} 結帳完成！`);
+    openTableSelect();
+}
+
+/* ========== 輔助功能 (checkItemType, 彈窗等) ========== */
 function checkItemType(name, price, categoryName) {
     if (name === "隱藏特調") { openCustomModal(name, price); return; }
     if (name === "隱藏啤酒" || name === "味繒鮭魚" || name === "酥炸魷魚") return;
@@ -311,7 +356,6 @@ function openDrinkModal(name, price, type) {
     drinkModal.style.display = "flex";
 }
 function closeDrinkModal() { drinkModal.style.display = "none"; tempCustomItem = null; }
-
 function confirmDrinkItem() {
     if (!tempCustomItem) return;
     let note = "";
@@ -395,10 +439,8 @@ function confirmCustomItem() {
 function addToCart(name, price) {
     cart.push({ name, price });
     renderCart();
-    saveCartToStorage(); 
+    // 本地端暫不存檔，避免頻繁寫入，等到離開或暫存時再存
 }
-
-/* ========== 5. 渲染列表 ========== */
 
 function buildCategories() {
     menuGrid.innerHTML = "";
@@ -416,7 +458,6 @@ function openItems(category) {
     let data = menuData[category];
     let backBtn = `<button class="back-to-cat btn-effect" onclick="buildCategories()">⬅ 返回 ${category} 分類</button>`;
 
-    // 需要使用條列式的分類 (包含炸物)
     if (["shot", "啤酒", "咖啡", "飲料", "厚片", "主餐", "炸物"].includes(category)) {
         let html = backBtn;
         data.forEach(item => {
@@ -447,8 +488,6 @@ function openItems(category) {
         return;
     }
 
-    // 物件結構 (調酒、純飲、燒烤) -> 瀑布流/摺疊
-    // ✨ 修改：純飲 (category === "純飲") 改回直接顯示 (不摺疊)
     if (!Array.isArray(data)) {
         let html = `<button class="back-to-cat btn-effect" onclick="buildCategories()">⬅ 返回主選單</button>`;
         Object.keys(data).forEach((subCat, index) => {
@@ -493,68 +532,22 @@ function renderItemList(items, backFunctionStr, backLabel, categoryName) {
 function renderCart() {
     cartList.innerHTML = "";
     let sum = 0;
+    if (cart.length === 0) {
+        cartList.innerHTML = "<div style='color:#888; text-align:center; padding:10px;'>目前無餐點</div>";
+    }
     cart.forEach((c, i) => {
         sum += c.price;
-        cartList.innerHTML += `<div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px;">${c.name} - $${c.price} <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button></div>`;
+        cartList.innerHTML += `
+            <div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px; display:flex; justify-content:space-between; align-items:center;">
+                <span>${c.name} - $${c.price}</span>
+                <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button>
+            </div>`;
     });
     totalText.innerText = "總金額：" + sum + " 元";
 }
-function removeItem(index) { cart.splice(index, 1); renderCart(); saveCartToStorage(); }
+function removeItem(index) { cart.splice(index, 1); renderCart(); }
 
-/* ========== 6. 按鈕邏輯 ========== */
-
-function saveAndExit(){
-    if(tableStatuses[selectedTable] !== 'yellow') {
-        delete tableCarts[selectedTable];
-        delete tableTimers[selectedTable];
-        delete tableCustomers[selectedTable];
-        delete tableStatuses[selectedTable];
-        saveAllStorage();
-        cart = [];
-    }
-    openTableSelect();
-}
-
-function saveOrderManual() {
-    if (cart.length === 0) {
-        alert("購物車是空的，訂單未成立。");
-        saveAndExit(); 
-        return;
-    }
-    if (!tableTimers[selectedTable]) {
-        tableTimers[selectedTable] = Date.now();
-        localStorage.setItem("tableTimers", JSON.stringify(tableTimers));
-    }
-    saveCartToStorage();
-    setStatus(selectedTable, 'yellow');
-    alert("✔ 訂單已送出，開始計時！");
-    openTableSelect();
-}
-
-function checkout() {
-    if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; } else { if(!confirm(`總金額 $${totalText.innerText.replace("總金額：","").replace(" 元","")}，確定結帳？`)) return; }
-    
-    if(cart.length > 0){
-        let time = new Date().toLocaleString('zh-TW', { hour12: false });
-        let total = cart.reduce((a, b) => a + b.price, 0);
-        let info = tableCustomers[selectedTable] || {name:"", phone:""};
-        historyOrders.push({ seat: selectedTable, time, items: [...cart], total, customerName: info.name, customerPhone: info.phone });
-        localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
-    }
-    
-    delete tableCarts[selectedTable]; 
-    delete tableTimers[selectedTable]; 
-    delete tableStatuses[selectedTable]; 
-    delete tableCustomers[selectedTable];
-    saveAllStorage();
-    
-    cart = []; 
-    alert(`💰 ${selectedTable} 結帳完成！`);
-    openTableSelect(); 
-}
-
-/* ========== 7. 歷史與日結 ========== */
-
+/* ========== 歷史與報表 ========== */
 function showHistory() {
     historyBox.innerHTML = "";
     let orders = [...historyOrders].reverse();
@@ -572,7 +565,7 @@ function deleteSingleOrder(displayIndex) {
     if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return;
     let realIndex = historyOrders.length - 1 - displayIndex;
     historyOrders.splice(realIndex, 1);
-    localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
+    saveAllToCloud();
     showHistory();
 }
 function closeBusiness() {
@@ -587,30 +580,10 @@ function closeBusiness() {
 }
 function closeSummaryModal() { summaryModal.style.display = "none"; }
 function confirmClearData() {
-    localStorage.removeItem("orderHistory"); historyOrders = [];
+    historyOrders = [];
+    saveAllToCloud();
     closeSummaryModal(); showHistory(); 
     alert("✅ 日結完成！今日營收已歸零。");
-}
-
-/* ========== 輔助 ========== */
-function saveAllStorage() {
-    localStorage.setItem("tableCarts", JSON.stringify(tableCarts));
-    localStorage.setItem("tableTimers", JSON.stringify(tableTimers));
-    localStorage.setItem("tableStatuses", JSON.stringify(tableStatuses));
-    localStorage.setItem("tableCustomers", JSON.stringify(tableCustomers));
-}
-
-function setStatus(table, status) {
-    tableStatuses[table] = status;
-    localStorage.setItem("tableStatuses", JSON.stringify(tableStatuses));
-}
-function saveCartToStorage() {
-    tableCarts[selectedTable] = cart;
-    localStorage.setItem("tableCarts", JSON.stringify(tableCarts));
-}
-window.toggleDetail = function(id) {
-    let el = document.getElementById(id);
-    el.style.display = (el.style.display === "none") ? "block" : "none";
 }
 
 // 啟動檢查
