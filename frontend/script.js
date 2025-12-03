@@ -10,7 +10,6 @@ const firebaseConfig = {
   measurementId: "G-2G680G6GHF"
 };
 
-// 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -21,7 +20,6 @@ const SYSTEM_PASSWORD = "5898";
 function checkLogin() {
     let input = document.getElementById("loginPass").value;
     let errorMsg = document.getElementById("loginError");
-    
     if (input === SYSTEM_PASSWORD) {
         sessionStorage.setItem("isLoggedIn", "true");
         errorMsg.style.display = "none"; 
@@ -42,18 +40,13 @@ function showApp() {
 function initRealtimeData() {
     db.ref('/').on('value', (snapshot) => {
         const data = snapshot.val() || {};
-        
         if (data.historyOrders) {
              historyOrders = Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders);
-        } else {
-             historyOrders = [];
-        }
-
+        } else { historyOrders = []; }
         tableTimers = data.tableTimers || {};
         tableCarts = data.tableCarts || {};
         tableStatuses = data.tableStatuses || {};
         tableCustomers = data.tableCustomers || {};
-
         if(document.getElementById("tableSelect").style.display === "block") renderTableGrid();
         if(document.getElementById("historyPage").style.display === "block") showHistory();
         if(document.getElementById("reportPage").style.display === "block") generateReport('day');
@@ -72,28 +65,14 @@ function saveAllToCloud() {
 
 /* ========== 4. 菜單資料 ========== */
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
-
 const menuData = {
-    "調酒": {
-        "$250 調酒": [{name:"高球",price:250},{name:"琴通寧",price:250},{name:"螺絲起子",price:250},{name:"藍色珊瑚礁",price:250},{name:"龍舌蘭日出",price:250}],
-        "$280 調酒": [{name:"白色俄羅斯",price:280},{name:"性感海灘",price:280},{name:"威士忌酸",price:280},{name:"惡魔",price:280},{name:"梅夢",price:280},{name:"輕浪蘭夢",price:280},{name:"暮色梅影",price:280},{name:"醉椰落日",price:280},{name:"晨曦花露",price:280},{name:"隱藏特調",price:280}],
-        "$320 調酒": [{name:"橙韻旋律",price:320},{name:"莫希托",price:320},{name:"長島冰茶",price:320},{name:"內格羅尼",price:320},{name:"咖啡馬丁尼",price:320},{name:"雅茗",price:320},{name:"幽香琥珀",price:320},{name:"琴盈紅酸",price:320},{name:"微醺榛情",price:320}],
-        "無酒精調酒": [{name:"小熊軟糖",price:300},{name:"桂花晨露",price:300},{name:"玫瑰紅茶",price:300},{name:"珍珠奶茶",price:300},{name:"紅豆牛奶",price:300},{name:"隱藏特調",price:300}]
-    },
-    "純飲": {
-        "$200 純飲": [{name:"岩井(紅酒桶)",price:200},{name:"鉑仕曼 12 年",price:200},{name:"百富 12 年",price:200},{name:"拉佛格",price:200},{name:"蘇格登 12 年",price:200},{name:"格蘭利威 12 年",price:200},{name:"凱德漢 7 年",price:200}],
-        "$300 純飲": [{name:"響",price:300},{name:"白州",price:300},{name:"岩井(雪莉桶)",price:300},{name:"大摩 12 年",price:300},{name:"百富 14 年",price:300},{name:"卡爾里拉",price:300}]
-    },
+    "調酒": { "$250 調酒": [{name:"高球",price:250},{name:"琴通寧",price:250},{name:"螺絲起子",price:250},{name:"藍色珊瑚礁",price:250},{name:"龍舌蘭日出",price:250}], "$280 調酒": [{name:"白色俄羅斯",price:280},{name:"性感海灘",price:280},{name:"威士忌酸",price:280},{name:"惡魔",price:280},{name:"梅夢",price:280},{name:"輕浪蘭夢",price:280},{name:"暮色梅影",price:280},{name:"醉椰落日",price:280},{name:"晨曦花露",price:280},{name:"隱藏特調",price:280}], "$320 調酒": [{name:"橙韻旋律",price:320},{name:"莫希托",price:320},{name:"長島冰茶",price:320},{name:"內格羅尼",price:320},{name:"咖啡馬丁尼",price:320},{name:"雅茗",price:320},{name:"幽香琥珀",price:320},{name:"琴盈紅酸",price:320},{name:"微醺榛情",price:320}], "無酒精調酒": [{name:"小熊軟糖",price:300},{name:"桂花晨露",price:300},{name:"玫瑰紅茶",price:300},{name:"珍珠奶茶",price:300},{name:"紅豆牛奶",price:300},{name:"隱藏特調",price:300}] },
+    "純飲": { "$200 純飲": [{name:"岩井(紅酒桶)",price:200},{name:"鉑仕曼 12 年",price:200},{name:"百富 12 年",price:200},{name:"拉佛格",price:200},{name:"蘇格登 12 年",price:200},{name:"格蘭利威 12 年",price:200},{name:"凱德漢 7 年",price:200}], "$300 純飲": [{name:"響",price:300},{name:"白州",price:300},{name:"岩井(雪莉桶)",price:300},{name:"大摩 12 年",price:300},{name:"百富 14 年",price:300},{name:"卡爾里拉",price:300}] },
     "shot": [{name:"伏特加",price:100},{name:"蘭姆酒",price:100},{name:"龍舌蘭",price:100},{name:"琴酒",price:100},{name:"威士忌",price:100},{name:"B52",price:150},{name:"薄荷奶糖",price:150},{name:"提拉米蘇",price:150},{name:"小愛爾蘭",price:150}],
     "啤酒": [{name:"百威",price:120},{name:"可樂娜",price:120},{name:"金樽",price:150},{name:"雪山",price:150},{name:"隱藏啤酒",price:0}],
     "咖啡": [{name:"美式",price:100},{name:"青檸美式",price:120},{name:"冰橙美式",price:150},{name:"拿鐵",price:120},{name:"香草拿鐵",price:120},{name:"榛果拿鐵",price:150},{name:"摩卡拿鐵",price:150}],
     "飲料": [{name:"可樂",price:80},{name:"雪碧",price:80},{name:"可爾必思",price:80},{name:"柳橙汁",price:80},{name:"蘋果汁",price:80},{name:"蔓越莓汁",price:80},{name:"紅茶",price:80},{name:"綠茶",price:80},{name:"烏龍茶",price:80}],
-    "燒烤": {
-        "Popular": [{name:"米血",price:25},{name:"豆乾",price:25},{name:"雞脖子",price:25},{name:"小肉豆",price:25},{name:"甜不辣",price:25},{name:"鑫鑫腸",price:25},{name:"糯米腸",price:25},{name:"百頁豆腐",price:25},{name:"豆包",price:30},{name:"肥腸",price:30},{name:"鱈魚丸",price:30},{name:"豬捲蔥",price:40},{name:"雞胸肉",price:40},{name:"豬捲金針菇",price:40},{name:"香腸",price:40},{name:"牛肉串",price:45},{name:"雞腿捲",price:45},{name:"孜然羊肉串",price:50},{name:"香蔥雞腿肉串",price:55},{name:"雞腿",price:80}],
-        "Chicken": [{name:"雞胗",price:30},{name:"雞心",price:30},{name:"雞翅",price:30},{name:"雞屁股",price:30},{name:"雞皮",price:35},{name:"大熱狗",price:35},{name:"鹹麻吉",price:35},{name:"花生麻吉",price:35}],
-        "花生糯米腸組合": [{name:"A 糯米腸+香腸",price:80},{name:"B 糯米腸+鹹豬肉",price:100},{name:"C 糯米腸+香腸+鹹豬肉",price:150},{name:"糯米腸",price:100},{name:"鹹豬肉",price:120},{name:"香酥雞胸",price:120}],
-        "隱藏限定": [{name:"碳烤豆腐",price:40},{name:"牛蒡甜不辣",price:40},{name:"沙爹豬",price:45},{name:"手羽先",price:50},{name:"洋蔥牛五花",price:55},{name:"香蔥牛五花",price:55},{name:"碳烤雞排",price:90},{name:"麝香牛五花",price:95},{name:"乾煎虱目魚",price:180},{name:"帶骨牛小排",price:280}]
-    },
+    "燒烤": { "Popular": [{name:"米血",price:25},{name:"豆乾",price:25},{name:"雞脖子",price:25},{name:"小肉豆",price:25},{name:"甜不辣",price:25},{name:"鑫鑫腸",price:25},{name:"糯米腸",price:25},{name:"百頁豆腐",price:25},{name:"豆包",price:30},{name:"肥腸",price:30},{name:"鱈魚丸",price:30},{name:"豬捲蔥",price:40},{name:"雞胸肉",price:40},{name:"豬捲金針菇",price:40},{name:"香腸",price:40},{name:"牛肉串",price:45},{name:"雞腿捲",price:45},{name:"孜然羊肉串",price:50},{name:"香蔥雞腿肉串",price:55},{name:"雞腿",price:80}], "Chicken": [{name:"雞胗",price:30},{name:"雞心",price:30},{name:"雞翅",price:30},{name:"雞屁股",price:30},{name:"雞皮",price:35},{name:"大熱狗",price:35},{name:"鹹麻吉",price:35},{name:"花生麻吉",price:35}], "花生糯米腸組合": [{name:"A 糯米腸+香腸",price:80},{name:"B 糯米腸+鹹豬肉",price:100},{name:"C 糯米腸+香腸+鹹豬肉",price:150},{name:"糯米腸",price:100},{name:"鹹豬肉",price:120},{name:"香酥雞胸",price:120}], "隱藏限定": [{name:"碳烤豆腐",price:40},{name:"牛蒡甜不辣",price:40},{name:"沙爹豬",price:45},{name:"手羽先",price:50},{name:"洋蔥牛五花",price:55},{name:"香蔥牛五花",price:55},{name:"碳烤雞排",price:90},{name:"麝香牛五花",price:95},{name:"乾煎虱目魚",price:180},{name:"帶骨牛小排",price:280}] },
     "主餐": [{name:"炒飯",price:90},{name:"蒜漬糖蜜番茄麵包",price:140},{name:"日式炒烏龍麵",price:150},{name:"親子丼",price:160},{name:"酒蒸蛤蠣",price:180},{name:"純酒白蝦",price:200},{name:"唐揚咖哩",price:220},{name:"龍膽石斑魚湯",price:280},{name:"味繒鮭魚",price:0}],
     "炸物": [{name:"嫩炸豆腐",price:80},{name:"脆薯",price:100},{name:"雞塊",price:100},{name:"鑫鑫腸",price:100},{name:"雞米花",price:100},{name:"洋蔥圈",price:100},{name:"酥炸魷魚",price:0},{name:"炸物拼盤",price:400}],
     "厚片": [{name:"花生厚片",price:80},{name:"奶酥厚片",price:80},{name:"蒜香厚片",price:80},{name:"巧克力厚片",price:80},{name:"巧克力棉花糖厚片",price:80}],
@@ -116,6 +95,10 @@ let seatTimerInterval = null;
 let tempCustomItem = null;
 let isExtraShot = false; 
 
+// 分拆結帳暫存
+let tempLeftList = [];
+let tempRightList = [];
+
 /* DOM 元素 */
 const menuGrid = document.getElementById("menuGrid");
 const cartList = document.getElementById("cart-list");
@@ -128,11 +111,11 @@ const customModal = document.getElementById("customModal");
 const drinkModal = document.getElementById("drinkModal");
 const foodOptionModal = document.getElementById("foodOptionModal");
 const customBeerModal = document.getElementById("customBeerModal");
+const checkoutModal = document.getElementById("checkoutModal");
 
 /* ========== 初始化 ========== */
 function refreshData() {
     try {
-        // 本地備份讀取 (預防斷網)，但以 Firebase 為主
         let localHist = JSON.parse(localStorage.getItem("orderHistory"));
         if (localHist && localHist.length > 0 && (!historyOrders || historyOrders.length === 0)) {
             historyOrders = localHist;
@@ -220,12 +203,6 @@ function openOrderPage(table) {
     renderCart();
 }
 
-function autoSaveCustomerInfo() {
-    let name = custNameInput.value;
-    let phone = custPhoneInput.value;
-    tableCustomers[selectedTable] = { name, phone };
-}
-
 function startSeatTimerDisplay() {
     updateSeatTimerText();
     seatTimerInterval = setInterval(updateSeatTimerText, 1000);
@@ -240,7 +217,9 @@ function updateSeatTimerText() {
     document.getElementById("seatTimer").innerText = `⏳ 已入座：${h}:${m}:${s}`;
 }
 
-/* ========== 按鈕邏輯 ========== */
+/* ========== 按鈕邏輯 (拆分版) ========== */
+
+// 1. 返回/取消
 function saveAndExit(){
     if(tableStatuses[selectedTable] === 'yellow') {
         tableCarts[selectedTable] = cart;
@@ -256,6 +235,7 @@ function saveAndExit(){
     openTableSelect();
 }
 
+// 2. 送單暫存
 function saveOrderManual() {
     if (cart.length === 0) {
         alert("購物車是空的，訂單未成立。");
@@ -274,52 +254,159 @@ function saveOrderManual() {
     openTableSelect();
 }
 
-function checkout() {
-    if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; } else { if(!confirm(`總金額 $${totalText.innerText.replace("總金額：","").replace(" 元","")}，確定結帳？`)) return; }
+// 3. 全桌結帳
+function checkoutAll() {
+    if (cart.length === 0) { 
+        if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; 
+        // 空桌直接清
+        delete tableCarts[selectedTable]; 
+        delete tableTimers[selectedTable]; 
+        delete tableStatuses[selectedTable]; 
+        delete tableCustomers[selectedTable];
+        saveAllToCloud();
+        openTableSelect();
+        return;
+    } 
     
-    // ✨ 結帳邏輯加強
-    if(cart.length > 0){
-        let time = new Date().toLocaleString('zh-TW', { hour12: false });
-        let total = cart.reduce((a, b) => a + b.price, 0);
-        let info = { name: custNameInput.value, phone: custPhoneInput.value };
-        
-        let newOrder = { 
-            seat: selectedTable, 
-            time: time, 
-            items: [...cart], 
-            total: total, 
-            customerName: info.name, 
-            customerPhone: info.phone 
-        };
+    if(!confirm(`總金額 $${totalText.innerText.replace("總金額：","").replace(" 元","")}，確定結帳？`)) return;
+    
+    // 正常結帳
+    let time = new Date().toLocaleString('zh-TW', { hour12: false });
+    let total = cart.reduce((a, b) => a + b.price, 0);
+    let info = { name: custNameInput.value, phone: custPhoneInput.value };
+    
+    let newOrder = { 
+        seat: selectedTable, 
+        time: time, 
+        items: [...cart], 
+        total: total, 
+        customerName: info.name, 
+        customerPhone: info.phone 
+    };
 
-        if(!Array.isArray(historyOrders)) historyOrders = [];
-        historyOrders.push(newOrder);
-        
-        // 雙重備份
-        localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
-    }
+    if(!Array.isArray(historyOrders)) historyOrders = [];
+    historyOrders.push(newOrder);
+    localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
     
     delete tableCarts[selectedTable]; 
     delete tableTimers[selectedTable]; 
     delete tableStatuses[selectedTable]; 
     delete tableCustomers[selectedTable];
     
-    // 強制更新雲端，並在成功後才清空
-    db.ref('/').update({
-        historyOrders: historyOrders,
-        tableTimers: tableTimers,
-        tableCarts: tableCarts,
-        tableStatuses: tableStatuses,
-        tableCustomers: tableCustomers
-    }).then(() => {
-        alert(`💰 ${selectedTable} 結帳完成！`);
-        cart = []; 
-        openTableSelect(); 
-    }).catch(() => {
-        alert("⚠️ 網路異常，已先存於本地，請檢查連線！");
-        openTableSelect();
-    });
+    saveAllToCloud();
+    
+    cart = []; 
+    alert(`💰 ${selectedTable} 結帳完成！`);
+    openTableSelect(); 
 }
+
+/* ========== ✨ 4. 拆單結帳功能 ========== */
+
+// 打開拆單視窗
+function openSplitCheckout() {
+    if (cart.length === 0) {
+        alert("購物車是空的，無法拆單！");
+        return;
+    }
+    // 初始化暫存陣列
+    tempLeftList = [...cart]; // 複製目前購物車
+    tempRightList = [];       // 右邊準備結帳的清單
+    
+    renderCheckoutLists();
+    checkoutModal.style.display = "flex";
+}
+
+// 渲染左右清單
+function renderCheckoutLists() {
+    let leftHTML = "";
+    let rightHTML = "";
+    let rightTotal = 0;
+
+    // 左：未結
+    if(tempLeftList.length === 0) leftHTML = "<div class='empty-hint'>已無剩餘項目</div>";
+    else {
+        tempLeftList.forEach((item, index) => {
+            leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
+        });
+    }
+
+    // 右：待結
+    if(tempRightList.length === 0) rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
+    else {
+        tempRightList.forEach((item, index) => {
+            rightTotal += item.price;
+            rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
+        });
+    }
+
+    document.getElementById("unpaidList").innerHTML = leftHTML;
+    document.getElementById("payingList").innerHTML = rightHTML;
+    document.getElementById("payTotal").innerText = "$" + rightTotal;
+}
+
+function moveToPay(index) {
+    let item = tempLeftList.splice(index, 1)[0];
+    tempRightList.push(item);
+    renderCheckoutLists();
+}
+
+function removeFromPay(index) {
+    let item = tempRightList.splice(index, 1)[0];
+    tempLeftList.push(item);
+    renderCheckoutLists();
+}
+
+function closeCheckoutModal() {
+    checkoutModal.style.display = "none";
+}
+
+// 確認拆單結帳
+function confirmPayment() {
+    if (tempRightList.length === 0) {
+        alert("右側沒有商品，無法結帳！");
+        return;
+    }
+
+    let time = new Date().toLocaleString('zh-TW', { hour12: false });
+    let total = tempRightList.reduce((a, b) => a + b.price, 0);
+    let info = tableCustomers[selectedTable] || {name:"", phone:""};
+
+    // 寫入歷史
+    let newOrder = { 
+        seat: selectedTable + " (拆單)", 
+        time: time, 
+        items: [...tempRightList], 
+        total: total, 
+        customerName: info.name, 
+        customerPhone: info.phone 
+    };
+
+    if(!Array.isArray(historyOrders)) historyOrders = [];
+    historyOrders.push(newOrder);
+    localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
+
+    // 更新桌況
+    if (tempLeftList.length === 0) {
+        // 全部結完 -> 清桌
+        delete tableCarts[selectedTable]; 
+        delete tableTimers[selectedTable]; 
+        delete tableStatuses[selectedTable]; 
+        delete tableCustomers[selectedTable];
+        cart = [];
+        alert(`💰 ${selectedTable} 全部結帳完成！`);
+        openTableSelect();
+    } else {
+        // 部分結完 -> 更新剩餘商品
+        tableCarts[selectedTable] = tempLeftList;
+        cart = tempLeftList; // 同步當前變數
+        alert(`💰 ${selectedTable} 部分結帳完成！剩餘商品保留在桌上。`);
+        renderCart(); // 刷新點餐頁畫面
+    }
+
+    saveAllToCloud();
+    closeCheckoutModal();
+}
+
 
 /* ========== 彈窗與分類 ========== */
 function checkItemType(name, price, categoryName) {
@@ -355,11 +442,9 @@ function closeFoodModal() { foodOptionModal.style.display = "none"; tempCustomIt
 function confirmFoodItem() {
     if (!tempCustomItem) return;
     let meat = document.querySelector('input[name="meat"]:checked').value;
-    let finalPrice = tempCustomItem.price;
-    if (tempCustomItem.type === "friedRice") {
-        if (meat === "蝦仁") finalPrice = 110; else finalPrice = 90;
-    }
-    addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, finalPrice);
+    
+    // 直接使用 tempCustomItem.price
+    addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, tempCustomItem.price);
     closeFoodModal();
 }
 
@@ -561,23 +646,19 @@ function renderCart() {
 }
 function removeItem(index) { cart.splice(index, 1); renderCart(); saveCartToStorage(); }
 
-// ✨ 歷史訂單：摺疊顯示修復版
+// ✨ 修復今日訂單展開 (加入強制 click 屬性)
 function showHistory() {
     historyBox.innerHTML = "";
-    
-    // 確保 historyOrders 存在且為陣列
-    if (!Array.isArray(historyOrders) || historyOrders.length === 0) {
-        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>";
-        return;
+    if(!historyOrders || historyOrders.length === 0) { 
+        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; 
+        return; 
     }
-
     let orders = [...historyOrders].reverse();
 
     orders.forEach((o, index) => {
         let seq = orders.length - index;
         let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>";
         
-        // 產生詳細清單
         let itemsDetail = o.items.map(i => 
             `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;">
                 <span>${i.name}</span> <span>$${i.price}</span>
@@ -587,15 +668,15 @@ function showHistory() {
         let timeOnly = o.time.split(" ")[1] || o.time;
         let rowId = `detail-${index}`;
 
+        // ✨ 確保 onclick 在平板上有效
         historyBox.innerHTML += `
-            <div class="history-row btn-effect" onclick="toggleDetail('${rowId}')">
+            <div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;">
                 <span class="seq">#${seq}</span>
                 <span class="seat">${o.seat}</span>
                 <span class="cust">${custInfo}</span>
                 <span class="time">${timeOnly}</span>
                 <span class="amt">$${o.total}</span>
             </div>
-            
             <div id="${rowId}" class="history-detail" style="display:none;">
                 <div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;">
                     <b>📅 完整時間：</b>${o.time}<br>
@@ -613,11 +694,10 @@ function showHistory() {
     });
 }
 
-// ✨ 關鍵：控制展開/收合的函式 (這個之前被我漏掉了，現在補回來)
+// ✨ 全域切換函式
 window.toggleDetail = function(id) {
     let el = document.getElementById(id);
-    // 改良判斷邏輯：只要不是 block 就打開
-    if (!el.style.display || el.style.display === "none") {
+    if (el.style.display === "none") {
         el.style.display = "block";
     } else {
         el.style.display = "none";
@@ -628,12 +708,9 @@ function deleteSingleOrder(displayIndex) {
     if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return;
     let realIndex = historyOrders.length - 1 - displayIndex;
     historyOrders.splice(realIndex, 1);
-    
-    // 刪除後強制更新雲端
     saveAllToCloud();
     showHistory();
 }
-
 function closeBusiness() {
     let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length;
     if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return;
@@ -654,7 +731,7 @@ function confirmClearData() {
 
 // 啟動檢查
 window.onload = function() { 
-    document.body.addEventListener('touchstart', function() {}, false);
+    document.body.addEventListener('touchstart', function() {}, false); // 啟用手機觸控
     if(sessionStorage.getItem("isLoggedIn") === "true") {
         showApp();
     }

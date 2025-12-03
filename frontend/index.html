@@ -15,7 +15,6 @@
             <input type="password" id="loginPass" placeholder="密碼" onkeydown="if(event.keyCode==13) checkLogin()">
             <button onclick="checkLogin()" class="btn-effect">登入</button>
             <p id="loginError" style="color:red; display:none; margin-top:10px;">❌ 密碼錯誤</p>
-            <div id="versionText" style="margin-top:15px; color:#888; font-size:12px; font-weight:bold;">Loading...</div>
         </div>
     </div>
 
@@ -69,8 +68,9 @@
                 <p id="total">總金額：0 元</p>
                 
                 <div class="action-buttons">
-                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 送單暫存 (確認用餐)</button>
-                    <button class="checkout-btn btn-effect" onclick="checkout()">💰 結帳 / 清桌</button>
+                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 暫存</button>
+                    <button class="checkout-btn btn-effect" onclick="checkoutAll()">💰 全結</button>
+                    <button class="split-btn btn-effect" onclick="openSplitCheckout()">✂ 拆單</button>
                 </div>
             </div>
         </div>
@@ -118,6 +118,33 @@
             </div>
         </div>
 
+        <div id="checkoutModal" class="modal">
+            <div class="modal-content" style="max-width:800px;">
+                <h2>✂ 拆單結帳</h2>
+                <p style="color:#666;">點擊左邊品項移至右邊進行結帳</p>
+                
+                <div class="split-checkout-container">
+                    <div class="checkout-box left-box">
+                        <h3>📦 未結帳品項</h3>
+                        <div id="unpaidList" class="checkout-list"></div>
+                    </div>
+
+                    <div style="display:flex; align-items:center; font-size:24px; color:#888;">➡</div>
+
+                    <div class="checkout-box right-box">
+                        <h3>💳 本次結帳</h3>
+                        <div id="payingList" class="checkout-list"></div>
+                        <div class="checkout-total">總計: <span id="payTotal">$0</span></div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button onclick="closeCheckoutModal()" class="btn-effect" style="background:#888;">取消</button>
+                    <button onclick="confirmPayment()" class="btn-effect" style="background:#28a745;">✅ 確認結帳</button>
+                </div>
+            </div>
+        </div>
+
         <div id="customModal" class="modal">
             <div class="modal-content" style="text-align:left;">
                 <h2 style="text-align:center;">🍹 <span id="customTitle">隱藏特調</span>客製化</h2>
@@ -151,14 +178,8 @@
         <div id="foodOptionModal" class="modal">
             <div class="modal-content" style="text-align:left;">
                 <h2 style="text-align:center;">🍛 <span id="foodTitle">餐點</span>配料</h2>
-                <div class="custom-section">
-                    <div class="custom-label">請選擇配料：</div>
-                    <div class="radio-group nowrap" id="meatOptions"></div>
-                </div>
-                <div class="modal-actions">
-                    <button onclick="closeFoodModal()" class="btn-effect" style="background:#888;">取消</button>
-                    <button onclick="confirmFoodItem()" class="btn-effect" style="background:#28a745;">✅ 確認加入</button>
-                </div>
+                <div class="custom-section"><div class="custom-label">請選擇配料：</div><div class="radio-group nowrap" id="meatOptions"></div></div>
+                <div class="modal-actions"><button onclick="closeFoodModal()" class="btn-effect" style="background:#888;">取消</button><button onclick="confirmFoodItem()" class="btn-effect" style="background:#28a745;">✅ 確認加入</button></div>
             </div>
         </div>
 

@@ -118,12 +118,16 @@ button { cursor: pointer; font-size: 16px; user-select: none; }
 }
 
 #cart-container { background: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
-.action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+
+/* ✨ 三顆按鈕併排 */
+.action-buttons { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; }
+
 .save-btn { padding: 15px; background: #ffc107; color: #333; border: none; border-radius: 8px; font-size: 20px; font-weight: bold; }
 .checkout-btn { padding: 15px; background: #007bff; color: white; border: none; border-radius: 8px; font-size: 20px; }
+.split-btn { padding: 15px; background: #6f42c1; color: white; border: none; border-radius: 8px; font-size: 20px; } /* 紫色 */
 .del-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-left: 10px; }
 
-/* ========== 歷史訂單 (修正觸控問題) ========== */
+/* ========== 歷史訂單 ========== */
 .history-header-row {
     display: grid;
     grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr; 
@@ -135,7 +139,6 @@ button { cursor: pointer; font-size: 16px; user-select: none; }
     grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr;
     background: #fff; padding: 15px; border-bottom: 1px solid #eee;
     align-items: center; 
-    /* ✨ 關鍵修正：讓 iOS 知道這是可點擊的 */
     cursor: pointer; 
     user-select: none;
     transition: .2s;
@@ -265,12 +268,18 @@ input[type=range]::-webkit-slider-runnable-track {
 .bbq-card p { color: #dc3545; }
 .report-split { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 
-@keyframes fadeIn {
-    from {opacity: 0; transform: translateY(-20px);}
-    to {opacity: 1; transform: translateY(0);}
-}
+/* ✨ 分拆結帳樣式 */
+.split-checkout-container { display: flex; gap: 15px; margin: 20px 0; }
+.checkout-box { flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 10px; height: 300px; overflow-y: auto; background: #f9f9f9; }
+.checkout-list { min-height: 200px; }
+.checkout-item { background: white; padding: 10px; border-radius: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; border: 1px solid #eee; cursor: pointer; transition: .2s; }
+.checkout-item:hover { background: #e9f5ff; border-color: #007bff; }
+.checkout-total { margin-top: 10px; font-size: 18px; font-weight: bold; text-align: right; color: #d33; }
+.empty-hint { color: #aaa; margin-top: 50px; font-style: italic; }
 
+@keyframes fadeIn { from {opacity: 0; transform: translateY(-20px);} to {opacity: 1; transform: translateY(0);} }
 @media (max-width: 768px) {
     .history-header-row, .history-row { font-size: 14px; padding: 10px; }
     .report-split { grid-template-columns: 1fr; } 
+    .split-checkout-container { flex-direction: column; height: auto; }
 }
