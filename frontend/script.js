@@ -10,13 +10,11 @@ const firebaseConfig = {
   measurementId: "G-2G680G6GHF"
 };
 
-// 初始化 Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 /* ========== 2. 系統設定 ========== */
 const SYSTEM_PASSWORD = "58980000"; 
-const CURRENT_VERSION = "pos04"; 
 
 /* ========== 3. 登入與雲端連線 ========== */
 function checkLogin() {
@@ -36,7 +34,6 @@ function checkLogin() {
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-container").style.display = "block";
-    document.getElementById("versionText").innerText = "Version: " + CURRENT_VERSION;
     initRealtimeData();
     goHome();
 }
@@ -45,8 +42,12 @@ function initRealtimeData() {
     db.ref('/').on('value', (snapshot) => {
         const data = snapshot.val() || {};
         
-        // ✨ 強制轉為陣列，避免雲端回傳物件格式導致順序錯亂
-        historyOrders = data.historyOrders ? Object.values(data.historyOrders) : []; 
+        // 確保 historyOrders 是陣列
+        if (data.historyOrders) {
+             historyOrders = Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders);
+        } else {
+             historyOrders = [];
+        }
         
         tableTimers = data.tableTimers || {};
         tableCarts = data.tableCarts || {};
@@ -59,7 +60,6 @@ function initRealtimeData() {
     });
 }
 
-// 一般存檔 (背景執行)
 function saveAllToCloud() {
     db.ref('/').update({
         historyOrders: historyOrders,
@@ -70,30 +70,16 @@ function saveAllToCloud() {
     }).catch(err => { console.error("同步失敗", err); });
 }
 
-/* ========== 4. 菜單資料 (完整版) ========== */
+/* ========== 4. 菜單資料 ========== */
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
-
 const menuData = {
-    "調酒": {
-        "$250 調酒": [{name:"高球",price:250},{name:"琴通寧",price:250},{name:"螺絲起子",price:250},{name:"藍色珊瑚礁",price:250},{name:"龍舌蘭日出",price:250}],
-        "$280 調酒": [{name:"白色俄羅斯",price:280},{name:"性感海灘",price:280},{name:"威士忌酸",price:280},{name:"惡魔",price:280},{name:"梅夢",price:280},{name:"輕浪蘭夢",price:280},{name:"暮色梅影",price:280},{name:"醉椰落日",price:280},{name:"晨曦花露",price:280},{name:"隱藏特調",price:280}],
-        "$320 調酒": [{name:"橙韻旋律",price:320},{name:"莫希托",price:320},{name:"長島冰茶",price:320},{name:"內格羅尼",price:320},{name:"咖啡馬丁尼",price:320},{name:"雅茗",price:320},{name:"幽香琥珀",price:320},{name:"琴盈紅酸",price:320},{name:"微醺榛情",price:320}],
-        "無酒精調酒": [{name:"小熊軟糖",price:300},{name:"桂花晨露",price:300},{name:"玫瑰紅茶",price:300},{name:"珍珠奶茶",price:300},{name:"紅豆牛奶",price:300},{name:"隱藏特調",price:300}]
-    },
-    "純飲": {
-        "$200 純飲": [{name:"岩井(紅酒桶)",price:200},{name:"鉑仕曼 12 年",price:200},{name:"百富 12 年",price:200},{name:"拉佛格",price:200},{name:"蘇格登 12 年",price:200},{name:"格蘭利威 12 年",price:200},{name:"凱德漢 7 年",price:200}],
-        "$300 純飲": [{name:"響",price:300},{name:"白州",price:300},{name:"岩井(雪莉桶)",price:300},{name:"大摩 12 年",price:300},{name:"百富 14 年",price:300},{name:"卡爾里拉",price:300}]
-    },
+    "調酒": { "$250 調酒": [{name:"高球",price:250},{name:"琴通寧",price:250},{name:"螺絲起子",price:250},{name:"藍色珊瑚礁",price:250},{name:"龍舌蘭日出",price:250}], "$280 調酒": [{name:"白色俄羅斯",price:280},{name:"性感海灘",price:280},{name:"威士忌酸",price:280},{name:"惡魔",price:280},{name:"梅夢",price:280},{name:"輕浪蘭夢",price:280},{name:"暮色梅影",price:280},{name:"醉椰落日",price:280},{name:"晨曦花露",price:280},{name:"隱藏特調",price:280}], "$320 調酒": [{name:"橙韻旋律",price:320},{name:"莫希托",price:320},{name:"長島冰茶",price:320},{name:"內格羅尼",price:320},{name:"咖啡馬丁尼",price:320},{name:"雅茗",price:320},{name:"幽香琥珀",price:320},{name:"琴盈紅酸",price:320},{name:"微醺榛情",price:320}], "無酒精調酒": [{name:"小熊軟糖",price:300},{name:"桂花晨露",price:300},{name:"玫瑰紅茶",price:300},{name:"珍珠奶茶",price:300},{name:"紅豆牛奶",price:300},{name:"隱藏特調",price:300}] },
+    "純飲": { "$200 純飲": [{name:"岩井(紅酒桶)",price:200},{name:"鉑仕曼 12 年",price:200},{name:"百富 12 年",price:200},{name:"拉佛格",price:200},{name:"蘇格登 12 年",price:200},{name:"格蘭利威 12 年",price:200},{name:"凱德漢 7 年",price:200}], "$300 純飲": [{name:"響",price:300},{name:"白州",price:300},{name:"岩井(雪莉桶)",price:300},{name:"大摩 12 年",price:300},{name:"百富 14 年",price:300},{name:"卡爾里拉",price:300}] },
     "shot": [{name:"伏特加",price:100},{name:"蘭姆酒",price:100},{name:"龍舌蘭",price:100},{name:"琴酒",price:100},{name:"威士忌",price:100},{name:"B52",price:150},{name:"薄荷奶糖",price:150},{name:"提拉米蘇",price:150},{name:"小愛爾蘭",price:150}],
     "啤酒": [{name:"百威",price:120},{name:"可樂娜",price:120},{name:"金樽",price:150},{name:"雪山",price:150},{name:"隱藏啤酒",price:0}],
     "咖啡": [{name:"美式",price:100},{name:"青檸美式",price:120},{name:"冰橙美式",price:150},{name:"拿鐵",price:120},{name:"香草拿鐵",price:120},{name:"榛果拿鐵",price:150},{name:"摩卡拿鐵",price:150}],
     "飲料": [{name:"可樂",price:80},{name:"雪碧",price:80},{name:"可爾必思",price:80},{name:"柳橙汁",price:80},{name:"蘋果汁",price:80},{name:"蔓越莓汁",price:80},{name:"紅茶",price:80},{name:"綠茶",price:80},{name:"烏龍茶",price:80}],
-    "燒烤": {
-        "Popular": [{name:"米血",price:25},{name:"豆乾",price:25},{name:"雞脖子",price:25},{name:"小肉豆",price:25},{name:"甜不辣",price:25},{name:"鑫鑫腸",price:25},{name:"糯米腸",price:25},{name:"百頁豆腐",price:25},{name:"豆包",price:30},{name:"肥腸",price:30},{name:"鱈魚丸",price:30},{name:"豬捲蔥",price:40},{name:"雞胸肉",price:40},{name:"豬捲金針菇",price:40},{name:"香腸",price:40},{name:"牛肉串",price:45},{name:"雞腿捲",price:45},{name:"孜然羊肉串",price:50},{name:"香蔥雞腿肉串",price:55},{name:"雞腿",price:80}],
-        "Chicken": [{name:"雞胗",price:30},{name:"雞心",price:30},{name:"雞翅",price:30},{name:"雞屁股",price:30},{name:"雞皮",price:35},{name:"大熱狗",price:35},{name:"鹹麻吉",price:35},{name:"花生麻吉",price:35}],
-        "花生糯米腸組合": [{name:"A 糯米腸+香腸",price:80},{name:"B 糯米腸+鹹豬肉",price:100},{name:"C 糯米腸+香腸+鹹豬肉",price:150},{name:"糯米腸",price:100},{name:"鹹豬肉",price:120},{name:"香酥雞胸",price:120}],
-        "隱藏限定": [{name:"碳烤豆腐",price:40},{name:"牛蒡甜不辣",price:40},{name:"沙爹豬",price:45},{name:"手羽先",price:50},{name:"洋蔥牛五花",price:55},{name:"香蔥牛五花",price:55},{name:"碳烤雞排",price:90},{name:"麝香牛五花",price:95},{name:"乾煎虱目魚",price:180},{name:"帶骨牛小排",price:280}]
-    },
+    "燒烤": { "Popular": [{name:"米血",price:25},{name:"豆乾",price:25},{name:"雞脖子",price:25},{name:"小肉豆",price:25},{name:"甜不辣",price:25},{name:"鑫鑫腸",price:25},{name:"糯米腸",price:25},{name:"百頁豆腐",price:25},{name:"豆包",price:30},{name:"肥腸",price:30},{name:"鱈魚丸",price:30},{name:"豬捲蔥",price:40},{name:"雞胸肉",price:40},{name:"豬捲金針菇",price:40},{name:"香腸",price:40},{name:"牛肉串",price:45},{name:"雞腿捲",price:45},{name:"孜然羊肉串",price:50},{name:"香蔥雞腿肉串",price:55},{name:"雞腿",price:80}], "Chicken": [{name:"雞胗",price:30},{name:"雞心",price:30},{name:"雞翅",price:30},{name:"雞屁股",price:30},{name:"雞皮",price:35},{name:"大熱狗",price:35},{name:"鹹麻吉",price:35},{name:"花生麻吉",price:35}], "花生糯米腸組合": [{name:"A 糯米腸+香腸",price:80},{name:"B 糯米腸+鹹豬肉",price:100},{name:"C 糯米腸+香腸+鹹豬肉",price:150},{name:"糯米腸",price:100},{name:"鹹豬肉",price:120},{name:"香酥雞胸",price:120}], "隱藏限定": [{name:"碳烤豆腐",price:40},{name:"牛蒡甜不辣",price:40},{name:"沙爹豬",price:45},{name:"手羽先",price:50},{name:"洋蔥牛五花",price:55},{name:"香蔥牛五花",price:55},{name:"碳烤雞排",price:90},{name:"麝香牛五花",price:95},{name:"乾煎虱目魚",price:180},{name:"帶骨牛小排",price:280}] },
     "主餐": [{name:"炒飯",price:90},{name:"蒜漬糖蜜番茄麵包",price:140},{name:"日式炒烏龍麵",price:150},{name:"親子丼",price:160},{name:"酒蒸蛤蠣",price:180},{name:"純酒白蝦",price:200},{name:"唐揚咖哩",price:220},{name:"龍膽石斑魚湯",price:280},{name:"味繒鮭魚",price:0}],
     "炸物": [{name:"嫩炸豆腐",price:80},{name:"脆薯",price:100},{name:"雞塊",price:100},{name:"鑫鑫腸",price:100},{name:"雞米花",price:100},{name:"洋蔥圈",price:100},{name:"酥炸魷魚",price:0},{name:"炸物拼盤",price:400}],
     "厚片": [{name:"花生厚片",price:80},{name:"奶酥厚片",price:80},{name:"蒜香厚片",price:80},{name:"巧克力厚片",price:80},{name:"巧克力棉花糖厚片",price:80}],
@@ -130,10 +116,10 @@ const foodOptionModal = document.getElementById("foodOptionModal");
 
 /* ========== 初始化 ========== */
 function refreshData() {
-    // 本地備份讀取 (預防斷網)，但以 Firebase 為主
     try {
+        // 本地備份檢查，但以 Firebase 為主
         let localHist = JSON.parse(localStorage.getItem("orderHistory"));
-        if (localHist && localHist.length > 0 && historyOrders.length === 0) {
+        if (localHist && localHist.length > 0 && (!historyOrders || historyOrders.length === 0)) {
             historyOrders = localHist;
         }
     } catch(e) { }
@@ -170,7 +156,6 @@ function goHome() {
 /* ========== 座位與點餐功能 ========== */
 function openTableSelect() {
     hideAll();
-    refreshData();
     document.getElementById("tableSelect").style.display = "block";
     renderTableGrid();
 }
@@ -183,7 +168,7 @@ function renderTableGrid() {
         btn.className = "tableBtn btn-effect"; 
         let status = tableStatuses[t]; 
         
-        // 自動修復：有計時但無購物車 -> 重置
+        // 自動修復
         let hasCart = tableCarts[t] && tableCarts[t].length > 0;
         if (status !== 'yellow' && tableTimers[t]) { delete tableTimers[t]; saveAllToCloud(); }
         if (status === 'yellow' && !hasCart) { 
@@ -271,6 +256,7 @@ function saveOrderManual() {
 function checkout() {
     if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; } else { if(!confirm(`總金額 $${totalText.innerText.replace("總金額：","").replace(" 元","")}，確定結帳？`)) return; }
     
+    // ✨ 結帳邏輯加強：確保歷史紀錄完整寫入
     if(cart.length > 0){
         let time = new Date().toLocaleString('zh-TW', { hour12: false });
         let total = cart.reduce((a, b) => a + b.price, 0);
@@ -285,8 +271,11 @@ function checkout() {
             customerPhone: info.phone 
         };
 
-        if(!historyOrders) historyOrders = [];
+        if(!Array.isArray(historyOrders)) historyOrders = [];
         historyOrders.push(newOrder);
+        
+        // 雙重備份 (本地+雲端)
+        localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
     }
     
     delete tableCarts[selectedTable]; 
@@ -294,7 +283,7 @@ function checkout() {
     delete tableStatuses[selectedTable]; 
     delete tableCustomers[selectedTable];
     
-    // ✨ 強制雲端更新：這裡用 set 確保 historyOrders 完整覆寫，避免掉單
+    // 強制更新雲端，並在成功後才清空
     db.ref('/').update({
         historyOrders: historyOrders,
         tableTimers: tableTimers,
@@ -302,11 +291,11 @@ function checkout() {
         tableStatuses: tableStatuses,
         tableCustomers: tableCustomers
     }).then(() => {
-        alert(`💰 ${selectedTable} 結帳完成！已同步至雲端。`);
+        alert(`💰 ${selectedTable} 結帳完成！`);
         cart = []; 
         openTableSelect(); 
-    }).catch(err => {
-        alert("⚠️ 網路錯誤，結帳資料可能未同步！");
+    }).catch(() => {
+        alert("⚠️ 網路異常，已先存於本地，請檢查連線！");
         openTableSelect();
     });
 }
@@ -345,9 +334,11 @@ function closeFoodModal() { foodOptionModal.style.display = "none"; tempCustomIt
 function confirmFoodItem() {
     if (!tempCustomItem) return;
     let meat = document.querySelector('input[name="meat"]:checked').value;
-    
-    // 直接使用 tempCustomItem.price，因為 onclick 已經改過了
-    addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, tempCustomItem.price);
+    let finalPrice = tempCustomItem.price;
+    if (tempCustomItem.type === "friedRice") {
+        if (meat === "蝦仁") finalPrice = 110; else finalPrice = 90;
+    }
+    addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, finalPrice);
     closeFoodModal();
 }
 
@@ -549,21 +540,23 @@ function renderCart() {
 }
 function removeItem(index) { cart.splice(index, 1); renderCart(); saveCartToStorage(); }
 
-// ✨ 歷史訂單：摺疊顯示修復版
+/* ========== 報表與歷史 ========== */
+// ✨ 修改：今日訂單摺疊選單 (修正點擊邏輯)
 function showHistory() {
     historyBox.innerHTML = "";
-    let orders = [...historyOrders].reverse();
     
-    if(orders.length === 0) { 
-        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; 
-        return; 
+    // 確保 historyOrders 存在且為陣列
+    if (!Array.isArray(historyOrders) || historyOrders.length === 0) {
+        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>";
+        return;
     }
+
+    let orders = [...historyOrders].reverse();
 
     orders.forEach((o, index) => {
         let seq = orders.length - index;
         let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>";
         
-        // 產生詳細清單
         let itemsDetail = o.items.map(i => 
             `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;">
                 <span>${i.name}</span> <span>$${i.price}</span>
@@ -581,7 +574,6 @@ function showHistory() {
                 <span class="time">${timeOnly}</span>
                 <span class="amt">$${o.total}</span>
             </div>
-            
             <div id="${rowId}" class="history-detail" style="display:none;">
                 <div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;">
                     <b>📅 完整時間：</b>${o.time}<br>
@@ -599,29 +591,24 @@ function showHistory() {
     });
 }
 
-// ✨ 關鍵修復：刪除訂單時，等待雲端確認
+// ✨ 必須要有的 toggleDetail 函式
+window.toggleDetail = function(id) {
+    let el = document.getElementById(id);
+    if (el.style.display === "none") {
+        el.style.display = "block";
+    } else {
+        el.style.display = "none";
+    }
+}
+
 function deleteSingleOrder(displayIndex) {
     if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return;
-    
-    // historyOrders 已經是 reverse 過的顯示順序，所以要換算
-    // 但因為我們是直接操作全域 historyOrders，所以...
-    // 注意：displayIndex 是反轉後的索引，要小心
-    
-    // 最保險的做法：直接重抓一次，找到對應的索引
-    // 但為了簡單，我們假設畫面跟資料是同步的
-    // historyOrders: [A, B, C]
-    // 顯示: [C, B, A] (index 0 -> C)
-    // 真實 index = length - 1 - 0 = 2
-    
     let realIndex = historyOrders.length - 1 - displayIndex;
     historyOrders.splice(realIndex, 1);
     
-    // ✨ 使用 set 強制覆寫整個歷史紀錄，避免 update 造成殘留
-    db.ref('historyOrders').set(historyOrders)
-      .then(() => {
-          alert("🗑 訂單已刪除");
-          showHistory();
-      });
+    // 刪除後強制更新雲端
+    saveAllToCloud();
+    showHistory();
 }
 
 function closeBusiness() {
@@ -637,13 +624,14 @@ function closeBusiness() {
 function closeSummaryModal() { summaryModal.style.display = "none"; }
 function confirmClearData() {
     historyOrders = [];
-    db.ref('historyOrders').set([]); // 清空雲端歷史
+    saveAllToCloud();
     closeSummaryModal(); showHistory(); 
     alert("✅ 日結完成！今日營收已歸零。");
 }
 
-// 啟動
+// 啟動檢查
 window.onload = function() { 
+    document.body.addEventListener('touchstart', function() {}, false); // 啟用手機觸控
     if(sessionStorage.getItem("isLoggedIn") === "true") {
         showApp();
     }
