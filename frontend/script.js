@@ -121,7 +121,7 @@ const changePasswordModal = document.getElementById("changePasswordModal");
 const discountModal = document.getElementById("discountModal");
 const allowanceModal = document.getElementById("allowanceModal");
 
-/* ========== 頁面導航與管理 ========== */
+/* ========== 頁面導航 ========== */
 function goHome() { hideAll(); document.getElementById("home").style.display = "grid"; }
 function hideAll() { ["home", "orderPage", "historyPage", "tableSelect", "reportPage", "confidentialPage", "settingsPage"].forEach(id => { let el = document.getElementById(id); if(el) el.style.display = "none"; }); if(seatTimerInterval) clearInterval(seatTimerInterval); }
 function openPage(pageId) { hideAll(); let el = document.getElementById(pageId); if(el) el.style.display = "block"; if(pageId === 'historyPage') { showHistory(); } if(pageId === 'reportPage') { generateReport('day'); } }
@@ -165,25 +165,12 @@ function openItems(category) {
     if (!Array.isArray(data)) { let html = backBtn; Object.keys(data).forEach((subCat, index) => { let items = data[subCat]; let accId = `acc-${index}`; html += `<button class="accordion-header btn-effect" onclick="toggleAccordion('${accId}')">${subCat} <span class="arrow">▼</span></button><div id="${accId}" class="accordion-content">`; items.forEach(item => { html += createItemHtml(item, false); }); html += `</div>`; }); html += backBtn; menuGrid.innerHTML = html; return; }
 }
 
-// 特殊商品處理
-function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
-function addSalmonPrice() { let price = parseInt(document.getElementById("salmonPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("味繒鮭魚", price); }
-function addFriedSquidPrice() { let price = parseInt(document.getElementById("squidPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("酥炸魷魚", price); }
-function checkItemType(name, price, categoryName) { if (name === "隱藏特調") { openCustomModal(name, price); return; } let realPrice = itemPrices[name] !== undefined ? itemPrices[name] : price; if (name === "隱藏啤酒" || name === "味繒鮭魚" || name === "酥炸魷魚") { addToCart(name, realPrice); return; } if (categoryName === "咖啡") { openDrinkModal(name, realPrice, "coffee"); return; } if (categoryName === "飲料") { if (name.includes("茶")) openDrinkModal(name, realPrice, "tea"); else openDrinkModal(name, realPrice, "drink"); return; } if (categoryName === "主餐") { if (name === "炒飯") { openFoodModal(name, realPrice, "friedRice"); return; } if (name === "日式炒烏龍麵" || name === "親子丼") { openFoodModal(name, realPrice, "meatOnly"); return; } } addToCart(name, realPrice); }
-function openFoodModal(name, price, type) { tempCustomItem = { name, price, type }; document.getElementById("foodTitle").innerText = name; let meatOptions = document.getElementById("meatOptions"); let html = ""; if (type === "friedRice") { html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=${price}" checked><div class="radio-btn btn-effect">牛 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">豬 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">雞 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=${price + 20}"><div class="radio-btn btn-effect">蝦仁 ($${price + 20})</div></label>`; } else { html = `<label class="radio-box"><input type="radio" name="meat" value="牛" checked><div class="radio-btn btn-effect">牛</div></label><label class="radio-box"><input type="radio" name="meat" value="豬"><div class="radio-btn btn-effect">豬</div></label><label class="radio-box"><input type="radio" name="meat" value="雞"><div class="radio-btn btn-effect">雞</div></label>`; } meatOptions.innerHTML = html; foodOptionModal.style.display = "flex"; }
-function closeFoodModal() { foodOptionModal.style.display = "none"; tempCustomItem = null; }
-function confirmFoodItem() { if (!tempCustomItem) return; let meat = document.querySelector('input[name="meat"]:checked').value; addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, tempCustomItem.price); closeFoodModal(); }
-function openDrinkModal(name, price, type) { tempCustomItem = { name, price, type }; document.getElementById("drinkTitle").innerText = name; let simpleTemp = document.getElementById("simpleTempSection"); let advTemp = document.getElementById("advanceTempSection"); let sugar = document.getElementById("sugarSection"); document.querySelectorAll('input[name="simpleTemp"]')[0].checked = true; document.querySelectorAll('input[name="advTemp"]')[0].checked = true; document.querySelectorAll('input[name="sugar"]')[0].checked = true; if (type === "coffee") { simpleTemp.style.display = "block"; advTemp.style.display = "none"; sugar.style.display = "none"; } else if (type === "drink") { simpleTemp.style.display = "none"; advTemp.style.display = "block"; sugar.style.display = "none"; } else if (type === "tea") { simpleTemp.style.display = "none"; advTemp.style.display = "block"; sugar.style.display = "block"; } drinkModal.style.display = "flex"; }
-function closeDrinkModal() { drinkModal.style.display = "none"; tempCustomItem = null; }
-function confirmDrinkItem() { if (!tempCustomItem) return; let note = ""; if (tempCustomItem.type === "coffee") { let temp = document.querySelector('input[name="simpleTemp"]:checked').value; note = `<small style='color:#666'>(${temp})</small>`; } else { let temp = document.querySelector('input[name="advTemp"]:checked').value; if (tempCustomItem.type === "tea") { let sugar = document.querySelector('input[name="sugar"]:checked').value; note = `<small style='color:#666'>(${temp} / ${sugar})</small>`; } else { note = `<small style='color:#666'>(${temp})</small>`; } } addToCart(tempCustomItem.name + " " + note, tempCustomItem.price); closeDrinkModal(); }
-function addShotSet(name, price) { addToCart(`${name} <small style='color:#28a745'>[買5送1]</small>`, price * 5); }
-function openCustomModal(name, price) { tempCustomItem = { name, price }; document.querySelectorAll('input[name="flavor"]')[0].checked = true; document.querySelectorAll('input[name="taste"]')[0].checked = true; let alcoholSec = document.getElementById("modalAlcoholSection"); let noteSec = document.getElementById("modalNoteSection"); let title = document.getElementById("customTitle"); if (price === 280) { title.innerText = "隱藏特調(酒精)"; alcoholSec.style.display = "block"; noteSec.style.display = "none"; isExtraShot = false; document.getElementById("extraShotBtn").classList.remove("active"); document.getElementById("alcoholRange").value = 0; document.getElementById("alcoholVal").innerText = "0"; } else if (price === 300) { title.innerText = "隱藏特調(無酒精)"; alcoholSec.style.display = "none"; noteSec.style.display = "block"; document.getElementById("customNote").value = ""; } customModal.style.display = "flex"; }
-function toggleExtraShot() { isExtraShot = !isExtraShot; document.getElementById("extraShotBtn").classList.toggle("active"); }
-function closeCustomModal() { customModal.style.display = "none"; tempCustomItem = null; }
-function confirmCustomItem() { if (!tempCustomItem) return; let flavor = document.querySelector('input[name="flavor"]:checked').value; let taste = document.querySelector('input[name="taste"]:checked').value; let extraStr = ""; let finalPrice = tempCustomItem.price; if (tempCustomItem.price === 280) { let alcohol = document.getElementById("alcoholRange").value; if(isExtraShot) { finalPrice += 40; extraStr += "<br><b style='color:#d33;'>🔥 濃度升級 (+$40)</b>"; } extraStr += `<br><small style='color:#666'>(${flavor} / ${taste} / 濃度+${alcohol}%)</small>`; } else { let note = document.getElementById("customNote").value.trim(); if(note) extraStr += `<br><span style='color:#007bff; font-size:14px;'>📝 ${note}</span>`; extraStr += `<br><small style='color:#666'>(${flavor} / ${taste})</small>`; } addToCart(`${tempCustomItem.name} ${extraStr}`, finalPrice); closeCustomModal(); }
-
-/* ========== 🔥 核心邏輯修正 ========== */
-function addToCart(name, price) { cart.push({ name, price, isNew: true }); renderCart(); }
+/* ========== 核心邏輯：加點標記與列印 ========== */
+// 🔥 1. 加入商品時，標記為 isNew
+function addToCart(name, price) {
+    cart.push({ name, price, isNew: true });
+    renderCart();
+}
 
 function saveAndExit(){
     if(tableStatuses[selectedTable] === 'yellow') {
@@ -199,11 +186,11 @@ function saveAndExit(){
     openTableSelect();
 }
 
+// 🔥 2. 暫存時，只列印 isNew 的商品，並將其標記為已印
 function saveOrderManual() {
     if (cart.length === 0) { alert("購物車是空的，訂單未成立。"); saveAndExit(); return; }
     if (!tableCustomers[selectedTable]) { tableCustomers[selectedTable] = {}; }
     
-    // 🔥 確保有訂單編號 (開桌或防呆)
     if (!tableTimers[selectedTable] || !tableCustomers[selectedTable].orderId) {
         tableTimers[selectedTable] = Date.now();
         tableSplitCounters[selectedTable] = 1; 
@@ -213,6 +200,7 @@ function saveOrderManual() {
     
     let newItemsToPrint = cart.filter(item => item.isNew === true);
     if (newItemsToPrint.length > 0) {
+        // 🔥 列印工單 (Ticket)
         printReceipt({
             seq: tableCustomers[selectedTable].orderId,
             table: selectedTable,
@@ -221,6 +209,7 @@ function saveOrderManual() {
             original: 0,
             total: 0
         }, true);
+        // 標記為已印
         cart.forEach(item => delete item.isNew);
     }
 
@@ -233,27 +222,73 @@ function saveOrderManual() {
     openTableSelect();
 }
 
+// 🔥🔥🔥 列印功能：自動分單 (酒吧/廚房) 🔥🔥🔥
+function printReceipt(data, isTicket = false) {
+    let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"]; 
+    let barItemsHtml = ""; 
+    let kitchenItemsHtml = ""; 
+    let hasBar = false; 
+    let hasKitchen = false;
+
+    data.items.forEach(i => {
+        let itemCat = "";
+        // 反查分類 (支援巢狀與陣列結構)
+        for (const [cat, content] of Object.entries(menuData)) {
+            if (Array.isArray(content)) {
+                if (content.some(x => i.name.includes(x.name))) itemCat = cat;
+            } else {
+                for (const subContent of Object.values(content)) {
+                    if (subContent.some(x => i.name.includes(x.name))) itemCat = cat;
+                }
+            }
+        }
+        if(itemCat === "") { // 防呆
+            if(i.name.includes("雞") || i.name.includes("豬") || i.name.includes("牛") || i.name.includes("飯") || i.name.includes("麵")) itemCat = "主餐";
+        }
+
+        if (kitchenCategories.includes(itemCat)) {
+            hasKitchen = true;
+            kitchenItemsHtml += `<div class="kitchen-item">${i.name}</div>`;
+        } else {
+            hasBar = true;
+            let priceStr = isTicket ? "" : `$${i.price}`;
+            barItemsHtml += `<div class="receipt-item"><span>${i.name}</span><span>${priceStr}</span></div>`;
+        }
+    });
+
+    let receiptHtml = "";
+
+    // 1. 酒吧單
+    if (hasBar || (!hasKitchen && !hasBar)) { 
+        receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單 (吧台)" : "結帳收據 (櫃台)"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${barItemsHtml}</div><hr class="dashed-line">${isTicket ? '' : `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`}</div>`;
+    }
+
+    // 2. 如果有兩張單，加切刀
+    if (hasBar && hasKitchen) { receiptHtml += `<div class="page-break"></div>`; }
+
+    // 3. 廚房單
+    if (hasKitchen) {
+        receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單" : "廚房工作單"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${kitchenItemsHtml}</div><hr class="dashed-line"></div>`;
+    }
+
+    document.getElementById("receipt-print-area").innerHTML = receiptHtml;
+    setTimeout(() => { window.print(); }, 500);
+}
+
+/* ========== 結帳與其他 ========== */
 function checkoutAll(manualFinal) {
     let payingTotal = (manualFinal !== undefined) ? manualFinal : finalTotal;
     let time = new Date().toLocaleString('zh-TW', { hour12: false });
     let originalTotal = currentOriginalTotal;
     let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" };
 
-    // 🔥 防呆補號
-    if(!info.orderId || info.orderId === "?" || info.orderId === "T") {
-        dailyOrderCount++;
-        info.orderId = dailyOrderCount;
-    }
+    if(!info.orderId || info.orderId === "?" || info.orderId === "T") { dailyOrderCount++; info.orderId = dailyOrderCount; }
     
     if (originalTotal > 0 || payingTotal > 0) {
         let splitNum = tableSplitCounters[selectedTable];
         let displaySeq = info.orderId; 
         let displaySeat = selectedTable;
-        // 若拆過單，這筆算尾款
-        if(splitNum && splitNum > 1) {
-            displaySeq = `${info.orderId}-${splitNum}`;
-            displaySeat = `${selectedTable} (拆單)`;
-        }
+        if(splitNum && splitNum > 1) { displaySeq = `${info.orderId}-${splitNum}`; displaySeat = `${selectedTable} (拆單)`; }
 
         let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, items: [...cart], total: payingTotal, originalTotal: originalTotal, customerName: info.name, customerPhone: info.phone };
         if(!Array.isArray(historyOrders)) historyOrders = [];
@@ -266,9 +301,9 @@ function checkoutAll(manualFinal) {
     cart = []; currentDiscount = { type: 'none', value: 0 }; 
     alert(`💰 結帳完成！實收 $${payingTotal}`);
     
-    // 列印
+    // 🔥 自動列印 (全結)
     printReceipt({
-        seq: (originalTotal > 0 || payingTotal > 0) ? (tableCustomers[selectedTable] ? tableCustomers[selectedTable].orderId : "?") : "N/A",
+        seq: info.orderId, 
         table: selectedTable,
         time: time,
         items: (originalTotal > 0) ? [...historyOrders[historyOrders.length-1].items] : [],
@@ -278,51 +313,21 @@ function checkoutAll(manualFinal) {
     openTableSelect(); 
 }
 
-function confirmPayment() { // 拆單結帳
-    if (tempRightList.length === 0) { alert("右側沒有商品，無法結帳！"); return; }
-    let time = new Date().toLocaleString('zh-TW', { hour12: false });
-    let total = calcSplitTotal();
-    let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" };
-    
-    // 🔥 防呆補號
-    if(!info.orderId || info.orderId === "?" || info.orderId === "T") {
-        dailyOrderCount++;
-        info.orderId = dailyOrderCount;
-        if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {};
-        tableCustomers[selectedTable].orderId = dailyOrderCount;
-    }
-    
-    let currentSplit = tableSplitCounters[selectedTable] || 1;
-    let displaySeq = `${info.orderId}-${currentSplit}`;
-    let displaySeat = `${selectedTable} (拆單)`;
-    tableSplitCounters[selectedTable] = currentSplit + 1; 
+// 特殊商品與功能
+function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
+function addSalmonPrice() { let price = parseInt(document.getElementById("salmonPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("味繒鮭魚", price); }
+function addFriedSquidPrice() { let price = parseInt(document.getElementById("squidPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("酥炸魷魚", price); }
+function openSettingsPage() { hideAll(); document.getElementById("settingsPage").style.display = "block"; }
+function openChangePasswordModal(name) { document.getElementById("pwdOwnerName").innerText = name; document.getElementById("oldPwd").value = ""; document.getElementById("newPwd").value = ""; document.getElementById("confirmPwd").value = ""; changePasswordModal.style.display = "flex"; }
+function closeChangePasswordModal() { changePasswordModal.style.display = "none"; }
+function confirmChangePassword() { /* 同前 */ }
+function openOwnerLogin() { if(ownerLoginModal) ownerLoginModal.style.display = "flex"; }
+function closeOwnerModal() { ownerLoginModal.style.display = "none"; }
+function checkOwner(name) { let password = prompt(`請輸入 ${name} 的密碼：`); if (password === OWNER_PASSWORDS[name]) { closeOwnerModal(); openConfidentialPage(name); } else { alert("❌ 密碼錯誤！"); } }
+function openConfidentialPage(ownerName) { hideAll(); document.getElementById("confidentialPage").style.display = "block"; document.getElementById("ownerWelcome").innerText = ownerName; document.getElementById("financeDashboard").style.display = "none"; updateFinancialPage(ownerName); }
+function updateFinancialPage(ownerName) { /* 同前 */ }
+window.toggleAccordion = function(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); }
 
-    let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, items: [...tempRightList], total: total, customerName: info.name, customerPhone: info.phone };
-    if(!Array.isArray(historyOrders)) historyOrders = [];
-    historyOrders.push(newOrder);
-    localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
-
-    if (tempLeftList.length === 0) {
-        delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable];
-        cart = []; alert(`💰 ${selectedTable} 全部結帳完成！`); openTableSelect();
-    } else {
-        tableCarts[selectedTable] = tempLeftList; cart = tempLeftList; 
-        alert(`💰 單號 ${displaySeq} 結帳完成！`); 
-        renderCart(); 
-    }
-    saveAllToCloud(); closeCheckoutModal();
-    
-    printReceipt({
-        seq: displaySeq,
-        table: displaySeat,
-        time: time,
-        items: newOrder.items,
-        original: newOrder.items.reduce((a, b) => a + b.price, 0),
-        total: total
-    });
-}
-
-/* ========== 其他功能 ========== */
 function openDiscountModal() { discountModal.style.display = "flex"; }
 function closeDiscountModal() { discountModal.style.display = "none"; }
 function confirmDiscount() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { alert("請輸入正確折數 (1-100)"); return; } currentDiscount = { type: 'percent', value: val }; renderCart(); closeDiscountModal(); }
@@ -339,34 +344,17 @@ function calcSplitTotal() { let baseTotal = tempRightList.reduce((a, b) => a + b
 function moveToPay(index) { let item = tempLeftList.splice(index, 1)[0]; tempRightList.push(item); renderCheckoutLists(); }
 function removeFromPay(index) { let item = tempRightList.splice(index, 1)[0]; tempLeftList.push(item); renderCheckoutLists(); }
 function closeCheckoutModal() { checkoutModal.style.display = "none"; }
+function confirmPayment() { /* 拆單 */ if (tempRightList.length === 0) { alert("右側沒有商品，無法結帳！"); return; } let time = new Date().toLocaleString('zh-TW', { hour12: false }); let total = calcSplitTotal(); let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" }; if(!info.orderId || info.orderId === "?" || info.orderId === "T") { dailyOrderCount++; info.orderId = dailyOrderCount; if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {}; tableCustomers[selectedTable].orderId = dailyOrderCount; } let currentSplit = tableSplitCounters[selectedTable] || 1; let displaySeq = `${info.orderId}-${currentSplit}`; let displaySeat = `${selectedTable} (拆單)`; tableSplitCounters[selectedTable] = currentSplit + 1; let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, items: [...tempRightList], total: total, customerName: info.name, customerPhone: info.phone }; if(!Array.isArray(historyOrders)) historyOrders = []; historyOrders.push(newOrder); localStorage.setItem("orderHistory", JSON.stringify(historyOrders)); if (tempLeftList.length === 0) { delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; cart = []; alert(`💰 ${selectedTable} 全部結帳完成！`); openTableSelect(); } else { tableCarts[selectedTable] = tempLeftList; cart = tempLeftList; alert(`💰 單號 ${displaySeq} 結帳完成！`); renderCart(); } saveAllToCloud(); closeCheckoutModal(); printReceipt({ seq: displaySeq, table: displaySeat, time: time, items: newOrder.items, original: newOrder.items.reduce((a, b) => a + b.price, 0), total: total }); }
 
-/* ========== 列印邏輯 ========== */
-function printReceipt(data, isTicket = false) {
-    let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"]; 
-    let barItemsHtml = ""; let kitchenItemsHtml = ""; let hasBar = false; let hasKitchen = false;
-    data.items.forEach(i => {
-        let itemCat = "";
-        for (const [cat, content] of Object.entries(menuData)) { if (Array.isArray(content)) { if (content.some(x => i.name.includes(x.name))) itemCat = cat; } else { for (const subContent of Object.values(content)) { if (subContent.some(x => i.name.includes(x.name))) itemCat = cat; } } }
-        if(itemCat === "") { if(i.name.includes("雞") || i.name.includes("豬") || i.name.includes("牛") || i.name.includes("飯") || i.name.includes("麵")) itemCat = "主餐"; }
-        if (kitchenCategories.includes(itemCat)) { hasKitchen = true; kitchenItemsHtml += `<div class="kitchen-item">${i.name} <span style="font-size:12px; font-weight:normal;">${isTicket ? '' : ''}</span></div>`; } 
-        else { hasBar = true; let priceStr = isTicket ? "" : `$${i.price}`; barItemsHtml += `<div class="receipt-item"><span>${i.name}</span><span>${priceStr}</span></div>`; }
-    });
-    let receiptHtml = "";
-    if (hasBar || (!hasKitchen && !hasBar)) { receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單 (吧台)" : "結帳收據 (櫃台)"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${barItemsHtml}</div><hr class="dashed-line">${isTicket ? '' : `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`}</div>`; }
-    if (hasBar && hasKitchen) { receiptHtml += `<div class="page-break"></div>`; }
-    if (hasKitchen) { receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單" : "廚房工作單"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${kitchenItemsHtml}</div><hr class="dashed-line"></div>`; }
-    document.getElementById("receipt-print-area").innerHTML = receiptHtml; setTimeout(() => { window.print(); }, 500);
-}
 function updateDiscPreview() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } let discounted = Math.round(currentOriginalTotal * (val / 100)); document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; }
 function renderCart() { cartList.innerHTML = ""; currentOriginalTotal = 0; cart.forEach((c, i) => { currentOriginalTotal += c.price; cartList.innerHTML += `<div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px;">${c.name} - $${c.price} <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button></div>`; }); discountedTotal = currentOriginalTotal; if (currentDiscount.type === 'percent') { discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100)); totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${discountedTotal}</span> <small>(折扣 ${currentDiscount.value}%)</small>`; } else { totalText.innerText = "總金額：" + currentOriginalTotal + " 元"; } }
 function removeItem(index) { cart.splice(index, 1); renderCart(); }
 function deleteSingleOrder(displayIndex) { if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return; let realIndex = historyOrders.length - 1 - displayIndex; historyOrders.splice(realIndex, 1); saveAllToCloud(); showHistory(); }
+function closeBusiness() { let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length; if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return; if (!confirm("確定要【結束營業】並進行今日結算嗎？")) return; let totalRevenue = historyOrders.reduce((acc, curr) => acc + curr.total, 0); let totalCount = historyOrders.length; document.getElementById("sumCount").innerText = totalCount + " 單"; document.getElementById("sumTotal").innerText = "$" + totalRevenue; summaryModal.style.display = "flex"; }
+function closeSummaryModal() { summaryModal.style.display = "none"; }
+function confirmClearData() { historyOrders = []; dailyOrderCount = 0; saveAllToCloud(); closeSummaryModal(); showHistory(); alert("✅ 日結完成！今日營收與單號已歸零。"); }
 function showHistory() { historyBox.innerHTML = ""; if(!historyOrders || historyOrders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; return; } let orders = [...historyOrders].reverse(); orders.forEach((o, index) => { let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`; let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>"; let itemsDetail = o.items.map(i => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}</span> <span>$${i.price}</span></div>`).join(""); let timeOnly = o.time.split(" ")[1] || o.time; let rowId = `detail-${index}`; let amountDisplay = `$${o.total}`; if (o.originalTotal && o.originalTotal !== o.total) { amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#d33;">$${o.total}</span>`; } historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;"><span class="seq" style="font-weight:bold; color:#007bff;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:none;"><div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#d33;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px;"><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`; }); }
-function openSettingsPage() { hideAll(); document.getElementById("settingsPage").style.display = "block"; }
-function openChangePasswordModal(name) { document.getElementById("pwdOwnerName").innerText = name; document.getElementById("oldPwd").value = ""; document.getElementById("newPwd").value = ""; document.getElementById("confirmPwd").value = ""; changePasswordModal.style.display = "flex"; }
-function closeChangePasswordModal() { changePasswordModal.style.display = "none"; }
-function openOwnerLogin() { if(ownerLoginModal) ownerLoginModal.style.display = "flex"; }
-function closeOwnerModal() { ownerLoginModal.style.display = "none"; }
-function checkOwner(name) { let password = prompt(`請輸入 ${name} 的密碼：`); if (password === OWNER_PASSWORDS[name]) { closeOwnerModal(); openConfidentialPage(name); } else { alert("❌ 密碼錯誤！"); } }
-function window_toggleAccordion(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); }
+function window_toggleDetail(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } }
+window.toggleDetail = window_toggleDetail;
+
 window.onload = function() { document.body.addEventListener('touchstart', function() {}, false); if(sessionStorage.getItem("isLoggedIn") === "true") { showApp(); } };

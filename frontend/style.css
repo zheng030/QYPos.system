@@ -1,136 +1,223 @@
-/* ========== 全域設定 ========== */
-body {
-    font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    margin: 0;
-    background-color: #f0f2f5;
-    color: #333;
-    text-align: center;
-    -webkit-tap-highlight-color: transparent;
-}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>POS 點餐系統</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body ontouchstart="">
 
-button {
-    cursor: pointer;
-    font-family: inherit;
-    user-select: none;
-    border: none;
-    outline: none;
-}
+    <div id="receipt-print-area" style="display:none;">
+        </div>
 
-.btn-effect { transition: all 0.2s; }
-.btn-effect:active { transform: scale(0.95); filter: brightness(0.9); }
+    <div id="login-screen">
+        <div class="login-box">
+            <h1>🔐 系統登入</h1>
+            <p>請輸入員工密碼</p>
+            <input type="password" id="loginPass" placeholder="密碼" onkeydown="if(event.keyCode==13) checkLogin()">
+            <button onclick="checkLogin()" class="btn-effect">登入</button>
+            <p id="loginError" style="color:red; display:none; margin-top:10px;">❌ 密碼錯誤</p>
+        </div>
+    </div>
 
-/* 登入畫面 */
-#login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #2c3e50, #4ca1af); display: flex; justify-content: center; align-items: center; z-index: 9999; }
-.login-box { background: rgba(255, 255, 255, 0.95); padding: 40px; border-radius: 20px; width: 300px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); }
-.login-box input { width: 100%; padding: 15px; margin: 20px 0; border: 2px solid #eee; border-radius: 12px; font-size: 18px; text-align: center; box-sizing: border-box; }
-.login-box button { width: 100%; padding: 15px; font-size: 18px; background: #007bff; color: white; border-radius: 12px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,123,255,0.3); }
+    <div id="app-container" style="display:none;">
+        
+        <div id="home">
+            <div class="menu-btn" onclick="openTableSelect()">🛒 點餐系統</div>
+            <div class="menu-btn" onclick="openPage('historyPage')">📋 今日訂單</div>
+            <div class="menu-btn" onclick="openPage('reportPage')">📊 營業報表</div>
+            <div class="menu-btn">📦 庫存管理</div>
 
-/* 版面配置 */
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-.back { background: #343a40; color: white; padding: 10px 20px; border-radius: 8px; font-size: 15px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-#systemTime { font-size: 16px; font-weight: bold; color: #555; background: #fff; padding: 8px 15px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+            <div class="menu-btn">🧾 匯出Excel</div>
+            <div class="menu-btn">👤 會員管理</div>
+            <div class="menu-btn">🏷 活動優惠</div>
+            <div class="menu-btn" onclick="openSettingsPage()">🛠 系統設定</div>
 
-#home { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 20px; max-width: 1200px; margin: 0 auto; }
-.menu-btn { background: white; border-radius: 15px; padding: 20px 10px; font-size: 16px; font-weight: bold; color: #444; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px; transition: transform 0.2s; }
-.menu-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+            <div class="menu-btn" onclick="openOwnerLogin()">🤫 機密</div>
+            <div class="menu-btn" onclick="openOwnerLogin()">🔐 權限</div>
+            <div class="menu-btn">🧾 匯出Excel</div>
+            <div class="menu-btn">💬 加料客製</div>
 
-/* 隱藏頁面 */
-#orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage { display: none; padding: 20px; max-width: 1000px; margin: 0 auto 80px auto; }
+            <div class="menu-btn">📨 電子發票</div>
+            <div class="menu-btn">🧮 日結</div>
+            <div class="menu-btn">📦 進貨記錄</div>
+            <div class="menu-btn">🔍 商品搜尋</div>
+        </div>
 
-/* 桌位 */
-#tableSelectGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
-.tableBtn { background: white; padding: 20px; border-radius: 15px; min-height: 90px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 20px; color: #333; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-.status-red { background: #ff4757; color: white; } .status-yellow { background: #ffa502; color: white; }
+        <div id="tableSelect">
+            <div class="header-row">
+                <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+                <div id="systemTime">載入中...</div>
+            </div>
+            <div class="title">請選擇座位</div>
+            <div class="legend-box">
+                <span class="legend-item"><span class="dot white"></span> 空桌</span>
+                <span class="legend-item"><span class="dot red"></span> 訂單未確認</span>
+                <span class="legend-item"><span class="dot yellow"></span> 用餐中 (已送單)</span>
+            </div>
+            <div id="tableSelectGrid"></div>
+        </div>
 
-.customer-input-box { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
-.customer-input-box input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; }
+        <div id="orderPage">
+            <div class="order-header">
+                <button class="back btn-effect" onclick="saveAndExit()">⬅ 取消 / 返回</button>
+                <div class="title-group">
+                    <span class="title">🛒 點餐中 <span id="seatLabel"></span></span>
+                    <div id="seatTimer"></div>
+                </div>
+            </div>
+            
+            <div class="customer-input-box">
+                <input type="text" id="custName" placeholder="輸入客人姓名">
+                <input type="tel" id="custPhone" placeholder="輸入電話號碼">
+            </div>
 
-#menuGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-.categoryBtn { background: white; border-radius: 12px; padding: 25px 10px; font-size: 18px; font-weight: bold; min-height: 80px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+            <div id="menuGrid"></div> 
 
-.item.list-mode { grid-column: 1 / -1; margin: 0; border-bottom: 1px solid #eee; border-radius: 0; }
-.sub-cat-title { grid-column: 1 / -1; text-align: left; font-size: 18px; font-weight: bold; color: white; background: #007bff; padding: 10px 15px; border-radius: 8px; margin-top: 15px; }
-.accordion-header { width: 100%; background: #007bff; color: white; padding: 15px; border-radius: 10px; margin-top: 10px; display: flex; justify-content: space-between; grid-column: 1 / -1; }
-.accordion-content { display: none; grid-column: 1 / -1; background: white; padding: 5px; }
-.accordion-content.show { display: block; }
-.item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-.item button { background: #28a745; color: white; padding: 8px 20px; border-radius: 6px; }
-.back-to-cat { grid-column: 1 / -1; background: #6c757d; color: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; }
+            <div id="cart-container">
+                <h2>🧾 訂單明細</h2>
+                <div id="cart-list"></div>
+                
+                <div class="summary-row">
+                    <div class="discount-actions">
+                        <button class="small-btn btn-effect" onclick="openDiscountModal()">% 設定折扣</button>
+                    </div>
+                    <p id="total">總金額：0 元</p>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 暫存</button>
+                    <button class="checkout-btn btn-effect" onclick="openPaymentModal()">💰 全結</button>
+                    <button class="split-btn btn-effect" onclick="openSplitCheckout()">✂ 拆單</button>
+                </div>
+            </div>
+        </div>
 
-/* 購物車 */
-#cart-container { background: white; border-radius: 15px; padding: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
-.summary-row { display: flex; justify-content: space-between; align-items: center; margin: 15px 0; border-top: 2px solid #f0f0f0; padding-top: 10px; }
-.small-btn { background: #e9ecef; padding: 8px 12px; border-radius: 8px; font-weight: bold; color: #555; }
-#total { font-size: 24px; font-weight: 800; color: #d33; margin: 0; }
-.action-buttons { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 12px; margin-top: 20px; }
-.save-btn { background: #ffc107; color: #333; padding: 15px; border-radius: 10px; font-weight: bold; font-size: 18px; }
-.checkout-btn { background: #007bff; color: white; padding: 15px; border-radius: 10px; font-weight: bold; font-size: 18px; }
-.split-btn { background: #6f42c1; color: white; padding: 15px; border-radius: 10px; font-weight: bold; font-size: 18px; }
+        <div id="historyPage">
+            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+            <div class="title">📋 今日訂單列表 (點擊展開)</div>
+            <div class="history-header-row">
+                <span>序號</span><span>桌號</span><span>客人資訊</span><span>時間</span><span>金額</span>
+            </div>
+            <div id="history-box"></div>
+            <button onclick="closeBusiness()" class="end-business-btn btn-effect">🛑 結束營業 (日結)</button>
+        </div>
 
-/* Modal */
-.modal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 10000; }
-.modal-content { background: white; padding: 30px; border-radius: 20px; width: 95%; max-width: 900px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); }
-.modal-header { border-bottom: 1px solid #eee; margin-bottom: 15px; padding-bottom: 10px; }
-.modal-actions { display: flex; gap: 15px; margin-top: 25px; }
-.modal-actions button { flex: 1; padding: 12px; border-radius: 8px; font-weight: bold; }
-.modal-input { width: 100%; padding: 12px; font-size: 18px; border: 2px solid #eee; border-radius: 8px; text-align: center; box-sizing: border-box; }
-.big-input { font-size: 24px; font-weight: bold; }
+        <div id="reportPage">
+            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+            <div class="title">📊 營業報表</div>
+            <div class="report-controls">
+                <button onclick="generateReport('day')" id="btnDay" class="btn-effect active">今日</button>
+                <button onclick="generateReport('week')" id="btnWeek" class="btn-effect">本周</button>
+                <button onclick="generateReport('month')" id="btnMonth" class="btn-effect">當月</button>
+            </div>
+            <div id="reportContent">
+                <div class="report-card total-card">
+                    <h3>💰 總營業額</h3><p id="rptTotal">$0</p><small id="rptCount">總單數: 0</small>
+                </div>
+                <div class="report-split">
+                    <div class="report-card bar-card"><h3>🍺 酒吧部營收</h3><p id="rptBar">$0</p><small>調酒/純飲/Shot/啤酒/咖啡/飲料/厚片</small></div>
+                    <div class="report-card bbq-card"><h3>🍖 燒烤部營收</h3><p id="rptBBQ">$0</p><small>燒烤/主餐/炸物</small></div>
+                </div>
+                <div style="margin-top:20px; color:#888; font-size:14px;">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
+            </div>
+        </div>
 
-/* 拆單 */
-.split-checkout-container { display: flex; justify-content: space-between; align-items: center; gap: 20px; height: 450px; }
-.checkout-box { flex: 1; background: #f8f9fa; border: 1px solid #ddd; border-radius: 12px; padding: 15px; height: 100%; display: flex; flex-direction: column; }
-.checkout-list { flex: 1; overflow-y: auto; }
-.checkout-item { background: white; padding: 10px; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; cursor: pointer; border: 1px solid #eee; }
-.split-arrow { font-size: 32px; color: #007bff; }
-.split-options { display: flex; gap: 10px; justify-content: flex-end; margin: 10px 0; }
-.split-input { width: 80px; padding: 5px; text-align: center; border: 1px solid #ccc; border-radius: 4px; }
+        <div id="confidentialPage">
+            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+            <div class="title">🤫 <span id="ownerWelcome"></span> 成本/售價管理</div>
+            
+            <div id="financeDashboard" class="finance-container" style="display:none;"></div>
 
-/* 系統設定 */
-.owner-buttons { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 30px; }
-.owner-btn { background: white; color: #333; padding: 20px 30px; font-size: 18px; font-weight: bold; border-radius: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08); border: 2px solid transparent; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; }
-.owner-cancel-btn { width: 100%; margin-top: 25px; background: #6c757d; color: white; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+            <div class="finance-detail-box">
+                <h3 id="costEditTitle">📝 品項列表 (售價 / 成本)</h3>
+                <div class="cost-header-row">
+                    <span>品項名稱</span>
+                    <span style="text-align:right;">售價 (改)</span>
+                    <span style="text-align:right;">成本 (改)</span>
+                </div>
+                <div id="costEditorList"></div>
+            </div>
+        </div>
 
-/* 歷史與成本 */
-.history-header-row { display: grid; grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr; background: #343a40; color: white; padding: 15px; border-radius: 10px 10px 0 0; font-weight: bold; }
-.history-row { display: grid; grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr; background: white; padding: 15px; border-bottom: 1px solid #eee; align-items: center; }
-.finance-detail-box h3 { background: #343a40; color: white; margin: 0; padding: 15px; }
-.cost-header-row { display: grid; grid-template-columns: 2fr 1fr 1fr; background: #f1f3f5; padding: 12px 20px; font-weight: bold; }
-.cost-row { display: grid; grid-template-columns: 2fr 1fr 1fr; padding: 12px 20px; background: white; border-bottom: 1px solid #eee; align-items: center; }
-.cost-row input { width: 100%; padding: 8px; border: 1px solid #ddd; text-align: center; border-radius: 6px; }
+        <div id="settingsPage">
+            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+            <div class="title">🛠 系統設定 (修改密碼)</div>
+            <div class="owner-buttons">
+                <button onclick="openChangePasswordModal('景偉')" class="btn-effect owner-btn">🔑 修改 景偉 密碼</button>
+                <button onclick="openChangePasswordModal('小飛')" class="btn-effect owner-btn">🔑 修改 小飛 密碼</button>
+                <button onclick="openChangePasswordModal('威志')" class="btn-effect owner-btn">🔑 修改 威志 密碼</button>
+            </div>
+        </div>
 
-/* 🔥🔥🔥 列印樣式 (自動切單) 🔥🔥🔥 */
-#receipt-print-area { display: none; }
+        <div id="summaryModal" class="modal"><div class="modal-content"><h2>📅 本日營業結算</h2><div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div><div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#d33;">$0</span></div><hr><p style="color:#666; font-size:14px;">確認後將清除資料，請確認已核對無誤。</p><div class="modal-actions"><button onclick="closeSummaryModal()" class="btn-effect cancel">取消</button><button onclick="confirmClearData()" class="btn-effect confirm-danger">✅ 確認結帳並歸零</button></div></div></div>
+        
+        <div id="paymentModal" class="modal"><div class="modal-content"><h2>💰 結帳確認</h2><div class="payment-info"><div class="pay-row"><span>應收金額 <small id="payDiscLabel" style="color:#888;"></small>：</span><span id="payOriginal" style="font-weight:bold;">$0</span></div><div class="pay-row"><span>$ 折讓/抹零：</span><input type="number" id="payAllowance" value="" oninput="calcFinalPay()" placeholder="輸入金額" style="color:#dc3545;" class="modal-input big-input"></div><hr><div class="pay-row large"><span>實收金額：</span><input type="number" id="payFinal" style="color:#d33; font-weight:bold;" class="modal-input big-input"></div></div><div class="modal-actions"><button onclick="closePaymentModal()" class="btn-effect cancel">取消</button><button onclick="confirmCheckout()" class="btn-effect confirm-success">✅ 確認收款</button></div></div></div>
+        
+        <div id="checkoutModal" class="modal"><div class="modal-content" style="max-width:900px;">
+            <div class="modal-header"><h2>✂ 拆單結帳</h2></div>
+            <div class="modal-body">
+                <p style="color:#666; margin-bottom: 15px;">點擊左邊品項移至右邊進行結帳</p>
+                <div class="split-checkout-container">
+                    <div class="checkout-box left-box"><h3>📦 未結帳品項</h3><div id="unpaidList" class="checkout-list"></div></div>
+                    <div class="split-arrow">➡</div>
+                    <div class="checkout-box right-box">
+                        <h3>💳 本次結帳</h3>
+                        <div id="payingList" class="checkout-list"></div>
+                        <div class="split-options">
+                            <input type="number" id="splitDisc" placeholder="% 折扣" oninput="calcSplitTotal()" class="split-input">
+                            <input type="number" id="splitAllow" placeholder="$ 折讓" oninput="calcSplitTotal()" class="split-input">
+                        </div>
+                        <div class="checkout-total">總計: <span id="payTotal">$0</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions"><button onclick="closeCheckoutModal()" class="btn-effect cancel">取消</button><button onclick="confirmPayment()" class="btn-effect confirm-success">✅ 確認結帳</button></div>
+        </div></div>
 
-@media print {
-    #login-screen, #app-container, .modal { display: none !important; }
-    body { background: white; margin: 0; padding: 0; }
+        <div id="ownerLoginModal" class="modal"><div class="modal-content">
+            <div class="modal-header"><h2>🔐 請選擇身分</h2></div>
+            <div class="modal-body" style="padding-top: 20px;">
+                <div class="owner-buttons"><button onclick="checkOwner('景偉')" class="btn-effect owner-btn">👨‍💼 景偉 (總管)</button><button onclick="checkOwner('小飛')" class="btn-effect owner-btn">🍸 小飛 (酒吧)</button><button onclick="checkOwner('威志')" class="btn-effect owner-btn">🍖 威志 (燒烤)</button></div>
+            </div>
+            <button onclick="closeOwnerModal()" class="btn-effect owner-cancel-btn">取消</button>
+        </div></div>
+        
+        <div id="changePasswordModal" class="modal"><div class="modal-content"><h2>🔑 修改密碼 - <span id="pwdOwnerName"></span></h2><div style="margin-top:15px;"><input type="password" id="oldPwd" placeholder="輸入舊密碼" class="pwd-input modal-input"><input type="password" id="newPwd" placeholder="輸入新密碼" class="pwd-input modal-input"><input type="password" id="confirmPwd" placeholder="再次確認新密碼" class="pwd-input modal-input"></div><div class="modal-actions"><button onclick="closeChangePasswordModal()" class="btn-effect cancel">取消</button><button onclick="confirmChangePassword()" class="btn-effect confirm-primary">✅ 確認修改</button></div></div></div>
+        
+        <div id="discountModal" class="modal"><div class="modal-content">
+            <div class="modal-header"><h2>% 折扣設定</h2></div>
+            <div class="modal-body" style="text-align: center; padding: 30px 0;">
+                <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 15px;">
+                    <input type="number" id="discInput" placeholder="輸入折扣額度" class="modal-input big-input" style="width: 200px; text-align:center;" oninput="updateDiscPreview()"> 
+                    <span style="font-size: 24px; font-weight: bold; color: #555;">%</span>
+                </div>
+                <p id="discPreviewText" style="color: #28a745; font-weight: bold; font-size: 18px; min-height: 27px;"></p>
+            </div>
+            <div class="modal-actions"><button onclick="closeDiscountModal()" class="btn-effect cancel">取消</button><button onclick="confirmDiscount()" class="btn-effect confirm-warning">確定</button></div>
+        </div></div>
 
-    #receipt-print-area {
-        display: block !important;
-        width: 58mm;
-        font-family: "Courier New", monospace;
-        color: black;
-        font-size: 14px;
-        padding: 0 5px;
-    }
+        <div id="allowanceModal" class="modal"><div class="modal-content">
+            <div class="modal-header"><h2>$ 金額折讓</h2></div>
+            <div class="modal-body" style="text-align:center; padding:30px 0;">
+                <p style="font-size:18px; color:#555; margin-bottom:15px;">選擇折讓金額</p>
+                <div style="display:flex; justify-content:center; align-items:center; gap:10px;">
+                    <span style="font-size:24px; color:#d33;">- $</span>
+                    <input type="number" id="allowInput" placeholder="輸入金額" class="modal-input big-input" style="width:160px; text-align:center;">
+                </div>
+            </div>
+            <div class="modal-actions"><button onclick="closeAllowanceModal()" class="btn-effect cancel">取消</button><button onclick="confirmAllowance()" class="btn-effect confirm-primary">確定</button></div>
+        </div></div>
 
-    .receipt-section { display: block; width: 100%; }
-    .page-break { display: block; page-break-after: always; break-after: page; height: 1px; margin: 20px 0; }
+        <div id="customModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🍹 <span id="customTitle">隱藏特調</span>客製化</h2></div><div class="modal-body"><div class="custom-section"><div class="custom-label">1. 香氣選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="flavor" value="花香調" checked><div class="radio-btn btn-effect">花香調 🌸</div></label><label class="radio-box"><input type="radio" name="flavor" value="果香調"><div class="radio-btn btn-effect">果香調 🍎</div></label><label class="radio-box"><input type="radio" name="flavor" value="木質調"><div class="radio-btn btn-effect">木質調 🌲</div></label></div></div><div class="custom-section"><div class="custom-label">2. 口感偏好</div><div class="radio-group"><label class="radio-box"><input type="radio" name="taste" value="偏酸" checked><div class="radio-btn btn-effect">偏酸 🍋</div></label><label class="radio-box"><input type="radio" name="taste" value="偏甜"><div class="radio-btn btn-effect">偏甜 🍯</div></label><label class="radio-box"><input type="radio" name="taste" value="偏苦"><div class="radio-btn btn-effect">偏苦 ☕</div></label><label class="radio-box"><input type="radio" name="taste" value="偏鹹"><div class="radio-btn btn-effect">偏鹹 🧂</div></label></div></div><div id="modalAlcoholSection" class="custom-section"><div class="custom-label">3. 濃度調整 (<span id="alcoholVal">0</span>%)</div><input type="range" id="alcoholRange" min="0" max="100" step="10" value="0" style="width:100%; margin: 15px 0;" oninput="document.getElementById('alcoholVal').innerText=this.value"><div style="display:flex;justify-content:space-between;font-size:12px;color:#888; margin-bottom:10px;"><span>正常</span><span>加重</span><span>雙倍</span></div><button id="extraShotBtn" onclick="toggleExtraShot()" class="extra-shot-btn btn-effect">🍺 濃度升級 (+$40)</button></div><div id="modalNoteSection" class="custom-section" style="display:none;"><div class="custom-label">3. 備註 (選填)</div><textarea id="customNote" rows="2" placeholder="例如：少冰、不要裝飾..." class="modal-input" style="width:100%;"></textarea></div></div><div class="modal-actions"><button onclick="closeCustomModal()" class="btn-effect cancel">取消</button><button onclick="confirmCustomItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
+        <div id="drinkModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🥤 <span id="drinkTitle">飲料</span>選項</h2></div><div class="modal-body" style="padding-top: 20px;"><div id="simpleTempSection" class="custom-section" style="display:none;"><div class="custom-label">溫度選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="simpleTemp" value="冰" checked><div class="radio-btn btn-effect">🧊 冰</div></label><label class="radio-box"><input type="radio" name="simpleTemp" value="熱"><div class="radio-btn btn-effect">🔥 熱</div></label></div></div><div id="advanceTempSection" class="custom-section" style="display:none;"><div class="custom-label">冰塊/溫度</div><div class="radio-group" style="font-size:14px;"><label class="radio-box"><input type="radio" name="advTemp" value="去冰" checked><div class="radio-btn btn-effect">去冰</div></label><label class="radio-box"><input type="radio" name="advTemp" value="微冰"><div class="radio-btn btn-effect">微冰</div></label><label class="radio-box"><input type="radio" name="advTemp" value="少冰"><div class="radio-btn btn-effect">少冰</div></label><label class="radio-box"><input type="radio" name="advTemp" value="溫"><div class="radio-btn btn-effect">溫</div></label><label class="radio-box"><input type="radio" name="advTemp" value="熱"><div class="radio-btn btn-effect">熱</div></label></div></div><div id="sugarSection" class="custom-section" style="display:none;"><div class="custom-label">甜度選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="sugar" value="無糖" checked><div class="radio-btn btn-effect">無糖</div></label><label class="radio-box"><input type="radio" name="sugar" value="微糖"><div class="radio-btn btn-effect">微糖</div></label><label class="radio-box"><input type="radio" name="sugar" value="少糖"><div class="radio-btn btn-effect">少糖</div></label><label class="radio-box"><input type="radio" name="sugar" value="全糖"><div class="radio-btn btn-effect">全糖</div></label></div></div></div><div class="modal-actions"><button onclick="closeDrinkModal()" class="btn-effect cancel">取消</button><button onclick="confirmDrinkItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
+        <div id="foodOptionModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🍛 <span id="foodTitle">餐點</span>配料</h2></div><div class="modal-body" style="padding-top: 20px;"><div class="custom-section"><div class="custom-label">請選擇配料：</div><div class="radio-group nowrap" id="meatOptions"></div></div></div><div class="modal-actions"><button onclick="closeFoodModal()" class="btn-effect cancel">取消</button><button onclick="confirmFoodItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
 
-    .receipt-header { text-align: center; margin-bottom: 10px; }
-    .store-name { font-size: 18px; font-weight: bold; margin: 5px 0; }
-    .receipt-info p { margin: 2px 0; font-size: 12px; }
-    .dashed-line { border-top: 1px dashed #000; margin: 5px 0; }
+    </div>
 
-    .receipt-item { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
-    .kitchen-item { font-size: 20px; font-weight: bold; margin: 10px 0; border-bottom: 1px solid #ccc; }
-
-    .receipt-footer { margin-top: 10px; }
-    .receipt-footer .row { display: flex; justify-content: space-between; }
-    .receipt-footer .total { font-size: 16px; font-weight: bold; border-top: 1px solid #000; padding-top: 5px; }
-}
-
-@media (max-width: 768px) {
-    #home { grid-template-columns: repeat(3, 1fr); }
-    .split-checkout-container { flex-direction: column; height: auto; }
-}
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

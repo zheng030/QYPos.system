@@ -151,29 +151,9 @@
             </div>
         </div>
 
-        <div id="summaryModal" class="modal"><div class="modal-content">
-            <div class="modal-header"><h2>📅 本日營業結算</h2></div>
-            <div class="modal-body">
-                <div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div>
-                <div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#d33;">$0</span></div>
-                <hr>
-                <p style="color:#666; font-size:14px;">確認後將清除資料，請確認已核對無誤。</p>
-            </div>
-            <div class="modal-actions"><button onclick="closeSummaryModal()" class="btn-effect cancel">取消</button><button onclick="confirmClearData()" class="btn-effect confirm-danger">✅ 確認結帳並歸零</button></div>
-        </div></div>
+        <div id="summaryModal" class="modal"><div class="modal-content"><h2>📅 本日營業結算</h2><div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div><div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#d33;">$0</span></div><hr><p style="color:#666; font-size:14px;">確認後將清除資料，請確認已核對無誤。</p><div class="modal-actions"><button onclick="closeSummaryModal()" class="btn-effect cancel">取消</button><button onclick="confirmClearData()" class="btn-effect confirm-danger">✅ 確認結帳並歸零</button></div></div></div>
         
-        <div id="paymentModal" class="modal"><div class="modal-content">
-            <div class="modal-header"><h2>💰 結帳確認</h2></div>
-            <div class="modal-body">
-                <div class="payment-info">
-                    <div class="pay-row"><span>應收金額 <small id="payDiscLabel" style="color:#888;"></small>：</span><span id="payOriginal" style="font-weight:bold;">$0</span></div>
-                    <div class="pay-row"><span>$ 折讓/抹零：</span><input type="number" id="payAllowance" value="" oninput="calcFinalPay()" placeholder="輸入金額" style="color:#dc3545;" class="modal-input big-input"></div>
-                    <hr>
-                    <div class="pay-row large"><span>實收金額：</span><input type="number" id="payFinal" style="color:#d33; font-weight:bold;" class="modal-input big-input"></div>
-                </div>
-            </div>
-            <div class="modal-actions"><button onclick="closePaymentModal()" class="btn-effect cancel">取消</button><button onclick="confirmCheckout()" class="btn-effect confirm-success">✅ 確認收款</button></div>
-        </div></div>
+        <div id="paymentModal" class="modal"><div class="modal-content"><h2>💰 結帳確認</h2><div class="payment-info"><div class="pay-row"><span>應收金額 <small id="payDiscLabel" style="color:#888;"></small>：</span><span id="payOriginal" style="font-weight:bold;">$0</span></div><div class="pay-row"><span>$ 折讓/抹零：</span><input type="number" id="payAllowance" value="" oninput="calcFinalPay()" placeholder="輸入金額" style="color:#dc3545;" class="modal-input big-input"></div><hr><div class="pay-row large"><span>實收金額：</span><input type="number" id="payFinal" style="color:#d33; font-weight:bold;" class="modal-input big-input"></div></div><div class="modal-actions"><button onclick="closePaymentModal()" class="btn-effect cancel">取消</button><button onclick="confirmCheckout()" class="btn-effect confirm-success">✅ 確認收款</button></div></div></div>
         
         <div id="checkoutModal" class="modal"><div class="modal-content" style="max-width:900px;">
             <div class="modal-header"><h2>✂ 拆單結帳</h2></div>
