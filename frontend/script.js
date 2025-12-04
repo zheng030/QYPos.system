@@ -38,7 +38,7 @@ function showApp() {
     goHome();
 }
 
-// 🔥 新增：每日訂單計數器
+// 🔥 每日訂單計數器
 let dailyOrderCount = 0;
 
 function initRealtimeData() {
@@ -53,8 +53,6 @@ function initRealtimeData() {
         tableStatuses = data.tableStatuses || {};
         tableCustomers = data.tableCustomers || {};
         tableSplitCounters = data.tableSplitCounters || {}; 
-        
-        // 🔥 同步每日單號計數
         dailyOrderCount = data.dailyOrderCount || 0;
 
         itemCosts = data.itemCosts || {}; 
@@ -80,7 +78,7 @@ function saveAllToCloud() {
         tableStatuses: tableStatuses,
         tableCustomers: tableCustomers,
         tableSplitCounters: tableSplitCounters, 
-        dailyOrderCount: dailyOrderCount, // 🔥 儲存計數
+        dailyOrderCount: dailyOrderCount,
         itemCosts: itemCosts,
         itemPrices: itemPrices,
         ownerPasswords: OWNER_PASSWORDS
@@ -124,9 +122,12 @@ let tempCustomItem = null;
 let isExtraShot = false; 
 let tempLeftList = [];
 let tempRightList = [];
-let currentOriginalTotal = 0; 
-let finalTotal = 0;           
-let currentDiscount = { type: 'none', value: 0 }; 
+
+// 記錄折扣與金額
+let currentOriginalTotal = 0; // 原價 (購物車總和)
+let discountedTotal = 0;      // 打完折後的應收金額
+let finalTotal = 0;           // 扣除折讓後的實收金額
+let currentDiscount = { type: 'none', value: 0 }; // 只存 % 折扣
 
 /* DOM 元素 */
 const menuGrid = document.getElementById("menuGrid");
@@ -364,6 +365,7 @@ function openOrderPage(table) {
     custNameInput.value = info.name || "";
     custPhoneInput.value = info.phone || "";
     
+    // 重置折扣狀態
     currentDiscount = { type: 'none', value: 0 };
 
     buildCategories();
@@ -384,7 +386,7 @@ function updateSeatTimerText() {
     document.getElementById("seatTimer").innerText = `⏳ 已入座：${h}:${m}:${s}`;
 }
 
-// === 菜單渲染核心 ===
+// === 🔥 菜單渲染核心 ===
 function buildCategories() {
     menuGrid.innerHTML = "";
     categories.forEach(c => {
@@ -483,7 +485,9 @@ function addFriedSquidPrice() {
 function saveAndExit(){
     if(tableStatuses[selectedTable] === 'yellow') {
         tableCarts[selectedTable] = cart;
-        tableCustomers[selectedTable] = { name: custNameInput.value, phone: custPhoneInput.value, orderId: tableCustomers[selectedTable].orderId };
+        if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {};
+        tableCustomers[selectedTable].name = custNameInput.value;
+        tableCustomers[selectedTable].phone = custPhoneInput.value;
     } else {
         delete tableCarts[selectedTable];
         delete tableTimers[selectedTable];
@@ -502,21 +506,23 @@ function saveOrderManual() {
         saveAndExit(); 
         return;
     }
-    // 🔥 確保有訂單編號
     if (!tableCustomers[selectedTable]) { tableCustomers[selectedTable] = {}; }
     
     if (!tableTimers[selectedTable]) {
         tableTimers[selectedTable] = Date.now();
         tableSplitCounters[selectedTable] = 1; 
         
-        // 分配新的主單號
         dailyOrderCount++;
         tableCustomers[selectedTable].orderId = dailyOrderCount;
+    } else {
+        if(!tableCustomers[selectedTable].orderId) {
+            dailyOrderCount++;
+            tableCustomers[selectedTable].orderId = dailyOrderCount;
+        }
     }
     
     tableCarts[selectedTable] = cart;
     tableStatuses[selectedTable] = 'yellow';
-    // 更新客人資訊但保留 orderId
     tableCustomers[selectedTable].name = custNameInput.value;
     tableCustomers[selectedTable].phone = custPhoneInput.value;
 
@@ -525,7 +531,7 @@ function saveOrderManual() {
     openTableSelect();
 }
 
-/* ========== 折扣功能 ========== */
+/* ========== 折扣與折讓功能 ========== */
 function openDiscountModal() { discountModal.style.display = "flex"; }
 function closeDiscountModal() { discountModal.style.display = "none"; }
 function confirmDiscount() {
@@ -552,18 +558,26 @@ function openPaymentModal() {
         checkoutAll(0); 
         return;
     }
-    document.getElementById("payOriginal").innerText = "$" + currentOriginalTotal;
-    document.getElementById("payDiscount").value = ""; 
-    document.getElementById("payFinal").value = finalTotal; 
+    
+    document.getElementById("payOriginal").innerText = "$" + discountedTotal;
+    if(currentDiscount.type === 'percent') {
+        document.getElementById("payDiscLabel").innerText = `(已打 ${currentDiscount.value} 折)`;
+    } else {
+        document.getElementById("payDiscLabel").innerText = "";
+    }
+
+    document.getElementById("payAllowance").value = ""; 
+    document.getElementById("payFinal").value = discountedTotal;
+    finalTotal = discountedTotal;
     
     paymentModal.style.display = "flex";
 }
 
 function calcFinalPay() {
-    let discount = parseInt(document.getElementById("payDiscount").value) || 0;
-    let final = currentOriginalTotal - Math.abs(discount);
-    if(final < 0) final = 0;
-    document.getElementById("payFinal").value = final;
+    let allowance = parseInt(document.getElementById("payAllowance").value) || 0;
+    finalTotal = discountedTotal - allowance;
+    if(finalTotal < 0) finalTotal = 0;
+    document.getElementById("payFinal").value = finalTotal;
 }
 
 function closePaymentModal() { paymentModal.style.display = "none"; }
@@ -575,20 +589,121 @@ function confirmCheckout() {
     closePaymentModal();
 }
 
-// 🔥 全結 (含拆單邏輯修正)
+// 🔥🔥🔥 列印功能核心：一張紙，分兩段 🔥🔥🔥
+function printReceipt(data) {
+    let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"]; 
+    
+    let barItemsHtml = "";
+    let kitchenItemsHtml = "";
+    let hasKitchenItems = false;
+
+    data.items.forEach(i => {
+        let itemCat = "";
+        // 反查分類
+        for (const [cat, content] of Object.entries(menuData)) {
+            if (Array.isArray(content)) {
+                if (content.some(x => i.name.includes(x.name))) itemCat = cat;
+            } else {
+                for (const subContent of Object.values(content)) {
+                    if (subContent.some(x => i.name.includes(x.name))) itemCat = cat;
+                }
+            }
+        }
+        
+        // 簡單防呆：如果找不到分類 (例如隱藏商品)，依據名稱猜測
+        if(itemCat === "") {
+            if(i.name.includes("雞") || i.name.includes("豬") || i.name.includes("牛") || i.name.includes("飯") || i.name.includes("麵")) itemCat = "主餐";
+        }
+
+        if (kitchenCategories.includes(itemCat)) {
+            hasKitchenItems = true;
+            kitchenItemsHtml += `<div class="kitchen-item">${i.name}</div>`;
+        } else {
+            barItemsHtml += `
+                <div class="receipt-item">
+                    <span>${i.name}</span>
+                    <span>$${i.price}</span>
+                </div>`;
+        }
+    });
+
+    let receiptHtml = "";
+
+    // 1. 吧台單 (如果有)
+    if (barItemsHtml !== "" || !hasKitchenItems) {
+        receiptHtml += `
+            <div class="receipt-section">
+                <div class="receipt-header">
+                    <h2 class="store-name">POS 點餐收據 (櫃台)</h2>
+                    <div class="receipt-info">
+                        <p>單號：${data.seq}</p>
+                        <p>桌號：${data.table}</p>
+                        <p>時間：${data.time}</p>
+                    </div>
+                </div>
+                <hr class="dashed-line">
+                <div class="receipt-items">
+                    ${barItemsHtml}
+                </div>
+                <hr class="dashed-line">
+                <div class="receipt-footer">
+                    <div class="row"><span>原價：</span><span>$${data.original}</span></div>
+                    <div class="row"><span>總計：</span><span class="total">$${data.total}</span></div>
+                </div>
+            </div>
+        `;
+    }
+
+    // 2. 廚房單 (如果有)
+    if (hasKitchenItems) {
+        // 如果前面有吧台單，加分頁符號
+        if (receiptHtml !== "") {
+            receiptHtml += `<div class="page-break"></div>`;
+        }
+        
+        receiptHtml += `
+            <div class="receipt-section">
+                <div class="receipt-header">
+                    <h2 class="store-name">廚房工作單</h2>
+                    <div class="receipt-info">
+                        <p>單號：${data.seq}</p>
+                        <p>桌號：${data.table}</p>
+                        <p>時間：${data.time}</p>
+                    </div>
+                </div>
+                <hr class="dashed-line">
+                <div class="receipt-items">
+                    ${kitchenItemsHtml}
+                </div>
+                <hr class="dashed-line">
+            </div>
+        `;
+    }
+
+    document.getElementById("receipt-print-area").innerHTML = receiptHtml;
+    
+    // 延遲列印確保渲染
+    setTimeout(() => {
+        window.print();
+    }, 500);
+}
+
 function checkoutAll(manualFinal) {
     let payingTotal = (manualFinal !== undefined) ? manualFinal : finalTotal;
     let time = new Date().toLocaleString('zh-TW', { hour12: false });
     let originalTotal = currentOriginalTotal;
     let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" };
+
+    if(!info.orderId || info.orderId === "?" || info.orderId === "T") {
+        dailyOrderCount++;
+        info.orderId = dailyOrderCount;
+    }
     
     if (originalTotal > 0 || payingTotal > 0) {
-        // 判斷是否為拆單的最後一筆
         let splitNum = tableSplitCounters[selectedTable];
-        let displaySeq = info.orderId; // 預設使用主單號
-        let displaySeat = selectedTable; // 預設使用桌號
+        let displaySeq = info.orderId; 
+        let displaySeat = selectedTable;
 
-        // 如果有拆單紀錄 (且已經拆過)，這筆是剩下的尾款，命名為 x-x
         if(splitNum && splitNum > 1) {
             displaySeq = `${info.orderId}-${splitNum}`;
             displaySeat = `${selectedTable} (拆單)`;
@@ -596,7 +711,7 @@ function checkoutAll(manualFinal) {
 
         let newOrder = { 
             seat: displaySeat, 
-            formattedSeq: displaySeq, // 🔥 存入格式化後的序號
+            formattedSeq: displaySeq,
             time: time, 
             items: [...cart], 
             total: payingTotal, 
@@ -619,12 +734,26 @@ function checkoutAll(manualFinal) {
     cart = []; 
     currentDiscount = { type: 'none', value: 0 }; 
     alert(`💰 結帳完成！實收 $${payingTotal}`);
+    
+    // 🔥 自動列印 (全結)
+    printReceipt({
+        seq: info.orderId, 
+        table: selectedTable,
+        time: time,
+        items: (originalTotal > 0) ? [...historyOrders[historyOrders.length-1].items] : [],
+        original: originalTotal,
+        total: payingTotal
+    });
+
     openTableSelect(); 
 }
 
 function openSplitCheckout() {
     if (cart.length === 0) { alert("購物車是空的，無法拆單！"); return; }
-    tempLeftList = [...cart]; tempRightList = []; renderCheckoutLists();
+    tempLeftList = [...cart]; tempRightList = []; 
+    if(document.getElementById("splitDisc")) document.getElementById("splitDisc").value = "";
+    if(document.getElementById("splitAllow")) document.getElementById("splitAllow").value = "";
+    renderCheckoutLists();
     checkoutModal.style.display = "flex";
 }
 
@@ -634,37 +763,56 @@ function renderCheckoutLists() {
     else tempLeftList.forEach((item, index) => { leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`; });
     if(tempRightList.length === 0) rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
     else tempRightList.forEach((item, index) => {
-        rightTotal += item.price;
         rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
     });
     document.getElementById("unpaidList").innerHTML = leftHTML;
     document.getElementById("payingList").innerHTML = rightHTML;
-    document.getElementById("payTotal").innerText = "$" + rightTotal;
+    calcSplitTotal();
+}
+
+function calcSplitTotal() {
+    let baseTotal = tempRightList.reduce((a, b) => a + b.price, 0);
+    let disc = parseFloat(document.getElementById("splitDisc").value);
+    let allow = parseInt(document.getElementById("splitAllow").value);
+    let finalSplit = baseTotal;
+    if (!isNaN(disc) && disc > 0 && disc <= 100) {
+        finalSplit = Math.round(baseTotal * (disc / 100));
+    }
+    if (!isNaN(allow) && allow > 0) {
+        finalSplit = finalSplit - allow;
+    }
+    if(finalSplit < 0) finalSplit = 0;
+    document.getElementById("payTotal").innerText = "$" + finalSplit;
+    return finalSplit;
 }
 
 function moveToPay(index) { let item = tempLeftList.splice(index, 1)[0]; tempRightList.push(item); renderCheckoutLists(); }
 function removeFromPay(index) { let item = tempRightList.splice(index, 1)[0]; tempLeftList.push(item); renderCheckoutLists(); }
 function closeCheckoutModal() { checkoutModal.style.display = "none"; }
 
-// 🔥 拆單結帳 (修正邏輯)
 function confirmPayment() {
     if (tempRightList.length === 0) { alert("右側沒有商品，無法結帳！"); return; }
     
     let time = new Date().toLocaleString('zh-TW', { hour12: false });
-    let total = tempRightList.reduce((a, b) => a + b.price, 0);
+    let total = calcSplitTotal();
     let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" };
     
-    // 取得當前拆單號碼
+    if(!info.orderId || info.orderId === "?" || info.orderId === "T") {
+        dailyOrderCount++;
+        info.orderId = dailyOrderCount;
+        if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {};
+        tableCustomers[selectedTable].orderId = dailyOrderCount;
+    }
+    
     let currentSplit = tableSplitCounters[selectedTable] || 1;
     let displaySeq = `${info.orderId}-${currentSplit}`;
     let displaySeat = `${selectedTable} (拆單)`;
     
-    // 更新計數器
     tableSplitCounters[selectedTable] = currentSplit + 1; 
 
     let newOrder = { 
         seat: displaySeat,
-        formattedSeq: displaySeq, // 🔥 存入格式化後的序號
+        formattedSeq: displaySeq,
         time: time, 
         items: [...tempRightList], 
         total: total, 
@@ -685,6 +833,16 @@ function confirmPayment() {
         renderCart(); 
     }
     saveAllToCloud(); closeCheckoutModal();
+
+    // 🔥 自動列印拆單收據 (也會分兩張)
+    printReceipt({
+        seq: displaySeq,
+        table: displaySeat,
+        time: time,
+        items: newOrder.items,
+        original: newOrder.items.reduce((a, b) => a + b.price, 0),
+        total: total
+    });
 }
 
 /* ========== 彈窗與分類 (未變動) ========== */
@@ -789,15 +947,12 @@ function addToCart(name, price) {
     renderCart();
 }
 
-// 🔥 修正：歷史訂單顯示邏輯
 function showHistory() {
     historyBox.innerHTML = "";
     if(!historyOrders || historyOrders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; return; }
     let orders = [...historyOrders].reverse();
     orders.forEach((o, index) => {
-        // 🔥 使用儲存的格式化序號 (如果沒有則回退到 index)
         let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`;
-        
         let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>";
         let itemsDetail = o.items.map(i => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}</span> <span>$${i.price}</span></div>`).join("");
         let timeOnly = o.time.split(" ")[1] || o.time;
@@ -853,7 +1008,7 @@ function closeBusiness() {
 function closeSummaryModal() { summaryModal.style.display = "none"; }
 function confirmClearData() {
     historyOrders = [];
-    dailyOrderCount = 0; // 🔥 日結重置序號
+    dailyOrderCount = 0; 
     saveAllToCloud();
     closeSummaryModal(); showHistory(); 
     alert("✅ 日結完成！今日營收與單號已歸零。");
@@ -868,15 +1023,11 @@ function renderCart() {
         cartList.innerHTML += `<div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px;">${c.name} - $${c.price} <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button></div>`;
     });
 
-    finalTotal = currentOriginalTotal;
+    discountedTotal = currentOriginalTotal;
 
     if (currentDiscount.type === 'percent') {
-        finalTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100));
-        totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${finalTotal}</span> <small>(折扣 ${currentDiscount.value}%)</small>`;
-    } else if (currentDiscount.type === 'amount') {
-        finalTotal = currentOriginalTotal - currentDiscount.value;
-        if (finalTotal < 0) finalTotal = 0;
-        totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${finalTotal}</span> <small>(折讓 -$${currentDiscount.value})</small>`;
+        discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100));
+        totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${discountedTotal}</span> <small>(折扣 ${currentDiscount.value}%)</small>`;
     } else {
         totalText.innerText = "總金額：" + currentOriginalTotal + " 元";
     }
