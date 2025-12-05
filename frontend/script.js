@@ -305,11 +305,18 @@ function printReceipt(data, isTicket = false) {
     };
 
     // 2. 執行列印邏輯
+    
+    // 延遲列印函式 (解決 iPad 卡住問題)
+    const delayedPrint = () => {
+        setTimeout(() => {
+            window.print();
+        }, 500); // 延遲 0.5 秒，確保畫面渲染完成
+    };
+
     // 如果是「結帳收據 (isTicket=false)」，通常印一張總單即可
     if (!isTicket) {
-        // 合併所有商品印一張
         printArea.innerHTML = generateHtml("結帳收據", data.items, true);
-        setTimeout(() => { window.print(); }, 500);
+        delayedPrint();
         return;
     }
 
@@ -320,23 +327,23 @@ function printReceipt(data, isTicket = false) {
     if (hasBar && hasKitchen) {
         // === 狀況 A：兩邊都有，分兩次印 (吧檯先，然後廚房) ===
         printArea.innerHTML = generateHtml("加點工單 (吧台)", barItems, false);
-        window.print(); // 第一次列印 (瀏覽器會暫停 JS 直到使用者關閉視窗)
+        delayedPrint(); // 第一次列印
 
-        // 延遲 1 秒後印第二張
+        // 延遲 2 秒後印第二張 (給足夠時間關閉第一個視窗)
         setTimeout(() => {
             printArea.innerHTML = generateHtml("廚房工作單", kitchenItems, false);
-            window.print(); // 第二次列印
-        }, 1000);
+            delayedPrint(); // 第二次列印
+        }, 2000);
 
     } else if (hasKitchen) {
         // === 狀況 B：只有廚房 ===
         printArea.innerHTML = generateHtml("廚房工作單", kitchenItems, false);
-        setTimeout(() => { window.print(); }, 500);
+        delayedPrint();
 
     } else {
         // === 狀況 C：只有吧檯 (或預設) ===
         printArea.innerHTML = generateHtml("加點工單 (吧台)", barItems, false);
-        setTimeout(() => { window.print(); }, 500);
+        delayedPrint();
     }
 }
 
@@ -369,7 +376,6 @@ function checkoutAll(manualFinal) {
     cart = []; currentDiscount = { type: 'none', value: 0 }; 
     alert(`💰 結帳完成！實收 $${payingTotal} \n(如需明細，請至「今日訂單」補印)`);
     
-    // ⚠️ 移除這裡的 printReceipt 呼叫，不再自動列印
     openTableSelect(); 
 }
 
@@ -390,7 +396,6 @@ function confirmPayment() { /* 拆單 */
     
     if (tempLeftList.length === 0) { delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; cart = []; alert(`💰 ${selectedTable} 全部結帳完成！`); openTableSelect(); } else { tableCarts[selectedTable] = tempLeftList; cart = tempLeftList; alert(`💰 單號 ${displaySeq} 結帳完成！`); renderCart(); }
     saveAllToCloud(); closeCheckoutModal();
-    // ⚠️ 移除這裡的 printReceipt 呼叫，不再自動列印
 }
 
 function openDiscountModal() { discountModal.style.display = "flex"; }
