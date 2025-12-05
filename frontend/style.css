@@ -132,11 +132,11 @@ button {
 .radio-box { flex: 1; min-width: 80px; }
 .radio-box input { display: none; }
 .radio-btn { background: #f1f3f5; padding: 12px 10px; border-radius: 8px; text-align: center; font-size: 15px; color: #555; border: 2px solid transparent; transition: 0.2s; }
-.radio-box input:checked + .radio-btn { background: #e7f3ff; border-color: #007bff; color: #007bff; font-weight: bold; box-shadow: 0 2px 8px rgba(0,123,255,0.2); }
+.radio-box input:checked + .radio-btn { background: #e7f3ff; border-color: #007bff; color: #007bff; font-weight: bold; box-shadow: 2px 8px rgba(0,123,255,0.2); }
 
 @keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
 
-/* 🔥🔥🔥 列印專用樣式 (核心修改) 🔥🔥🔥 */
+/* 🔥🔥🔥 修正列印問題的 CSS (強制透明、自動高度) 🔥🔥🔥 */
 #receipt-print-area { 
     position: fixed; 
     top: 0; 
@@ -147,39 +147,45 @@ button {
 }
 
 @media print {
+    @page {
+        margin: 0; 
+        size: auto; 
+    }
+    
+    html, body {
+        height: auto !important;
+        min-height: 0 !important;
+        background-color: transparent !important; /* 關鍵：讓背景透明，觸發節紙功能 */
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important; 
+    }
+
+    #receipt-print-area {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: auto !important; 
+        background-color: transparent !important;
+        display: block !important;
+        font-family: "Courier New", monospace;
+        color: black;
+        font-size: 14px;
+    }
+
     /* 隱藏所有網頁介面 */
     #login-screen, #app-container, .modal { 
         display: none !important; 
     }
-    
-    body { 
-        background: white; 
-        margin: 0; 
-        padding: 0; 
-    }
 
-    /* 顯示並重置列印區塊位置 */
-    #receipt-print-area {
-        position: static; /* 恢復正常流 */
-        left: 0;
-        display: block !important;
-        width: 100%; /* 配合出單機紙寬 */
-        font-family: "Courier New", monospace;
-        color: black;
-        font-size: 14px;
-        padding: 0;
-        margin: 0;
-    }
-
-    .receipt-section { display: block; width: 100%; margin-bottom: 10px; }
-    /* 強制換頁/切刀 */
-    .page-break { 
+    .receipt-section { 
         display: block; 
-        page-break-after: always; 
-        break-after: page; 
-        height: 1px; 
-        border-bottom: 1px dashed #ccc; /* 視覺輔助 */
-        margin: 10px 0;
+        width: 100%; 
+        margin-bottom: 0; 
+        padding-bottom: 0;
+        page-break-after: always;
+        break-after: page;
     }
 
     .receipt-header { text-align: center; margin-bottom: 10px; }
