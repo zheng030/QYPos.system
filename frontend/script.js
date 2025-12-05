@@ -181,13 +181,25 @@ function closeCustomModal() { customModal.style.display = "none"; tempCustomItem
 function confirmCustomItem() { if (!tempCustomItem) return; let flavor = document.querySelector('input[name="flavor"]:checked').value; let taste = document.querySelector('input[name="taste"]:checked').value; let extraStr = ""; let finalPrice = tempCustomItem.price; if (tempCustomItem.price === 280) { let alcohol = document.getElementById("alcoholRange").value; if(isExtraShot) { finalPrice += 40; extraStr += "<br><b style='color:#d33;'>🔥 濃度升級 (+$40)</b>"; } extraStr += `<br><small style='color:#666'>(${flavor} / ${taste} / 濃度+${alcohol}%)</small>`; } else { let note = document.getElementById("customNote").value.trim(); if(note) extraStr += `<br><span style='color:#007bff; font-size:14px;'>📝 ${note}</span>`; extraStr += `<br><small style='color:#666'>(${flavor} / ${taste})</small>`; } addToCart(`${tempCustomItem.name} ${extraStr}`, finalPrice); closeCustomModal(); }
 
 /* ========== 核心邏輯：加點與列印 ========== */
-// 🔥 1. 加入購物車時，標記為新商品
+// 🔥 1. 加入購物車
 function addToCart(name, price) {
     cart.push({ name, price, isNew: true });
     renderCart();
 }
 
-// 🔥 2. 暫存並列印新商品 (Delta Print)
+// 🔥 2. 修正返回按鈕：讓使用者可以安全退出
+function saveAndExit() {
+    if (cart.length > 0) {
+        let confirmLeave = confirm("⚠️ 購物車內有未送出的商品，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)");
+        if (!confirmLeave) return; 
+    }
+    cart = [];
+    currentDiscount = { type: 'none', value: 0 }; 
+    tempCustomItem = null;
+    openTableSelect();
+}
+
+// 🔥 3. 暫存並列印 (送廚房/吧台工單) - 這裡維持列印
 function saveOrderManual() {
     if (cart.length === 0) {
         alert("購物車是空的，訂單未成立。");
@@ -204,11 +216,9 @@ function saveOrderManual() {
         tableCustomers[selectedTable].orderId = dailyOrderCount;
     }
     
-    // 篩選出 isNew: true 的商品
     let newItemsToPrint = cart.filter(item => item.isNew === true);
     
     if (newItemsToPrint.length > 0) {
-        // 列印這些商品 (Ticket Mode)
         printReceipt({
             seq: tableCustomers[selectedTable].orderId,
             table: selectedTable,
@@ -216,9 +226,8 @@ function saveOrderManual() {
             items: newItemsToPrint,
             original: 0,
             total: 0
-        }, true);
+        }, true); // true = 工單模式
 
-        // 移除 isNew 標記
         cart.forEach(item => delete item.isNew);
     }
 
@@ -231,7 +240,7 @@ function saveOrderManual() {
     openTableSelect();
 }
 
-// 🔥🔥🔥 列印功能：自動分單 (酒吧/廚房) 🔥🔥🔥
+// 🔥🔥🔥 列印功能 🔥🔥🔥
 function printReceipt(data, isTicket = false) {
     let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"]; 
     let barItemsHtml = ""; 
@@ -241,7 +250,6 @@ function printReceipt(data, isTicket = false) {
 
     data.items.forEach(i => {
         let itemCat = "";
-        // 反查分類
         for (const [cat, content] of Object.entries(menuData)) {
             if (Array.isArray(content)) {
                 if (content.some(x => i.name.includes(x.name))) itemCat = cat;
@@ -267,7 +275,7 @@ function printReceipt(data, isTicket = false) {
 
     let receiptHtml = "";
 
-    // 1. 酒吧單
+    // 1. 酒吧單 (或結帳收據)
     if (hasBar || (!hasKitchen && !hasBar)) { 
         receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單 (吧台)" : "結帳收據 (櫃台)"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${barItemsHtml}</div><hr class="dashed-line">${isTicket ? '' : `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`}</div>`;
     }
@@ -311,16 +319,9 @@ function checkoutAll(manualFinal) {
     delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable];
     saveAllToCloud();
     cart = []; currentDiscount = { type: 'none', value: 0 }; 
-    alert(`💰 結帳完成！實收 $${payingTotal}`);
+    alert(`💰 結帳完成！實收 $${payingTotal} \n(如需明細，請至「今日訂單」補印)`);
     
-    printReceipt({
-        seq: info.orderId,
-        table: selectedTable,
-        time: time,
-        items: (originalTotal > 0) ? [...historyOrders[historyOrders.length-1].items] : [],
-        original: originalTotal,
-        total: payingTotal
-    });
+    // ⚠️ 移除這裡的 printReceipt 呼叫，不再自動列印
     openTableSelect(); 
 }
 
@@ -338,9 +339,10 @@ function confirmPayment() { /* 拆單 */
     if(!Array.isArray(historyOrders)) historyOrders = [];
     historyOrders.push(newOrder);
     localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
+    
     if (tempLeftList.length === 0) { delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; cart = []; alert(`💰 ${selectedTable} 全部結帳完成！`); openTableSelect(); } else { tableCarts[selectedTable] = tempLeftList; cart = tempLeftList; alert(`💰 單號 ${displaySeq} 結帳完成！`); renderCart(); }
     saveAllToCloud(); closeCheckoutModal();
-    printReceipt({ seq: displaySeq, table: displaySeat, time: time, items: newOrder.items, original: newOrder.items.reduce((a, b) => a + b.price, 0), total: total });
+    // ⚠️ 移除這裡的 printReceipt 呼叫，不再自動列印
 }
 
 function openDiscountModal() { discountModal.style.display = "flex"; }
@@ -367,7 +369,68 @@ function deleteSingleOrder(displayIndex) { if(!confirm("⚠️ 確定要刪除�
 function closeBusiness() { let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length; if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return; if (!confirm("確定要【結束營業】並進行今日結算嗎？")) return; let totalRevenue = historyOrders.reduce((acc, curr) => acc + curr.total, 0); let totalCount = historyOrders.length; document.getElementById("sumCount").innerText = totalCount + " 單"; document.getElementById("sumTotal").innerText = "$" + totalRevenue; summaryModal.style.display = "flex"; }
 function closeSummaryModal() { summaryModal.style.display = "none"; }
 function confirmClearData() { historyOrders = []; dailyOrderCount = 0; saveAllToCloud(); closeSummaryModal(); showHistory(); alert("✅ 日結完成！今日營收與單號已歸零。"); }
-function showHistory() { historyBox.innerHTML = ""; if(!historyOrders || historyOrders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; return; } let orders = [...historyOrders].reverse(); orders.forEach((o, index) => { let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`; let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>"; let itemsDetail = o.items.map(i => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}</span> <span>$${i.price}</span></div>`).join(""); let timeOnly = o.time.split(" ")[1] || o.time; let rowId = `detail-${index}`; let amountDisplay = `$${o.total}`; if (o.originalTotal && o.originalTotal !== o.total) { amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#d33;">$${o.total}</span>`; } historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;"><span class="seq" style="font-weight:bold; color:#007bff;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:none;"><div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#d33;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px;"><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`; }); }
+
+// 🔥🔥🔥 新增：補印功能 + 更新歷史紀錄介面 🔥🔥🔥
+function reprintOrder(displayIndex) {
+    // 找出正確的歷史訂單索引 (因為顯示時是反轉的)
+    let realIndex = historyOrders.length - 1 - displayIndex;
+    let order = historyOrders[realIndex];
+
+    if (!order) return;
+
+    printReceipt({
+        seq: order.formattedSeq || order.seq || "補",
+        table: order.seat,
+        time: order.time,
+        items: order.items,
+        original: order.originalTotal || 0,
+        total: order.total
+    }, false); // false = 收據模式
+}
+
+function showHistory() { 
+    historyBox.innerHTML = ""; 
+    if(!historyOrders || historyOrders.length === 0) { 
+        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; 
+        return; 
+    } 
+    
+    let orders = [...historyOrders].reverse(); 
+    
+    orders.forEach((o, index) => { 
+        let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`; 
+        let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>"; 
+        let itemsDetail = o.items.map(i => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}</span> <span>$${i.price}</span></div>`).join(""); 
+        let timeOnly = o.time.split(" ")[1] || o.time; 
+        let rowId = `detail-${index}`; 
+        let amountDisplay = `$${o.total}`; 
+        if (o.originalTotal && o.originalTotal !== o.total) { 
+            amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#d33;">$${o.total}</span>`; 
+        } 
+        
+        // 🔥 新增：按鈕區塊 (列印 & 刪除)
+        historyBox.innerHTML += `
+        <div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;">
+            <span class="seq" style="font-weight:bold; color:#007bff;">${seqDisplay}</span>
+            <span class="seat">${o.seat}</span>
+            <span class="cust">${custInfo}</span>
+            <span class="time">${timeOnly}</span>
+            <span class="amt">${amountDisplay}</span>
+        </div>
+        <div id="${rowId}" class="history-detail" style="display:none;">
+            <div style="background:#f9f9f9; padding:15px; border-radius:0 0 8px 8px; border:1px solid #eee; border-top:none;">
+                <b>📅 完整時間：</b>${o.time}<br>
+                <b>🧾 內容：</b><br>${itemsDetail}
+                <div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#d33;">總計：$${o.total}</div>
+                
+                <div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;">
+                    <button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button>
+                    <button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button>
+                </div>
+            </div>
+        </div>`; 
+    }); 
+}
 function window_toggleDetail(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } }
 window.toggleDetail = window_toggleDetail;
 
