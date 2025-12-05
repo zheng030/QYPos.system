@@ -133,16 +133,42 @@ button {
 .calendar-header h2 { margin: 0; color: #333; font-size: 22px; margin-bottom: 15px; }
 .calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 10px; font-weight: bold; color: #888; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-.calendar-day { aspect-ratio: 1 / 1; border: 1px solid #eee; border-radius: 10px; padding: 5px; display: flex; flex-direction: column; justify-content: space-between; font-size: 14px; position: relative; background: #fdfdfd; }
-.calendar-day.empty { border: none; background: transparent; }
+.calendar-day { 
+    min-height: 60px; /* 確保有高度 */
+    border: 1px solid #eee; 
+    border-radius: 10px; 
+    padding: 5px; 
+    display: flex; 
+    flex-direction: column; 
+    justify-content: flex-start; 
+    font-size: 14px; 
+    position: relative; 
+    background: #fdfdfd; 
+    cursor: pointer; 
+}
+.calendar-day:hover { background: #f0f7ff; }
+.calendar-day.empty { border: none; background: transparent; cursor: default; }
 .calendar-day.today { border: 2px solid #007bff; background: #f0f7ff; }
-.day-num { font-weight: bold; color: #555; text-align: left; padding-left: 3px; }
+.day-num { font-weight: bold; color: #555; text-align: left; margin-bottom: 5px; }
 .day-revenue { font-weight: 800; color: #d33; font-size: 13px; text-align: right; word-break: break-all; }
 .fin-line { font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 1px; }
 .fin-line span:first-child { color: #555; font-weight: bold; }
 .fin-rev { color: #007bff; }
 .fin-cost { color: #999; }
 .fin-profit { color: #28a745; font-weight: bold; }
+
+/* 🔥🔥🔥 財務明細彈窗樣式 🔥🔥🔥 */
+.fin-detail-card { padding: 15px; border-radius: 12px; margin-bottom: 15px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+.fin-detail-card h3 { margin: 0 0 10px 0; font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; }
+.fin-detail-card .fin-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 16px; }
+.fin-detail-card .fin-row.total { font-weight: bold; font-size: 20px; margin-top: 5px; }
+.fin-detail-card hr { border: 0; border-top: 1px dashed rgba(255,255,255,0.4); margin: 10px 0; }
+
+.bar-style { background: linear-gradient(135deg, #4facfe, #00f2fe); } /* 藍色 */
+.bbq-style { background: linear-gradient(135deg, #ff9a9e, #fecfef); color: #333; } /* 橘粉色 */
+.total-style { background: linear-gradient(135deg, #667eea, #764ba2); } /* 紫色 */
+
+.red-text { color: #ffeded; font-weight: bold; } /* 成本用淺紅色突顯 */
 
 /* Modal */
 .modal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); justify-content: center; align-items: center; z-index: 10000; }
@@ -170,16 +196,15 @@ button {
 
 @keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
 
-/* 🔥🔥🔥 修正: iPad 列印專用區塊 🔥🔥🔥 */
+/* 🔥🔥🔥 修正: iPad 列印專用區塊 (48mm 寬度) 🔥🔥🔥 */
 #receipt-print-area { 
-    /* 平常隱藏在畫面外 */
     position: fixed; 
     top: 0; 
     left: -9999px; 
-    width: 58mm; 
+    width: 48mm;  
     background: white;
     z-index: -1;
-    padding-left: 8px;
+    padding-left: 0;
     box-sizing: border-box;
 }
 
@@ -189,38 +214,36 @@ button {
         size: auto; 
     }
     
-    /* 🔥🔥🔥 關鍵：保留 body 的高度，只隱藏其子元素 🔥🔥🔥 */
     html, body {
         height: auto !important;
-        background-color: white !important; /* 改回白色，確保文字對比 */
+        background-color: transparent !important; 
         margin: 0 !important;
         padding: 0 !important;
+        overflow: hidden !important;
         color: black !important;
     }
 
-    /* 隱藏所有正常的網頁介面 */
-    #login-screen, #app-container, .modal { 
-        display: none !important; 
+    /* 隱藏所有網頁介面 */
+    body > * {
+        display: none !important;
     }
 
-    /* 唯獨顯示列印區塊 */
+    /* 顯示列印區塊 */
     #receipt-print-area {
-        position: relative !important; 
+        display: block !important;
+        position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: 100% !important;
-        display: block !important;
-        
+        width: 48mm !important; 
+        background-color: transparent !important;
         font-family: "Courier New", monospace;
         color: black !important;
-        font-size: 14px;
-        padding-left: 5px; /* 左側留白 */
-        
-        /* 確保不會有背景色干擾 */
-        background-color: transparent !important; 
+        font-size: 11px; 
+        z-index: 9999;
+        padding-left: 2px; 
+        margin-left: 2px;
     }
 
-    /* 確保每一張單據都正確切頁 */
     .receipt-section { 
         display: block; 
         width: 100%; 
@@ -229,18 +252,21 @@ button {
         page-break-after: always;
         break-after: page;
     }
+    .receipt-section:last-child {
+        page-break-after: avoid;
+    }
 
-    .receipt-header { text-align: center; margin-bottom: 10px; color: black !important; }
-    .store-name { font-size: 20px; font-weight: bold; margin: 0 0 5px 0; }
-    .receipt-info p { margin: 2px 0; font-size: 12px; }
-    .dashed-line { border-top: 1px dashed #000; margin: 5px 0; }
+    .receipt-header { text-align: center; margin-bottom: 5px; color: black !important; }
+    .store-name { font-size: 16px; font-weight: bold; margin: 0 0 2px 0; }
+    .receipt-info p { margin: 1px 0; font-size: 10px; }
+    .dashed-line { border-top: 1px dashed #000; margin: 3px 0; }
 
-    .receipt-item { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; color: black !important; }
-    .kitchen-item { font-size: 22px; font-weight: bold; margin: 10px 0; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: black !important; }
+    .receipt-item { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; color: black !important; gap: 2px; }
+    .kitchen-item { font-size: 18px; font-weight: bold; margin: 5px 0; border-bottom: 1px solid #ccc; padding-bottom: 2px; color: black !important; }
     
-    .receipt-footer { margin-top: 10px; font-size: 14px; color: black !important; }
-    .receipt-footer .row { display: flex; justify-content: space-between; margin: 2px 0; }
-    .receipt-footer .total { font-size: 18px; font-weight: bold; border-top: 2px solid #000; padding-top: 5px; margin-top: 5px; }
+    .receipt-footer { margin-top: 5px; font-size: 11px; color: black !important; }
+    .receipt-footer .row { display: flex; justify-content: space-between; margin: 1px 0; }
+    .receipt-footer .total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 3px; margin-top: 3px; }
 }
 
 @media (max-width: 768px) {

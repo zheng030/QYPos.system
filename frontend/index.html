@@ -35,7 +35,7 @@
 
             <div class="menu-btn" onclick="openOwnerLogin('cost')">🤫 機密 (輸入成本)</div>
             <div class="menu-btn" onclick="openOwnerLogin('finance')">🔐 權限 (財務報表)</div>
-            
+
             <div class="menu-btn">🧾 匯出Excel</div>
             <div class="menu-btn">💬 加料客製</div>
 
@@ -87,7 +87,7 @@
                 </div>
                 
                 <div class="action-buttons">
-                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 (出單)</button>
+                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 暫存</button>
                     <button class="checkout-btn btn-effect" onclick="openPaymentModal()">💰 全結</button>
                     <button class="split-btn btn-effect" onclick="openSplitCheckout()">✂ 拆單</button>
                 </div>
@@ -152,6 +152,7 @@
                     <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
                 </div>
                 <div id="finCalendarGrid" class="calendar-grid"></div>
+                <div style="text-align:center; color:#888; font-size:12px; margin-top:10px;">(點擊日期查看詳細利潤拆解)</div>
             </div>
 
             <div id="costInputSection" class="finance-detail-box" style="display:none;">
@@ -172,6 +173,12 @@
                 <button onclick="openChangePasswordModal('景偉')" class="btn-effect owner-btn">🔑 修改 景偉 密碼</button>
                 <button onclick="openChangePasswordModal('小飛')" class="btn-effect owner-btn">🔑 修改 小飛 密碼</button>
                 <button onclick="openChangePasswordModal('威志')" class="btn-effect owner-btn">🔑 修改 威志 密碼</button>
+            </div>
+
+            <div style="margin-top: 50px; padding-top: 20px; border-top: 2px dashed #ccc;">
+                <h3 style="color:#dc3545;">⚠️ 危險專區</h3>
+                <button onclick="clearAllData()" class="btn-effect" style="width:100%; padding:15px; font-size:18px; background:#dc3545; color:white; border-radius:10px; font-weight:bold;">🗑️ 一鍵清空所有訂單 (保留成本設定)</button>
+                <p style="color:#666; font-size:14px; margin-top:10px;">此動作無法復原，將清空今日訂單、歷史報表與桌況。</p>
             </div>
         </div>
 
@@ -232,6 +239,36 @@
                 </div>
             </div>
             <div class="modal-actions"><button onclick="closeAllowanceModal()" class="btn-effect cancel">取消</button><button onclick="confirmAllowance()" class="btn-effect confirm-primary">確定</button></div>
+        </div></div>
+
+        <div id="financeDetailModal" class="modal"><div class="modal-content">
+            <div class="modal-header"><h2 id="fdTitle">📅 財務明細</h2></div>
+            <div class="modal-body">
+                <div class="fin-detail-card bar-style">
+                    <h3>🍺 酒吧部</h3>
+                    <div class="fin-row"><span>營收</span><span id="fdBarRev">$0</span></div>
+                    <div class="fin-row"><span>成本</span><span id="fdBarCost" class="red-text">$0</span></div>
+                    <hr>
+                    <div class="fin-row total"><span>毛利</span><span id="fdBarProfit">$0</span></div>
+                </div>
+                <div class="fin-detail-card bbq-style">
+                    <h3>🍖 燒烤部</h3>
+                    <div class="fin-row"><span>營收</span><span id="fdBbqRev">$0</span></div>
+                    <div class="fin-row"><span>成本</span><span id="fdBbqCost" class="red-text">$0</span></div>
+                    <hr>
+                    <div class="fin-row total"><span>毛利</span><span id="fdBbqProfit">$0</span></div>
+                </div>
+                <div class="fin-detail-card total-style">
+                    <h3>🏠 全店總計</h3>
+                    <div class="fin-row"><span>總營收</span><span id="fdTotalRev">$0</span></div>
+                    <div class="fin-row"><span>總成本</span><span id="fdTotalCost" class="red-text">$0</span></div>
+                    <hr>
+                    <div class="fin-row total large"><span>總淨利</span><span id="fdTotalProfit">$0</span></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeFinanceDetailModal()" class="btn-effect" style="background:#6c757d; color:white;">關閉</button>
+            </div>
         </div></div>
 
         <div id="customModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🍹 <span id="customTitle">隱藏特調</span>客製化</h2></div><div class="modal-body"><div class="custom-section"><div class="custom-label">1. 香氣選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="flavor" value="花香調" checked><div class="radio-btn btn-effect">花香調 🌸</div></label><label class="radio-box"><input type="radio" name="flavor" value="果香調"><div class="radio-btn btn-effect">果香調 🍎</div></label><label class="radio-box"><input type="radio" name="flavor" value="木質調"><div class="radio-btn btn-effect">木質調 🌲</div></label></div></div><div class="custom-section"><div class="custom-label">2. 口感偏好</div><div class="radio-group"><label class="radio-box"><input type="radio" name="taste" value="偏酸" checked><div class="radio-btn btn-effect">偏酸 🍋</div></label><label class="radio-box"><input type="radio" name="taste" value="偏甜"><div class="radio-btn btn-effect">偏甜 🍯</div></label><label class="radio-box"><input type="radio" name="taste" value="偏苦"><div class="radio-btn btn-effect">偏苦 ☕</div></label><label class="radio-box"><input type="radio" name="taste" value="偏鹹"><div class="radio-btn btn-effect">偏鹹 🧂</div></label></div></div><div id="modalAlcoholSection" class="custom-section"><div class="custom-label">3. 濃度調整 (<span id="alcoholVal">0</span>%)</div><input type="range" id="alcoholRange" min="0" max="100" step="10" value="0" style="width:100%; margin: 15px 0;" oninput="document.getElementById('alcoholVal').innerText=this.value"><div style="display:flex;justify-content:space-between;font-size:12px;color:#888; margin-bottom:10px;"><span>正常</span><span>加重</span><span>雙倍</span></div><button id="extraShotBtn" onclick="toggleExtraShot()" class="extra-shot-btn btn-effect">🍺 濃度升級 (+$40)</button></div><div id="modalNoteSection" class="custom-section" style="display:none;"><div class="custom-label">3. 備註 (選填)</div><textarea id="customNote" rows="2" placeholder="例如：少冰、不要裝飾..." class="modal-input" style="width:100%;"></textarea></div></div><div class="modal-actions"><button onclick="closeCustomModal()" class="btn-effect cancel">取消</button><button onclick="confirmCustomItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
