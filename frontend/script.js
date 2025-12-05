@@ -199,7 +199,7 @@ function saveAndExit() {
     openTableSelect();
 }
 
-// 🔥 3. 暫存並列印 (送廚房/吧台工單) - 這裡維持列印
+// 🔥 3. 暫存並列印 (送廚房/吧台工單)
 function saveOrderManual() {
     if (cart.length === 0) {
         alert("購物車是空的，訂單未成立。");
@@ -240,16 +240,16 @@ function saveOrderManual() {
     openTableSelect();
 }
 
-// 🔥🔥🔥 列印功能 🔥🔥🔥
+// 🔥🔥🔥 修正列印功能：自動拆分吧檯與廚房為兩次列印，讓切刀生效 🔥🔥🔥
 function printReceipt(data, isTicket = false) {
     let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"]; 
-    let barItemsHtml = ""; 
-    let kitchenItemsHtml = ""; 
-    let hasBar = false; 
-    let hasKitchen = false;
+    let barItems = [];
+    let kitchenItems = [];
 
+    // 1. 先將商品分類
     data.items.forEach(i => {
         let itemCat = "";
+        // 反查分類
         for (const [cat, content] of Object.entries(menuData)) {
             if (Array.isArray(content)) {
                 if (content.some(x => i.name.includes(x.name))) itemCat = cat;
@@ -264,32 +264,80 @@ function printReceipt(data, isTicket = false) {
         }
 
         if (kitchenCategories.includes(itemCat)) {
-            hasKitchen = true;
-            kitchenItemsHtml += `<div class="kitchen-item">${i.name}</div>`;
+            kitchenItems.push(i);
         } else {
-            hasBar = true;
-            let priceStr = isTicket ? "" : `$${i.price}`;
-            barItemsHtml += `<div class="receipt-item"><span>${i.name}</span><span>${priceStr}</span></div>`;
+            barItems.push(i);
         }
     });
 
-    let receiptHtml = "";
+    const printArea = document.getElementById("receipt-print-area");
 
-    // 1. 酒吧單 (或結帳收據)
-    if (hasBar || (!hasKitchen && !hasBar)) { 
-        receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單 (吧台)" : "結帳收據 (櫃台)"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${barItemsHtml}</div><hr class="dashed-line">${isTicket ? '' : `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`}</div>`;
+    // 內部小函式：產生 HTML 結構
+    const generateHtml = (title, items, isFullReceipt) => {
+        let itemsHtml = "";
+        items.forEach(i => {
+            let priceStr = isFullReceipt ? `$${i.price}` : "";
+            // 如果是工單，字體加大
+            let itemClass = isFullReceipt ? "receipt-item" : "receipt-item kitchen-item"; 
+            itemsHtml += `<div class="${itemClass}"><span>${i.name}</span><span>${priceStr}</span></div>`;
+        });
+
+        let footerHtml = "";
+        if (isFullReceipt) {
+            footerHtml = `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`;
+        }
+
+        return `
+            <div class="receipt-section">
+                <div class="receipt-header">
+                    <h2 class="store-name">${title}</h2>
+                    <div class="receipt-info">
+                        <p>單號：${data.seq}</p>
+                        <p>桌號：${data.table}</p>
+                        <p>時間：${data.time}</p>
+                    </div>
+                </div>
+                <hr class="dashed-line">
+                <div class="receipt-items">${itemsHtml}</div>
+                <hr class="dashed-line">
+                ${footerHtml}
+            </div>`;
+    };
+
+    // 2. 執行列印邏輯
+    // 如果是「結帳收據 (isTicket=false)」，通常印一張總單即可
+    if (!isTicket) {
+        // 合併所有商品印一張
+        printArea.innerHTML = generateHtml("結帳收據", data.items, true);
+        setTimeout(() => { window.print(); }, 500);
+        return;
     }
 
-    // 2. 切刀 (分頁)
-    if (hasBar && hasKitchen) { receiptHtml += `<div class="page-break"></div>`; }
+    // 如果是「工單 (isTicket=true)」，檢查是否需要拆分
+    let hasBar = barItems.length > 0;
+    let hasKitchen = kitchenItems.length > 0;
 
-    // 3. 廚房單
-    if (hasKitchen) {
-        receiptHtml += `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${isTicket ? "加點工單" : "廚房工作單"}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${kitchenItemsHtml}</div><hr class="dashed-line"></div>`;
+    if (hasBar && hasKitchen) {
+        // === 狀況 A：兩邊都有，分兩次印 (吧檯先，然後廚房) ===
+        printArea.innerHTML = generateHtml("加點工單 (吧台)", barItems, false);
+        window.print(); // 第一次列印 (瀏覽器會暫停 JS 直到使用者關閉視窗)
+
+        // 延遲 1 秒後印第二張
+        setTimeout(() => {
+            printArea.innerHTML = generateHtml("廚房工作單", kitchenItems, false);
+            window.print(); // 第二次列印
+        }, 1000);
+
+    } else if (hasKitchen) {
+        // === 狀況 B：只有廚房 ===
+        printArea.innerHTML = generateHtml("廚房工作單", kitchenItems, false);
+        setTimeout(() => { window.print(); }, 500);
+
+    } else {
+        // === 狀況 C：只有吧檯 (或預設) ===
+        printArea.innerHTML = generateHtml("加點工單 (吧台)", barItems, false);
+        setTimeout(() => { window.print(); }, 500);
     }
-
-    document.getElementById("receipt-print-area").innerHTML = receiptHtml;
-    setTimeout(() => { window.print(); }, 500);
 }
 
 /* ========== 結帳與其他 ========== */
@@ -372,7 +420,6 @@ function confirmClearData() { historyOrders = []; dailyOrderCount = 0; saveAllTo
 
 // 🔥🔥🔥 新增：補印功能 + 更新歷史紀錄介面 🔥🔥🔥
 function reprintOrder(displayIndex) {
-    // 找出正確的歷史訂單索引 (因為顯示時是反轉的)
     let realIndex = historyOrders.length - 1 - displayIndex;
     let order = historyOrders[realIndex];
 
@@ -408,7 +455,7 @@ function showHistory() {
             amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#d33;">$${o.total}</span>`; 
         } 
         
-        // 🔥 新增：按鈕區塊 (列印 & 刪除)
+        // 按鈕區塊
         historyBox.innerHTML += `
         <div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;">
             <span class="seq" style="font-weight:bold; color:#007bff;">${seqDisplay}</span>
