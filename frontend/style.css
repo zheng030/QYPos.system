@@ -170,16 +170,15 @@ button {
 
 @keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
 
-/* 🔥🔥🔥 修正: iPad 列印隱藏與白紙問題 (關鍵) 🔥🔥🔥 */
+/* 🔥🔥🔥 修正: iPad 列印專用區塊 🔥🔥🔥 */
 #receipt-print-area { 
-    /* 使用 left: -9999px 確保完全隱藏但瀏覽器仍可讀取 */
+    /* 平常隱藏在畫面外 */
     position: fixed; 
     top: 0; 
     left: -9999px; 
     width: 58mm; 
     background: white;
     z-index: -1;
-    /* 解決左邊削掉問題 */
     padding-left: 8px;
     box-sizing: border-box;
 }
@@ -187,39 +186,41 @@ button {
 @media print {
     @page {
         margin: 0; 
-        size: auto; /* 嘗試自動尺寸 */
+        size: auto; 
     }
     
+    /* 🔥🔥🔥 關鍵：保留 body 的高度，只隱藏其子元素 🔥🔥🔥 */
     html, body {
-        /* 🔥🔥🔥 關鍵：強制背景透明，觸發印表機硬體節紙 🔥🔥🔥 */
-        background-color: transparent !important; 
         height: auto !important;
+        background-color: white !important; /* 改回白色，確保文字對比 */
         margin: 0 !important;
         padding: 0 !important;
-        overflow: hidden !important; 
+        color: black !important;
     }
 
-    #receipt-print-area {
-        position: relative; /* 列印時拉回正常流 */
-        left: 0 !important;
-        top: 0 !important;
-        width: 100%;
-        height: auto !important;
-        background-color: transparent !important; /* 內容區塊也透明 */
-        display: block !important;
-        font-family: "Courier New", monospace;
-        color: black;
-        font-size: 14px;
-        z-index: 9999;
-        padding-left: 8px; 
-        float: none; /* 避免浮動問題 */
-    }
-
-    /* 隱藏所有不相關介面 */
+    /* 隱藏所有正常的網頁介面 */
     #login-screen, #app-container, .modal { 
         display: none !important; 
     }
 
+    /* 唯獨顯示列印區塊 */
+    #receipt-print-area {
+        position: relative !important; 
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        display: block !important;
+        
+        font-family: "Courier New", monospace;
+        color: black !important;
+        font-size: 14px;
+        padding-left: 5px; /* 左側留白 */
+        
+        /* 確保不會有背景色干擾 */
+        background-color: transparent !important; 
+    }
+
+    /* 確保每一張單據都正確切頁 */
     .receipt-section { 
         display: block; 
         width: 100%; 
@@ -228,20 +229,16 @@ button {
         page-break-after: always;
         break-after: page;
     }
-    /* 確保切刀後沒有多餘空白 */
-    .receipt-section:last-child {
-        page-break-after: avoid;
-    }
 
-    .receipt-header { text-align: center; margin-bottom: 10px; }
+    .receipt-header { text-align: center; margin-bottom: 10px; color: black !important; }
     .store-name { font-size: 20px; font-weight: bold; margin: 0 0 5px 0; }
     .receipt-info p { margin: 2px 0; font-size: 12px; }
     .dashed-line { border-top: 1px dashed #000; margin: 5px 0; }
 
-    .receipt-item { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
-    .kitchen-item { font-size: 22px; font-weight: bold; margin: 10px 0; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+    .receipt-item { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; color: black !important; }
+    .kitchen-item { font-size: 22px; font-weight: bold; margin: 10px 0; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: black !important; }
     
-    .receipt-footer { margin-top: 10px; font-size: 14px; }
+    .receipt-footer { margin-top: 10px; font-size: 14px; color: black !important; }
     .receipt-footer .row { display: flex; justify-content: space-between; margin: 2px 0; }
     .receipt-footer .total { font-size: 18px; font-weight: bold; border-top: 2px solid #000; padding-top: 5px; margin-top: 5px; }
 }
