@@ -28,7 +28,6 @@ let tableCustomers = {};
 let tableSplitCounters = {}; 
 let itemCosts = {}; 
 let itemPrices = {}; 
-let dailyFinancialData = {}; // 🔥 儲存每日財務數據供彈窗使用
 
 let selectedTable = null;
 let cart = []; 
@@ -119,8 +118,11 @@ function initRealtimeData() {
         let currentOwner = document.getElementById("ownerWelcome").innerText;
         if(document.getElementById("confidentialPage").style.display === "block" && currentOwner) {
             let savedMode = sessionStorage.getItem('ownerMode') || 'finance';
-            if (savedMode === 'cost') updateFinancialPage(currentOwner);
-            else renderFinanceCalendar(currentOwner);
+            if (savedMode === 'cost') {
+                updateFinancialPage(currentOwner);
+            } else {
+                renderFinanceCalendar(currentOwner);
+            }
         }
     });
 }
@@ -242,6 +244,30 @@ function getItemCategoryType(itemName) {
     }
     if(itemName.includes("雞") || itemName.includes("豬") || itemName.includes("牛") || itemName.includes("飯") || itemName.includes("麵")) return 'bbq';
     return 'bar'; 
+}
+
+// 🔥🔥🔥 智慧成本搜尋函式 (解決 括號對應不到成本 的問題) 🔥🔥🔥
+function getCostByItemName(itemName) {
+    // 1. 先去除 "(招待)" 標記
+    let cleanName = itemName.replace(" (招待)", "").trim();
+
+    // 2. 直接找完全匹配 (例如 "柳橙汁")
+    if (itemCosts[cleanName] !== undefined) return itemCosts[cleanName];
+
+    // 3. 【關鍵修正】去除最後一個括號內的選項
+    // 支援半形 () 和 全形 （）
+    // 例如 "柳橙汁 (去冰)" -> "柳橙汁"
+    // 例如 "炒飯 (牛)" -> "炒飯"
+    let baseName = cleanName.replace(/\s*[\(（].*?[\)）]$/, "").trim();
+    
+    if (itemCosts[baseName] !== undefined) return itemCosts[baseName];
+
+    // 4. 特殊處理：隱藏特調
+    if (cleanName.includes("隱藏特調")) {
+        if (itemCosts["隱藏特調"] !== undefined) return itemCosts["隱藏特調"];
+    }
+
+    return 0; 
 }
 
 /* ========== 座位與點餐邏輯 ========== */
@@ -432,7 +458,7 @@ function checkOwner(name) { let password = prompt(`請輸入 ${name} 的密碼�
 function openConfidentialPage(ownerName) { hideAll(); document.getElementById("confidentialPage").style.display = "block"; document.getElementById("ownerWelcome").innerText = ownerName; document.getElementById("financeDashboard").style.display = "none"; let currentLoginMode = sessionStorage.getItem('ownerMode') || 'finance'; if (currentLoginMode === 'cost') { document.getElementById("costInputSection").style.display = "block"; document.getElementById("financeCalendarSection").style.display = "none"; document.getElementById("confidentialTitle").innerText = "成本輸入"; updateFinancialPage(ownerName); } else { document.getElementById("costInputSection").style.display = "none"; document.getElementById("financeCalendarSection").style.display = "block"; document.getElementById("confidentialTitle").innerText = "財務報表"; renderFinanceCalendar(ownerName); } }
 function updateFinancialPage(ownerName) { const listContainer = document.getElementById("costEditorList"); listContainer.innerHTML = ""; let targetCategories = []; let canEdit = true; const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點"]; const bbqCats = ["燒烤", "主餐", "炸物"]; if (ownerName === "小飛") { targetCategories = barCats; } else if (ownerName === "威志") { targetCategories = bbqCats; } else { targetCategories = [...barCats, ...bbqCats, "其他"]; } targetCategories.forEach(cat => { if (!menuData[cat]) return; let catHeader = document.createElement("div"); catHeader.className = "sub-cat-title"; catHeader.style.marginTop = "15px"; catHeader.innerText = cat; listContainer.appendChild(catHeader); let items = []; let data = menuData[cat]; if (Array.isArray(data)) { items = data; } else { Object.values(data).forEach(subList => { items = items.concat(subList); }); } items.forEach(item => { let currentPrice = itemPrices[item.name] !== undefined ? itemPrices[item.name] : item.price; let currentCost = itemCosts[item.name] !== undefined ? itemCosts[item.name] : 0; let row = document.createElement("div"); row.className = "cost-row"; row.innerHTML = `<span>${item.name}</span><input type="number" value="${currentPrice}" placeholder="售價" onchange="updateItemData('${item.name}', 'price', this.value)"><input type="number" value="${currentCost}" placeholder="成本" onchange="updateItemData('${item.name}', 'cost', this.value)">`; listContainer.appendChild(row); }); }); }
 
-// 🔥🔥🔥 財務日曆點擊事件 🔥🔥🔥
+// 🔥🔥🔥 財務日曆點擊事件 (加入 getCostByItemName) 🔥🔥🔥
 function openFinanceDetailModal(dateKey, stats) {
     document.getElementById("fdTitle").innerText = `📅 ${dateKey} 財務明細`;
     // Bar
@@ -479,10 +505,15 @@ function renderFinanceCalendar(ownerName) {
             if (!dailyFinancialData[dateStr]) dailyFinancialData[dateStr] = { barRev:0, barCost:0, bbqRev:0, bbqCost:0 }; 
             
             order.items.forEach(item => { 
+                // 🔥🔥🔥 這裡使用新 helper 來抓成本 🔥🔥🔥
+                let costPerItem = getCostByItemName(item.name);
+                
                 let rawName = item.name.replace(" (招待)", "").trim(); 
-                let costPerItem = itemCosts[rawName] || 0; 
                 let type = getItemCategoryType(rawName); 
+                
                 if (type === 'bar') { 
+                    // 營收：招待的價格是 0，正常品項是原價
+                    // 成本：不管是否招待，都要計算成本
                     dailyFinancialData[dateStr].barRev += item.price; 
                     dailyFinancialData[dateStr].barCost += costPerItem; 
                 } else { 
