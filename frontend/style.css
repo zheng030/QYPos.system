@@ -74,11 +74,28 @@ button {
 .back-to-cat { grid-column: 1 / -1; background: #6c757d; color: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; }
 .inline-input { padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-right: 5px; font-size: 15px; }
 
-/* 購物車 */
+/* 🔥🔥🔥 購物車美化與招待按鈕 🔥🔥🔥 */
 #cart-container { background: white; border-radius: 15px; padding: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
-#cart-list { max-height: 200px; overflow-y: auto; margin-bottom: 15px; text-align: left; }
-#cart-list div { padding: 10px 0; border-bottom: 1px dashed #eee; display: flex; justify-content: space-between; align-items: center; }
-.del-btn { background: #ff4757; color: white; padding: 5px 12px; border-radius: 5px; font-size: 13px; }
+#cart-list { max-height: 300px; overflow-y: auto; margin-bottom: 15px; text-align: left; }
+
+/* 購物車單列 - 改用 Grid 排版 */
+.cart-item-row { 
+    display: grid; 
+    grid-template-columns: 2fr 1fr auto auto; /* 品名 價格 招待 刪除 */
+    align-items: center; 
+    gap: 8px; 
+    padding: 12px 0; 
+    border-bottom: 1px dashed #eee; 
+}
+.cart-item-name { font-size: 16px; font-weight: bold; color: #333; line-height: 1.4; }
+.cart-item-price { font-size: 16px; font-weight: bold; text-align: right; color: #333; }
+
+/* 招待按鈕樣式 */
+.treat-btn { background: #17a2b8; color: white; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+.treat-btn.active { background: #28a745; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); }
+
+.del-btn { background: #ff4757; color: white; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+
 .summary-row { display: flex; justify-content: space-between; align-items: center; margin: 15px 0; padding-top: 10px; border-top: 2px solid #f0f0f0; }
 .discount-actions { display: flex; gap: 10px; }
 .small-btn { background: #e9ecef; color: #555; border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: bold; }
@@ -101,14 +118,74 @@ button {
 .owner-btn:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15); border-color: #007bff; color: #007bff; }
 .owner-cancel-btn { width: 100%; margin-top: 25px; background: #6c757d; color: white; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
 
-/* 歷史 */
-.history-header-row { display: grid; grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr; background: #343a40; color: white; padding: 15px; border-radius: 10px 10px 0 0; font-weight: bold; font-size: 15px; }
-.history-row { display: grid; grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr; background: white; padding: 15px; border-bottom: 1px solid #eee; align-items: center; font-size: 15px; }
+/* 🔥🔥 修復：今日訂單列表的美編 (強制套用 grid) 🔥🔥 */
+.history-header-row { 
+    display: grid !important; 
+    grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr !important; 
+    background: #343a40; 
+    color: white; 
+    padding: 15px; 
+    border-radius: 10px 10px 0 0; 
+    font-weight: bold; 
+    font-size: 15px; 
+}
+.history-row { 
+    display: grid !important; 
+    grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr !important; 
+    background: white; 
+    padding: 15px; 
+    border-bottom: 1px solid #eee; 
+    align-items: center; 
+    font-size: 15px; 
+}
 .end-business-btn { width: 100%; margin-top: 30px; background: #dc3545; color: white; padding: 15px; border-radius: 10px; font-size: 18px; font-weight: bold; box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3); }
 
 /* 列印按鈕與刪除按鈕 */
 .print-btn { background: #17a2b8; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; margin-right: 10px; }
 .delete-single-btn { background: #dc3545; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; }
+
+/* 報表控制項 */
+.report-controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+.report-controls button { padding: 10px 20px; border-radius: 20px; font-weight: bold; background: white; color: #555; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+.report-controls button.active { background: #007bff; color: white; box-shadow: 0 4px 10px rgba(0,123,255,0.3); }
+
+/* 報表卡片 */
+.report-card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+.total-card { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+.total-card h3 { margin: 0 0 10px 0; opacity: 0.9; font-size: 18px; }
+.total-card p { font-size: 42px; font-weight: 800; margin: 0; }
+.report-split { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.report-split h3 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; font-size: 18px; color: #555; }
+.report-split p { font-size: 28px; font-weight: bold; color: #333; margin: 10px 0; }
+
+/* 🔥 日曆樣式 🔥 */
+.calendar-wrapper { background: white; border-radius: 15px; padding: 20px; margin-top: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+.calendar-header h2 { margin: 0; color: #333; font-size: 22px; margin-bottom: 15px; }
+.calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 10px; font-weight: bold; color: #888; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.calendar-day { 
+    aspect-ratio: 1 / 1; 
+    border: 1px solid #eee; 
+    border-radius: 10px; 
+    padding: 5px; 
+    display: flex; 
+    flex-direction: column; 
+    justify-content: space-between; 
+    font-size: 14px; 
+    position: relative;
+    background: #fdfdfd;
+}
+.calendar-day.empty { border: none; background: transparent; }
+.calendar-day.today { border: 2px solid #007bff; background: #f0f7ff; }
+.day-num { font-weight: bold; color: #555; text-align: left; padding-left: 3px; }
+.day-revenue { font-weight: 800; color: #d33; font-size: 13px; text-align: right; word-break: break-all; }
+
+/* 🔥 財務日曆小字樣式 */
+.fin-line { font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 1px; }
+.fin-line span:first-child { color: #555; font-weight: bold; } /* 標籤顏色 */
+.fin-rev { color: #007bff; }
+.fin-cost { color: #999; }
+.fin-profit { color: #28a745; font-weight: bold; }
 
 /* Modal */
 .modal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); justify-content: center; align-items: center; z-index: 10000; }
@@ -136,42 +213,41 @@ button {
 
 @keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
 
-/* 🔥🔥🔥 修正列印問題的 CSS (強制透明、自動高度) 🔥🔥🔥 */
+/* 🔥🔥🔥 修正: 隱藏螢幕上的列印區塊 (改用 left:-9999px) 🔥🔥🔥 */
 #receipt-print-area { 
     position: fixed; 
     top: 0; 
-    left: -9999px; /* 移到畫面外 */
+    left: -9999px; /* 移到畫面外，避免螢幕左邊出現殘影 */
     width: 58mm; 
     background: white;
     z-index: -1;
+    padding-left: 8px; /* 保留左邊留白修正 */
+    box-sizing: border-box;
 }
 
 @media print {
     @page {
         margin: 0; 
-        size: auto; 
     }
     
     html, body {
-        height: auto !important;
-        min-height: 0 !important;
-        background-color: transparent !important; /* 關鍵：讓背景透明，觸發節紙功能 */
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important; 
+        height: auto;
+        background-color: white; 
+        margin: 0;
+        padding: 0;
     }
 
     #receipt-print-area {
-        position: absolute;
-        top: 0;
-        left: 0;
+        position: relative; /* 列印時恢復正常流 */
+        left: 0; /* 列印時移回畫面 */
         width: 100%;
-        height: auto !important; 
-        background-color: transparent !important;
+        background-color: white;
         display: block !important;
         font-family: "Courier New", monospace;
         color: black;
         font-size: 14px;
+        z-index: 9999;
+        padding-left: 8px; 
     }
 
     /* 隱藏所有網頁介面 */

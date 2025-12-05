@@ -54,9 +54,20 @@ function initRealtimeData() {
 
         if(document.getElementById("tableSelect").style.display === "block") renderTableGrid();
         if(document.getElementById("historyPage").style.display === "block") showHistory();
-        if(document.getElementById("reportPage").style.display === "block") generateReport('day');
+        if(document.getElementById("reportPage").style.display === "block") {
+            generateReport('day'); 
+            renderCalendar();
+        }
+        
         let currentOwner = document.getElementById("ownerWelcome").innerText;
-        if(document.getElementById("confidentialPage").style.display === "block" && currentOwner) { updateFinancialPage(currentOwner); }
+        if(document.getElementById("confidentialPage").style.display === "block" && currentOwner) {
+            let savedMode = sessionStorage.getItem('ownerMode') || 'finance';
+            if (savedMode === 'cost') {
+                updateFinancialPage(currentOwner);
+            } else {
+                renderFinanceCalendar(currentOwner);
+            }
+        }
     });
 }
 
@@ -128,19 +139,245 @@ refreshData();
 setInterval(updateSystemTime, 1000);
 function updateSystemTime() { document.getElementById("systemTime").innerText = "🕒 " + new Date().toLocaleString('zh-TW', { hour12: false }); }
 function hideAll() { ["home", "orderPage", "historyPage", "tableSelect", "reportPage", "confidentialPage", "settingsPage"].forEach(id => { let el = document.getElementById(id); if(el) el.style.display = "none"; }); if(seatTimerInterval) clearInterval(seatTimerInterval); }
-function openPage(pageId) { hideAll(); let el = document.getElementById(pageId); if(el) el.style.display = "block"; if(pageId === 'historyPage') { showHistory(); } if(pageId === 'reportPage') { generateReport('day'); } }
+function openPage(pageId) { 
+    hideAll(); 
+    let el = document.getElementById(pageId); 
+    if(el) el.style.display = "block"; 
+    if(pageId === 'historyPage') { showHistory(); } 
+    if(pageId === 'reportPage') { 
+        generateReport('day'); 
+        renderCalendar(); 
+    } 
+}
 function goHome() { hideAll(); document.getElementById("home").style.display = "grid"; }
 function openSettingsPage() { hideAll(); document.getElementById("settingsPage").style.display = "block"; }
 function openChangePasswordModal(name) { document.getElementById("pwdOwnerName").innerText = name; document.getElementById("oldPwd").value = ""; document.getElementById("newPwd").value = ""; document.getElementById("confirmPwd").value = ""; changePasswordModal.style.display = "flex"; }
 function closeChangePasswordModal() { changePasswordModal.style.display = "none"; }
 function confirmChangePassword() { /* ... (略) ... */ }
-function openOwnerLogin() { if(ownerLoginModal) ownerLoginModal.style.display = "flex"; }
+
+function openOwnerLogin(mode) { 
+    sessionStorage.setItem('ownerMode', mode); 
+    if(ownerLoginModal) ownerLoginModal.style.display = "flex"; 
+}
 function closeOwnerModal() { ownerLoginModal.style.display = "none"; }
-function checkOwner(name) { let password = prompt(`請輸入 ${name} 的密碼：`); if (password === OWNER_PASSWORDS[name]) { closeOwnerModal(); openConfidentialPage(name); } else { alert("❌ 密碼錯誤！"); } }
-function openConfidentialPage(ownerName) { hideAll(); document.getElementById("confidentialPage").style.display = "block"; document.getElementById("ownerWelcome").innerText = ownerName; document.getElementById("financeDashboard").style.display = "none"; updateFinancialPage(ownerName); }
-function updateFinancialPage(ownerName) { /* ... (略) ... */ }
+
+function checkOwner(name) { 
+    let password = prompt(`請輸入 ${name} 的密碼：`); 
+    if (password === OWNER_PASSWORDS[name]) { 
+        closeOwnerModal(); 
+        openConfidentialPage(name); 
+    } else { 
+        alert("❌ 密碼錯誤！"); 
+    } 
+}
+
+function openConfidentialPage(ownerName) { 
+    hideAll(); 
+    document.getElementById("confidentialPage").style.display = "block"; 
+    document.getElementById("ownerWelcome").innerText = ownerName; 
+    document.getElementById("financeDashboard").style.display = "none"; 
+    
+    let currentLoginMode = sessionStorage.getItem('ownerMode') || 'finance';
+
+    if (currentLoginMode === 'cost') {
+        document.getElementById("costInputSection").style.display = "block";
+        document.getElementById("financeCalendarSection").style.display = "none";
+        document.getElementById("confidentialTitle").innerText = "成本輸入";
+        updateFinancialPage(ownerName);
+    } else {
+        document.getElementById("costInputSection").style.display = "none";
+        document.getElementById("financeCalendarSection").style.display = "block";
+        document.getElementById("confidentialTitle").innerText = "財務報表";
+        renderFinanceCalendar(ownerName);
+    }
+}
+
+function getDateFromOrder(order) {
+    if (order.timestamp) return new Date(order.timestamp);
+    let d = new Date(order.time);
+    if (isNaN(d.getTime())) return new Date(); 
+    return d;
+}
+
+function getItemCategoryType(itemName) {
+    const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點", "其他"];
+    const bbqCats = ["燒烤", "主餐", "炸物"];
+    
+    for (const [cat, content] of Object.entries(menuData)) {
+        if (Array.isArray(content)) {
+            if (content.some(x => itemName.includes(x.name))) {
+                if (barCats.includes(cat)) return 'bar';
+                if (bbqCats.includes(cat)) return 'bbq';
+            }
+        } else {
+            for (const subContent of Object.values(content)) {
+                if (subContent.some(x => itemName.includes(x.name))) {
+                    if (barCats.includes(cat)) return 'bar';
+                    if (bbqCats.includes(cat)) return 'bbq';
+                }
+            }
+        }
+    }
+    if(itemName.includes("雞") || itemName.includes("豬") || itemName.includes("牛") || itemName.includes("飯") || itemName.includes("麵")) return 'bbq';
+    return 'bar'; 
+}
+
+function renderFinanceCalendar(ownerName) {
+    let now = new Date();
+    if (now.getHours() < 5) now.setDate(now.getDate() - 1);
+    let year = now.getFullYear();
+    let month = now.getMonth(); 
+
+    document.getElementById("finCalendarTitle").innerText = `${year}年 ${month + 1}月 財務概況`;
+
+    let dailyStats = {};
+    
+    historyOrders.forEach(order => {
+        if (!order.isClosed) return;
+
+        let t = getDateFromOrder(order);
+        if (t.getHours() < 5) t.setDate(t.getDate() - 1);
+
+        if (t.getFullYear() === year && t.getMonth() === month) {
+            let dayKey = t.getDate();
+            if (!dailyStats[dayKey]) dailyStats[dayKey] = { barRev:0, barCost:0, bbqRev:0, bbqCost:0 };
+
+            order.items.forEach(item => {
+                // 🔥 使用移除 (招待) 字樣後的名稱來查找成本
+                let rawName = item.name.replace(" (招待)", "").trim();
+                let costPerItem = itemCosts[rawName] || 0;
+                let type = getItemCategoryType(rawName);
+                
+                if (type === 'bar') {
+                    dailyStats[dayKey].barRev += item.price; // 招待的價格已經是 0
+                    dailyStats[dayKey].barCost += costPerItem;
+                } else {
+                    dailyStats[dayKey].bbqRev += item.price;
+                    dailyStats[dayKey].bbqCost += costPerItem;
+                }
+            });
+        }
+    });
+
+    let firstDay = new Date(year, month, 1).getDay();
+    let daysInMonth = new Date(year, month + 1, 0).getDate();
+    let grid = document.getElementById("finCalendarGrid");
+    grid.innerHTML = "";
+
+    for (let i = 0; i < firstDay; i++) {
+        let empty = document.createElement("div");
+        empty.className = "calendar-day empty";
+        grid.appendChild(empty);
+    }
+
+    let today = new Date();
+    if(today.getHours() < 5) today.setDate(today.getDate() - 1);
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        let cell = document.createElement("div");
+        cell.className = "calendar-day";
+        if (d === today.getDate() && month === today.getMonth()) cell.classList.add("today");
+
+        let stats = dailyStats[d] || { barRev:0, barCost:0, bbqRev:0, bbqCost:0 };
+        let showRev = 0, showCost = 0;
+
+        if (ownerName === "小飛") {
+            showRev = stats.barRev;
+            showCost = stats.barCost;
+        } else if (ownerName === "威志") {
+            showRev = stats.bbqRev;
+            showCost = stats.bbqCost;
+        } else { 
+            showRev = stats.barRev + stats.bbqRev;
+            showCost = stats.barCost + stats.bbqCost;
+        }
+
+        let profit = showRev - showCost;
+        let htmlContent = `<div class="day-num">${d}</div>`;
+        
+        if (showRev > 0 || showCost > 0) { 
+            htmlContent += `
+                <div class="fin-line"><span>營收:</span> <span class="fin-rev">$${showRev}</span></div>
+                <div class="fin-line"><span>成本:</span> <span class="fin-cost">-$${showCost}</span></div>
+                <div class="fin-line"><span>利潤:</span> <span class="fin-profit">+$${profit}</span></div>
+            `;
+        }
+
+        cell.innerHTML = htmlContent;
+        grid.appendChild(cell);
+    }
+}
+
+function updateFinancialPage(ownerName) {
+    const listContainer = document.getElementById("costEditorList");
+    listContainer.innerHTML = "";
+
+    let targetCategories = [];
+    let canEdit = true; 
+
+    const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點"];
+    const bbqCats = ["燒烤", "主餐", "炸物"];
+
+    if (ownerName === "小飛") {
+        targetCategories = barCats;
+    } else if (ownerName === "威志") {
+        targetCategories = bbqCats;
+    } else {
+        targetCategories = [...barCats, ...bbqCats, "其他"]; 
+    }
+
+    targetCategories.forEach(cat => {
+        if (!menuData[cat]) return; 
+
+        let catHeader = document.createElement("div");
+        catHeader.className = "sub-cat-title";
+        catHeader.style.marginTop = "15px";
+        catHeader.innerText = cat;
+        listContainer.appendChild(catHeader);
+
+        let items = [];
+        let data = menuData[cat];
+        
+        if (Array.isArray(data)) {
+            items = data;
+        } else {
+            Object.values(data).forEach(subList => {
+                items = items.concat(subList);
+            });
+        }
+
+        items.forEach(item => {
+            let currentPrice = itemPrices[item.name] !== undefined ? itemPrices[item.name] : item.price;
+            let currentCost = itemCosts[item.name] !== undefined ? itemCosts[item.name] : 0;
+
+            let row = document.createElement("div");
+            row.className = "cost-row";
+            
+            row.innerHTML = `
+                <span>${item.name}</span>
+                <input type="number" value="${currentPrice}" 
+                    placeholder="售價"
+                    onchange="updateItemData('${item.name}', 'price', this.value)">
+                <input type="number" value="${currentCost}" 
+                    placeholder="成本"
+                    onchange="updateItemData('${item.name}', 'cost', this.value)">
+            `;
+            listContainer.appendChild(row);
+        });
+    });
+}
+
 window.toggleAccordion = function(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); }
-function updateItemData(name, type, value) { let val = parseInt(value); if(isNaN(val)) val = 0; if (type === 'cost') itemCosts[name] = val; else if (type === 'price') itemPrices[name] = val; saveAllToCloud(); }
+
+function updateItemData(name, type, value) { 
+    let val = parseInt(value); 
+    if(isNaN(val)) val = 0; 
+    
+    if (type === 'cost') itemCosts[name] = val; 
+    else if (type === 'price') itemPrices[name] = val; 
+    
+    saveAllToCloud(); 
+}
 
 function openTableSelect() { hideAll(); refreshData(); document.getElementById("tableSelect").style.display = "block"; renderTableGrid(); }
 function renderTableGrid() { let grid = document.getElementById("tableSelectGrid"); grid.innerHTML = ""; tables.forEach(t => { let btn = document.createElement("div"); btn.className = "tableBtn btn-effect"; let status = tableStatuses[t]; let hasCart = tableCarts[t] && tableCarts[t].length > 0; if (status !== 'yellow' && tableTimers[t]) { delete tableTimers[t]; saveAllToCloud(); } if (status === 'yellow' && !hasCart) { delete tableTimers[t]; delete tableStatuses[t]; delete tableCarts[t]; delete tableCustomers[t]; delete tableSplitCounters[t]; saveAllToCloud(); status = null; } if (status === 'red') { btn.classList.add("status-red"); btn.innerHTML = `<b>${t}</b>`; } else if (status === 'yellow') { btn.classList.add("status-yellow"); btn.innerHTML = `<b>${t}</b>`; } else { btn.classList.add("status-white"); btn.innerHTML = `<b>${t}</b><br><span style="font-size:14px; color:#666;">(空桌)</span>`; } btn.onclick = () => openOrderPage(t); grid.appendChild(btn); }); }
@@ -157,7 +394,10 @@ function openItems(category) {
         if (item.name === "隱藏啤酒") { nameHtml = `<span style="font-weight:bold; color:#007bff;">🍺 隱藏啤酒</span>`; actionsHtml = `<input id="hbName" class="inline-input" placeholder="品名" style="width:100px;"><input type="number" id="hbPrice" class="inline-input" placeholder="時價" style="width:70px;"><button onclick="addInlineHiddenBeer()" style="background:#28a745;" class="btn-effect">加入</button>`; } 
         else if (item.name === "味繒鮭魚") { nameHtml = `<span>味繒鮭魚 <b style="color:#d33;">(時價)</b></span>`; actionsHtml = `<input type="number" id="salmonPrice" class="inline-input" placeholder="金額" style="width:80px;"><button onclick="addSalmonPrice()" style="background:#28a745;" class="btn-effect">加入</button>`; } 
         else if (item.name === "酥炸魷魚") { nameHtml = `<span>酥炸魷魚 <b style="color:#d33;">(時價)</b></span>`; actionsHtml = `<input type="number" id="squidPrice" class="inline-input" placeholder="金額" style="width:80px;"><button onclick="addFriedSquidPrice()" style="background:#28a745;" class="btn-effect">加入</button>`; } 
-        else { actionsHtml = `<button onclick='addToCart("${item.name}", ${item.price})' class="btn-effect">加入</button>`; if (category === "shot") { actionsHtml += `<button onclick='addShotSet("${item.name}", ${item.price})' class="set-btn btn-effect" style="margin-left:5px; background:#6f42c1;">🔥 一組</button>`; } }
+        else { 
+            actionsHtml = `<button onclick='checkItemType("${item.name}", ${item.price}, "${category}")' class="btn-effect">加入</button>`; 
+            if (category === "shot") { actionsHtml += `<button onclick='addShotSet("${item.name}", ${item.price})' class="set-btn btn-effect" style="margin-left:5px; background:#6f42c1;">🔥 一組</button>`; } 
+        }
         return `<div class="${itemClass}">${nameHtml}<div class="shot-actions">${actionsHtml}</div></div>`;
     };
     if (flatListCategories.includes(category)) { let html = backBtn; if (Array.isArray(data)) { html += `<div class="sub-cat-title">${category}</div>`; data.forEach(item => { html += createItemHtml(item, true); }); } else { Object.keys(data).forEach((subCat) => { let items = data[subCat]; html += `<div class="sub-cat-title">${subCat}</div>`; items.forEach(item => { html += createItemHtml(item, true); }); }); } html += backBtn; menuGrid.innerHTML = html; return; }
@@ -168,7 +408,19 @@ function addInlineHiddenBeer() { let name = document.getElementById("hbName").va
 function addSalmonPrice() { let price = parseInt(document.getElementById("salmonPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("味繒鮭魚", price); }
 function addFriedSquidPrice() { let price = parseInt(document.getElementById("squidPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("酥炸魷魚", price); }
 function checkItemType(name, price, categoryName) { if (name === "隱藏特調") { openCustomModal(name, price); return; } let realPrice = itemPrices[name] !== undefined ? itemPrices[name] : price; if (name === "隱藏啤酒" || name === "味繒鮭魚" || name === "酥炸魷魚") { addToCart(name, realPrice); return; } if (categoryName === "咖啡") { openDrinkModal(name, realPrice, "coffee"); return; } if (categoryName === "飲料") { if (name.includes("茶")) openDrinkModal(name, realPrice, "tea"); else openDrinkModal(name, realPrice, "drink"); return; } if (categoryName === "主餐") { if (name === "炒飯") { openFoodModal(name, realPrice, "friedRice"); return; } if (name === "日式炒烏龍麵" || name === "親子丼") { openFoodModal(name, realPrice, "meatOnly"); return; } } addToCart(name, realPrice); }
-function openFoodModal(name, price, type) { tempCustomItem = { name, price, type }; document.getElementById("foodTitle").innerText = name; let meatOptions = document.getElementById("meatOptions"); let html = ""; if (type === "friedRice") { html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=${price}" checked><div class="radio-btn btn-effect">牛 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">豬 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">雞 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=${price + 20}"><div class="radio-btn btn-effect">蝦仁 ($${price + 20})</div></label>`; } else { html = `<label class="radio-box"><input type="radio" name="meat" value="牛" checked><div class="radio-btn btn-effect">牛</div></label><label class="radio-box"><input type="radio" name="meat" value="豬"><div class="radio-btn btn-effect">豬</div></label><label class="radio-box"><input type="radio" name="meat" value="雞"><div class="radio-btn btn-effect">雞</div></label>`; } meatOptions.innerHTML = html; foodOptionModal.style.display = "flex"; }
+function openFoodModal(name, price, type) { 
+    tempCustomItem = { name, price, type }; 
+    document.getElementById("foodTitle").innerText = name; 
+    let meatOptions = document.getElementById("meatOptions"); 
+    let html = ""; 
+    if (type === "friedRice") { 
+        html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=${price}" checked><div class="radio-btn btn-effect">牛 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">豬 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">雞 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">蝦仁 ($${price})</div></label>`; 
+    } else { 
+        html = `<label class="radio-box"><input type="radio" name="meat" value="牛" checked><div class="radio-btn btn-effect">牛</div></label><label class="radio-box"><input type="radio" name="meat" value="豬"><div class="radio-btn btn-effect">豬</div></label><label class="radio-box"><input type="radio" name="meat" value="雞"><div class="radio-btn btn-effect">雞</div></label>`; 
+    } 
+    meatOptions.innerHTML = html; 
+    foodOptionModal.style.display = "flex"; 
+}
 function closeFoodModal() { foodOptionModal.style.display = "none"; tempCustomItem = null; }
 function confirmFoodItem() { if (!tempCustomItem) return; let meat = document.querySelector('input[name="meat"]:checked').value; addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, tempCustomItem.price); closeFoodModal(); }
 function openDrinkModal(name, price, type) { tempCustomItem = { name, price, type }; document.getElementById("drinkTitle").innerText = name; let simpleTemp = document.getElementById("simpleTempSection"); let advTemp = document.getElementById("advanceTempSection"); let sugar = document.getElementById("sugarSection"); document.querySelectorAll('input[name="simpleTemp"]')[0].checked = true; document.querySelectorAll('input[name="advTemp"]')[0].checked = true; document.querySelectorAll('input[name="sugar"]')[0].checked = true; if (type === "coffee") { simpleTemp.style.display = "block"; advTemp.style.display = "none"; sugar.style.display = "none"; } else if (type === "drink") { simpleTemp.style.display = "none"; advTemp.style.display = "block"; sugar.style.display = "none"; } else if (type === "tea") { simpleTemp.style.display = "none"; advTemp.style.display = "block"; sugar.style.display = "block"; } drinkModal.style.display = "flex"; }
@@ -181,25 +433,30 @@ function closeCustomModal() { customModal.style.display = "none"; tempCustomItem
 function confirmCustomItem() { if (!tempCustomItem) return; let flavor = document.querySelector('input[name="flavor"]:checked').value; let taste = document.querySelector('input[name="taste"]:checked').value; let extraStr = ""; let finalPrice = tempCustomItem.price; if (tempCustomItem.price === 280) { let alcohol = document.getElementById("alcoholRange").value; if(isExtraShot) { finalPrice += 40; extraStr += "<br><b style='color:#d33;'>🔥 濃度升級 (+$40)</b>"; } extraStr += `<br><small style='color:#666'>(${flavor} / ${taste} / 濃度+${alcohol}%)</small>`; } else { let note = document.getElementById("customNote").value.trim(); if(note) extraStr += `<br><span style='color:#007bff; font-size:14px;'>📝 ${note}</span>`; extraStr += `<br><small style='color:#666'>(${flavor} / ${taste})</small>`; } addToCart(`${tempCustomItem.name} ${extraStr}`, finalPrice); closeCustomModal(); }
 
 /* ========== 核心邏輯：加點與列印 ========== */
-// 🔥 1. 加入購物車
 function addToCart(name, price) {
-    cart.push({ name, price, isNew: true });
+    cart.push({ name, price, isNew: true, isTreat: false });
     renderCart();
 }
 
-// 🔥 2. 修正返回按鈕：讓使用者可以安全退出
+function toggleTreat(index) {
+    cart[index].isTreat = !cart[index].isTreat;
+    renderCart();
+}
+
 function saveAndExit() {
-    if (cart.length > 0) {
+    let hasUnsentItems = cart.some(item => item.isNew === true);
+
+    if (hasUnsentItems) {
         let confirmLeave = confirm("⚠️ 購物車內有未送出的商品，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)");
         if (!confirmLeave) return; 
     }
+    
     cart = [];
     currentDiscount = { type: 'none', value: 0 }; 
     tempCustomItem = null;
     openTableSelect();
 }
 
-// 🔥 3. 暫存並列印 (送廚房/吧台工單)
 function saveOrderManual() {
     if (cart.length === 0) {
         alert("購物車是空的，訂單未成立。");
@@ -226,7 +483,7 @@ function saveOrderManual() {
             items: newItemsToPrint,
             original: 0,
             total: 0
-        }, true); // true = 工單模式
+        }, true);
 
         cart.forEach(item => delete item.isNew);
     }
@@ -240,16 +497,14 @@ function saveOrderManual() {
     openTableSelect();
 }
 
-// 🔥🔥🔥 修正列印功能：自動拆分吧檯與廚房為兩次列印，讓切刀生效 🔥🔥🔥
+// 🔥🔥🔥 修正：列印時檢查 isTreat，如果是招待則加上 (招待) 🔥🔥🔥
 function printReceipt(data, isTicket = false) {
     let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"]; 
     let barItems = [];
     let kitchenItems = [];
 
-    // 1. 先將商品分類
     data.items.forEach(i => {
         let itemCat = "";
-        // 反查分類
         for (const [cat, content] of Object.entries(menuData)) {
             if (Array.isArray(content)) {
                 if (content.some(x => i.name.includes(x.name))) itemCat = cat;
@@ -272,14 +527,23 @@ function printReceipt(data, isTicket = false) {
 
     const printArea = document.getElementById("receipt-print-area");
 
-    // 內部小函式：產生 HTML 結構
     const generateHtml = (title, items, isFullReceipt) => {
         let itemsHtml = "";
         items.forEach(i => {
-            let priceStr = isFullReceipt ? `$${i.price}` : "";
-            // 如果是工單，字體加大
+            // 🔥 1. 處理名稱：如果是招待，加上標註
+            let displayName = i.name;
+            if (i.isTreat) {
+                displayName += " (招待)";
+            }
+
+            // 🔥 2. 處理價格：如果是招待，顯示 $0
+            let priceStr = "";
+            if (isFullReceipt) {
+                 priceStr = i.isTreat ? "$0" : `$${i.price}`;
+            }
+            
             let itemClass = isFullReceipt ? "receipt-item" : "receipt-item kitchen-item"; 
-            itemsHtml += `<div class="${itemClass}"><span>${i.name}</span><span>${priceStr}</span></div>`;
+            itemsHtml += `<div class="${itemClass}"><span>${displayName}</span><span>${priceStr}</span></div>`;
         });
 
         let footerHtml = "";
@@ -304,45 +568,36 @@ function printReceipt(data, isTicket = false) {
             </div>`;
     };
 
-    // 2. 執行列印邏輯
-    
-    // 延遲列印函式 (解決 iPad 卡住問題)
     const delayedPrint = () => {
         setTimeout(() => {
             window.print();
-        }, 500); // 延遲 0.5 秒，確保畫面渲染完成
+        }, 500); 
     };
 
-    // 如果是「結帳收據 (isTicket=false)」，通常印一張總單即可
     if (!isTicket) {
         printArea.innerHTML = generateHtml("結帳收據", data.items, true);
         delayedPrint();
         return;
     }
 
-    // 如果是「工單 (isTicket=true)」，檢查是否需要拆分
     let hasBar = barItems.length > 0;
     let hasKitchen = kitchenItems.length > 0;
 
     if (hasBar && hasKitchen) {
-        // === 狀況 A：兩邊都有，分兩次印 (吧檯先，然後廚房) ===
-        printArea.innerHTML = generateHtml("加點工單 (吧台)", barItems, false);
-        delayedPrint(); // 第一次列印
+        printArea.innerHTML = generateHtml("吧檯工作單", barItems, false);
+        delayedPrint(); 
 
-        // 延遲 2 秒後印第二張 (給足夠時間關閉第一個視窗)
         setTimeout(() => {
             printArea.innerHTML = generateHtml("廚房工作單", kitchenItems, false);
-            delayedPrint(); // 第二次列印
+            delayedPrint(); 
         }, 2000);
 
     } else if (hasKitchen) {
-        // === 狀況 B：只有廚房 ===
         printArea.innerHTML = generateHtml("廚房工作單", kitchenItems, false);
         delayedPrint();
 
     } else {
-        // === 狀況 C：只有吧檯 (或預設) ===
-        printArea.innerHTML = generateHtml("加點工單 (吧台)", barItems, false);
+        printArea.innerHTML = generateHtml("吧檯工作單", barItems, false);
         delayedPrint();
     }
 }
@@ -365,7 +620,25 @@ function checkoutAll(manualFinal) {
         let displaySeat = selectedTable;
         if(splitNum && splitNum > 1) { displaySeq = `${info.orderId}-${splitNum}`; displaySeat = `${selectedTable} (拆單)`; }
 
-        let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, items: [...cart], total: payingTotal, originalTotal: originalTotal, customerName: info.name, customerPhone: info.phone };
+        let processedItems = cart.map(item => {
+            if (item.isTreat) {
+                return { ...item, price: 0, name: item.name + " (招待)" };
+            }
+            return item;
+        });
+
+        let newOrder = { 
+            seat: displaySeat, 
+            formattedSeq: displaySeq, 
+            time: time, 
+            timestamp: Date.now(), 
+            items: processedItems, 
+            total: payingTotal, 
+            originalTotal: originalTotal, 
+            customerName: info.name, 
+            customerPhone: info.phone,
+            isClosed: false 
+        };
         if(!Array.isArray(historyOrders)) historyOrders = [];
         historyOrders.push(newOrder);
         localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
@@ -379,7 +652,7 @@ function checkoutAll(manualFinal) {
     openTableSelect(); 
 }
 
-function confirmPayment() { /* 拆單 */
+function confirmPayment() { 
     if (tempRightList.length === 0) { alert("右側沒有商品，無法結帳！"); return; }
     let time = new Date().toLocaleString('zh-TW', { hour12: false });
     let total = calcSplitTotal();
@@ -389,7 +662,25 @@ function confirmPayment() { /* 拆單 */
     let displaySeq = `${info.orderId}-${currentSplit}`;
     let displaySeat = `${selectedTable} (拆單)`;
     tableSplitCounters[selectedTable] = currentSplit + 1; 
-    let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, items: [...tempRightList], total: total, customerName: info.name, customerPhone: info.phone };
+    
+    let processedItems = tempRightList.map(item => {
+        if (item.isTreat) {
+            return { ...item, price: 0, name: item.name + " (招待)" };
+        }
+        return item;
+    });
+
+    let newOrder = { 
+        seat: displaySeat, 
+        formattedSeq: displaySeq, 
+        time: time, 
+        timestamp: Date.now(), 
+        items: processedItems, 
+        total: total, 
+        customerName: info.name, 
+        customerPhone: info.phone,
+        isClosed: false 
+    };
     if(!Array.isArray(historyOrders)) historyOrders = [];
     historyOrders.push(newOrder);
     localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
@@ -416,20 +707,64 @@ function removeFromPay(index) { let item = tempRightList.splice(index, 1)[0]; te
 function closeCheckoutModal() { checkoutModal.style.display = "none"; }
 
 function updateDiscPreview() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } let discounted = Math.round(currentOriginalTotal * (val / 100)); document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; }
-function renderCart() { cartList.innerHTML = ""; currentOriginalTotal = 0; cart.forEach((c, i) => { currentOriginalTotal += c.price; cartList.innerHTML += `<div style="margin-bottom:5px; border-bottom:1px dashed #ccc; padding:5px;">${c.name} - $${c.price} <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button></div>`; }); discountedTotal = currentOriginalTotal; if (currentDiscount.type === 'percent') { discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100)); totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${discountedTotal}</span> <small>(折扣 ${currentDiscount.value}%)</small>`; } else { totalText.innerText = "總金額：" + currentOriginalTotal + " 元"; } }
+function renderCart() { 
+    cartList.innerHTML = ""; 
+    currentOriginalTotal = 0; 
+    
+    cart.forEach((c, i) => { 
+        let displayPrice = c.isTreat ? 0 : c.price;
+        currentOriginalTotal += displayPrice; 
+        
+        let treatClass = c.isTreat ? "treat-btn active btn-effect" : "treat-btn btn-effect";
+        let treatText = c.isTreat ? "已招待" : "🎁 招待";
+        let priceHtml = c.isTreat ? `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#28a745; font-weight:bold;'>$0</span>` : `$${c.price}`;
+
+        cartList.innerHTML += `
+            <div class="cart-item-row">
+                <div class="cart-item-name">${c.name}</div>
+                <div class="cart-item-price">${priceHtml}</div>
+                <button class="${treatClass}" onclick="toggleTreat(${i})">${treatText}</button>
+                <button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button>
+            </div>`; 
+    }); 
+
+    discountedTotal = currentOriginalTotal; 
+    if (currentDiscount.type === 'percent') { 
+        discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100)); 
+        totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${discountedTotal}</span> <small>(折扣 ${currentDiscount.value}%)</small>`; 
+    } else { 
+        totalText.innerText = "總金額：" + currentOriginalTotal + " 元"; 
+    } 
+}
+
 function removeItem(index) { cart.splice(index, 1); renderCart(); }
 function deleteSingleOrder(displayIndex) { if(!confirm("⚠️ 確定要刪除這筆訂單嗎？")) return; let realIndex = historyOrders.length - 1 - displayIndex; historyOrders.splice(realIndex, 1); saveAllToCloud(); showHistory(); }
 function closeBusiness() { let activeTables = Object.values(tableStatuses).filter(s => s === 'yellow').length; if(activeTables > 0 && !confirm(`⚠️ 還有 ${activeTables} 桌用餐中。確定日結？`)) return; if (!confirm("確定要【結束營業】並進行今日結算嗎？")) return; let totalRevenue = historyOrders.reduce((acc, curr) => acc + curr.total, 0); let totalCount = historyOrders.length; document.getElementById("sumCount").innerText = totalCount + " 單"; document.getElementById("sumTotal").innerText = "$" + totalRevenue; summaryModal.style.display = "flex"; }
 function closeSummaryModal() { summaryModal.style.display = "none"; }
-function confirmClearData() { historyOrders = []; dailyOrderCount = 0; saveAllToCloud(); closeSummaryModal(); showHistory(); alert("✅ 日結完成！今日營收與單號已歸零。"); }
+function confirmClearData() { 
+    let updated = false;
+    historyOrders.forEach(o => {
+        if (!o.isClosed) {
+            o.isClosed = true;
+            updated = true;
+        }
+    });
 
-// 🔥🔥🔥 新增：補印功能 + 更新歷史紀錄介面 🔥🔥🔥
+    if (updated) {
+        saveAllToCloud(); 
+        closeSummaryModal(); 
+        showHistory(); 
+        alert("✅ 日結完成！所有未結訂單已入帳。"); 
+    } else {
+        closeSummaryModal();
+        alert("⚠️ 目前沒有任何未結帳的訂單。");
+    }
+}
+
 function reprintOrder(displayIndex) {
-    let realIndex = historyOrders.length - 1 - displayIndex;
-    let order = historyOrders[realIndex];
-
+    let visibleOrders = historyOrders.filter(o => !o.isClosed).reverse();
+    let order = visibleOrders[displayIndex];
     if (!order) return;
-
     printReceipt({
         seq: order.formattedSeq || order.seq || "補",
         table: order.seat,
@@ -437,7 +772,16 @@ function reprintOrder(displayIndex) {
         items: order.items,
         original: order.originalTotal || 0,
         total: order.total
-    }, false); // false = 收據模式
+    }, false); 
+}
+
+function getBusinessDate(dateObj) {
+    let d = new Date(dateObj);
+    if (d.getHours() < 5) {
+        d.setDate(d.getDate() - 1);
+    }
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
 }
 
 function showHistory() { 
@@ -446,9 +790,12 @@ function showHistory() {
         historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單</div>"; 
         return; 
     } 
-    
-    let orders = [...historyOrders].reverse(); 
-    
+    let orders = historyOrders.filter(o => !o.isClosed).reverse();
+    if (orders.length === 0) {
+        historyBox.innerHTML = "<div style='padding:20px;color:#888;'>今日尚無訂單 (或已日結)</div>";
+        return;
+    }
+
     orders.forEach((o, index) => { 
         let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`; 
         let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>"; 
@@ -460,7 +807,6 @@ function showHistory() {
             amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#d33;">$${o.total}</span>`; 
         } 
         
-        // 按鈕區塊
         historyBox.innerHTML += `
         <div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;">
             <span class="seq" style="font-weight:bold; color:#007bff;">${seqDisplay}</span>
@@ -474,7 +820,6 @@ function showHistory() {
                 <b>📅 完整時間：</b>${o.time}<br>
                 <b>🧾 內容：</b><br>${itemsDetail}
                 <div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#d33;">總計：$${o.total}</div>
-                
                 <div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;">
                     <button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button>
                     <button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button>
@@ -483,6 +828,7 @@ function showHistory() {
         </div>`; 
     }); 
 }
+
 function window_toggleDetail(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } }
 window.toggleDetail = window_toggleDetail;
 

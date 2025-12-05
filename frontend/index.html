@@ -33,8 +33,9 @@
             <div class="menu-btn">🏷 活動優惠</div>
             <div class="menu-btn" onclick="openSettingsPage()">🛠 系統設定</div>
 
-            <div class="menu-btn" onclick="openOwnerLogin()">🤫 機密</div>
-            <div class="menu-btn" onclick="openOwnerLogin()">🔐 權限</div>
+            <div class="menu-btn" onclick="openOwnerLogin('cost')">🤫 機密 (輸入成本)</div>
+            <div class="menu-btn" onclick="openOwnerLogin('finance')">🔐 權限 (財務報表)</div>
+            
             <div class="menu-btn">🧾 匯出Excel</div>
             <div class="menu-btn">💬 加料客製</div>
 
@@ -86,7 +87,7 @@
                 </div>
                 
                 <div class="action-buttons">
-                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 暫存 (送廚房)</button>
+                    <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 (出單)</button>
                     <button class="checkout-btn btn-effect" onclick="openPaymentModal()">💰 全結</button>
                     <button class="split-btn btn-effect" onclick="openSplitCheckout()">✂ 拆單</button>
                 </div>
@@ -106,31 +107,55 @@
         <div id="reportPage">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">📊 營業報表</div>
-            <div class="report-controls">
-                <button onclick="generateReport('day')" id="btnDay" class="btn-effect active">今日</button>
-                <button onclick="generateReport('week')" id="btnWeek" class="btn-effect">本周</button>
-                <button onclick="generateReport('month')" id="btnMonth" class="btn-effect">當月</button>
-            </div>
+            
             <div id="reportContent">
                 <div class="report-card total-card">
-                    <h3>💰 總營業額</h3><p id="rptTotal">$0</p><small id="rptCount">總單數: 0</small>
+                    <h3 id="rptTitle">💰 今日營業額</h3>
+                    <p id="rptTotal">$0</p>
+                    <small id="rptCount">總單數: 0</small>
+                </div>
+                <div class="report-controls">
+                    <button onclick="generateReport('day')" id="btnDay" class="btn-effect active">今日</button>
+                    <button onclick="generateReport('week')" id="btnWeek" class="btn-effect">本周</button>
+                    <button onclick="generateReport('month')" id="btnMonth" class="btn-effect">當月</button>
                 </div>
                 <div class="report-split">
                     <div class="report-card bar-card"><h3>🍺 酒吧部營收</h3><p id="rptBar">$0</p><small>調酒/純飲/Shot/啤酒/咖啡/飲料/厚片</small></div>
                     <div class="report-card bbq-card"><h3>🍖 燒烤部營收</h3><p id="rptBBQ">$0</p><small>燒烤/主餐/炸物</small></div>
                 </div>
-                <div style="margin-top:20px; color:#888; font-size:14px;">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
             </div>
+
+            <div class="calendar-wrapper">
+                <div class="calendar-header">
+                    <h2 id="calendarMonthTitle"></h2>
+                </div>
+                <div class="calendar-grid-header">
+                    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+                </div>
+                <div id="calendarGrid" class="calendar-grid"></div>
+            </div>
+            
+            <div style="margin-top:20px; color:#888; font-size:14px;">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
         </div>
 
         <div id="confidentialPage">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-            <div class="title">🤫 <span id="ownerWelcome"></span> 成本/售價管理</div>
+            <div class="title">🤫 <span id="ownerWelcome"></span> <span id="confidentialTitle"></span></div>
             
             <div id="financeDashboard" class="finance-container" style="display:none;"></div>
 
-            <div class="finance-detail-box">
-                <h3 id="costEditTitle">📝 品項列表 (售價 / 成本)</h3>
+            <div id="financeCalendarSection" class="calendar-wrapper" style="margin-top: 0; margin-bottom: 25px; display:none;">
+                <div class="calendar-header">
+                    <h2 id="finCalendarTitle" style="font-size:20px;"></h2>
+                </div>
+                <div class="calendar-grid-header">
+                    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+                </div>
+                <div id="finCalendarGrid" class="calendar-grid"></div>
+            </div>
+
+            <div id="costInputSection" class="finance-detail-box" style="display:none;">
+                <h3 id="costEditTitle">📝 成本輸入</h3>
                 <div class="cost-header-row">
                     <span>品項名稱</span>
                     <span style="text-align:right;">售價 (改)</span>
@@ -150,7 +175,7 @@
             </div>
         </div>
 
-        <div id="summaryModal" class="modal"><div class="modal-content"><h2>📅 本日營業結算</h2><div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div><div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#d33;">$0</span></div><hr><p style="color:#666; font-size:14px;">確認後將清除資料，請確認已核對無誤。</p><div class="modal-actions"><button onclick="closeSummaryModal()" class="btn-effect cancel">取消</button><button onclick="confirmClearData()" class="btn-effect confirm-danger">✅ 確認結帳並歸零</button></div></div></div>
+        <div id="summaryModal" class="modal"><div class="modal-content"><h2>📅 本日營業結算</h2><div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div><div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#d33;">$0</span></div><hr><p style="color:#666; font-size:14px;">確認後將完成日結，資料會自動寫入報表。</p><div class="modal-actions"><button onclick="closeSummaryModal()" class="btn-effect cancel">取消</button><button onclick="confirmClearData()" class="btn-effect confirm-success">✅ 確認日結 (已入帳)</button></div></div></div>
         
         <div id="paymentModal" class="modal"><div class="modal-content"><h2>💰 結帳確認</h2><div class="payment-info"><div class="pay-row"><span>應收金額 <small id="payDiscLabel" style="color:#888;"></small>：</span><span id="payOriginal" style="font-weight:bold;">$0</span></div><div class="pay-row"><span>$ 折讓/抹零：</span><input type="number" id="payAllowance" value="" oninput="calcFinalPay()" placeholder="輸入金額" style="color:#dc3545;" class="modal-input big-input"></div><hr><div class="pay-row large"><span>實收金額：</span><input type="number" id="payFinal" style="color:#d33; font-weight:bold;" class="modal-input big-input"></div></div><div class="modal-actions"><button onclick="closePaymentModal()" class="btn-effect cancel">取消</button><button onclick="confirmCheckout()" class="btn-effect confirm-success">✅ 確認收款</button></div></div></div>
         
