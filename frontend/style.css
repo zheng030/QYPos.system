@@ -114,10 +114,12 @@ button {
 .print-btn { background: #17a2b8; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; margin-right: 10px; }
 .delete-single-btn { background: #dc3545; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; }
 
-/* 報表 */
+/* 報表控制項 */
 .report-controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
 .report-controls button { padding: 10px 20px; border-radius: 20px; font-weight: bold; background: white; color: #555; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
 .report-controls button.active { background: #007bff; color: white; box-shadow: 0 4px 10px rgba(0,123,255,0.3); }
+
+/* 報表卡片 */
 .report-card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
 .total-card { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
 .total-card h3 { margin: 0 0 10px 0; opacity: 0.9; font-size: 18px; }
@@ -210,6 +212,7 @@ button {
         font-size: 14px;
         z-index: 9999;
         padding-left: 8px; 
+        float: none; /* 避免浮動問題 */
     }
 
     /* 隱藏所有不相關介面 */
