@@ -51,11 +51,6 @@
                 <div id="systemTime">載入中...</div>
             </div>
             <div class="title">請選擇座位</div>
-            <div class="legend-box">
-                <span class="legend-item"><span class="dot white"></span> 空桌</span>
-                <span class="legend-item"><span class="dot red"></span> 訂單未確認</span>
-                <span class="legend-item"><span class="dot yellow"></span> 用餐中 (已送單)</span>
-            </div>
             <div id="tableSelectGrid"></div>
         </div>
 
@@ -88,6 +83,7 @@
                 
                 <div class="action-buttons">
                     <button class="save-btn btn-effect" onclick="saveOrderManual()">📝 暫存</button>
+                    <button class="reprint-btn btn-effect" onclick="openReprintModal()">🖨 補單</button>
                     <button class="checkout-btn btn-effect" onclick="openPaymentModal()">💰 全結</button>
                     <button class="split-btn btn-effect" onclick="openSplitCheckout()">✂ 拆單</button>
                 </div>
@@ -206,6 +202,20 @@
             </div>
             <div class="modal-actions"><button onclick="closeCheckoutModal()" class="btn-effect cancel">取消</button><button onclick="confirmPayment()" class="btn-effect confirm-success">✅ 確認結帳</button></div>
         </div></div>
+
+        <div id="reprintSelectionModal" class="modal">
+            <div class="modal-content" style="max-width:400px;">
+                <div class="modal-header"><h2>🖨 選擇補單項目</h2></div>
+                <div class="modal-body" style="max-height:400px; overflow-y:auto;">
+                    <p style="color:#666; font-size:14px; margin-bottom:10px;">請勾選要列印的項目：</p>
+                    <div id="reprintList"></div>
+                </div>
+                <div class="modal-actions">
+                    <button onclick="closeReprintModal()" class="btn-effect cancel">取消</button>
+                    <button onclick="confirmReprintSelection()" class="btn-effect confirm-success">✅ 確認列印</button>
+                </div>
+            </div>
+        </div>
 
         <div id="ownerLoginModal" class="modal"><div class="modal-content">
             <div class="modal-header"><h2>🔐 請選擇身分</h2></div>

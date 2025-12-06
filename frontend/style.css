@@ -1,37 +1,19 @@
 /* ========== 全域設定 ========== */
-body {
-    font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    margin: 0;
-    background-color: #f0f2f5;
-    color: #333;
-    text-align: center;
-    -webkit-tap-highlight-color: transparent;
-}
-
-button {
-    cursor: pointer; font-family: inherit; user-select: none; border: none; outline: none;
-}
+body { font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background-color: #f0f2f5; color: #333; text-align: center; -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; font-family: inherit; user-select: none; border: none; outline: none; }
 .btn-effect { transition: all 0.2s; }
 .btn-effect:active { transform: scale(0.95); filter: brightness(0.9); }
-
-/* ========== 登入畫面 ========== */
 #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #2c3e50, #4ca1af); display: flex; justify-content: center; align-items: center; z-index: 9999; }
 .login-box { background: rgba(255, 255, 255, 0.95); padding: 40px; border-radius: 20px; width: 300px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); }
 .login-box input { width: 100%; padding: 15px; margin: 20px 0; border: 2px solid #eee; border-radius: 12px; font-size: 18px; text-align: center; box-sizing: border-box; }
 .login-box button { width: 100%; padding: 15px; font-size: 18px; background: #007bff; color: white; border-radius: 12px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,123,255,0.3); }
-
-/* ========== 版面配置 ========== */
 .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .back { background: #343a40; color: white; padding: 10px 20px; border-radius: 8px; font-size: 15px; font-weight: bold; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
 #systemTime { font-size: 16px; font-weight: bold; color: #555; background: #fff; padding: 8px 15px; border-radius: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-
 #home { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 20px; max-width: 1200px; margin: 0 auto; }
 .menu-btn { background: white; border-radius: 15px; padding: 20px 10px; font-size: 16px; font-weight: bold; color: #444; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px; transition: transform 0.2s, box-shadow 0.2s; }
 .menu-btn:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
-
 #orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage { display: none; padding: 20px; max-width: 1000px; margin: 0 auto 80px auto; }
-
-/* ========== 座位 ========== */
 .title { font-size: 26px; font-weight: 800; margin-bottom: 15px; color: #333; }
 .legend-box { display: flex; justify-content: center; gap: 15px; margin-bottom: 20px; }
 .legend-item { font-size: 14px; color: #666; display: flex; align-items: center; gap: 6px; }
@@ -43,26 +25,20 @@ button {
 .tableBtn { background: white; padding: 20px; border-radius: 15px; min-height: 90px; display: flex; flex-direction: column; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 20px; color: #333; border: 2px solid transparent; }
 .status-red { background: #ff4757; color: white; border: none; box-shadow: 0 5px 15px rgba(255, 71, 87, 0.3); }
 .status-yellow { background: #ffa502; color: white; border: none; box-shadow: 0 5px 15px rgba(255, 165, 2, 0.3); }
-
-/* ========== 點餐 ========== */
 .order-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .title-group { text-align: right; }
 #seatLabel { color: #007bff; }
 #seatTimer { font-size: 14px; color: #ff4757; font-weight: bold; margin-top: 5px; background: #fff0f1; padding: 4px 10px; border-radius: 10px; display: inline-block;}
-
 .customer-input-box { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
 .customer-input-box input { width: 100%; padding: 12px 15px; font-size: 16px; border: 1px solid #ddd; border-radius: 10px; background: white; outline: none; box-sizing: border-box; }
 .customer-input-box input:focus { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.1); }
-
 #menuGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
 .categoryBtn { background: white; border-radius: 12px; padding: 25px 10px; font-size: 18px; font-weight: bold; color: #333; box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: transform 0.1s; display: flex; align-items: center; justify-content: center; min-height: 80px; }
 .categoryBtn:active { transform: scale(0.96); background: #f8f9fa; }
-
 .item.list-mode { grid-column: 1 / -1; margin: 0; border-bottom: 1px solid #eee; border-radius: 0; }
 .sub-cat-title { grid-column: 1 / -1; text-align: left; font-size: 18px; font-weight: bold; color: white; background: #007bff; padding: 12px 15px; border-radius: 8px; margin: 15px 0 0 0; }
 .sub-cat-title + .item.list-mode { border-top-left-radius: 10px; border-top-right-radius: 10px; }
 .item.list-mode:last-child { border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; }
-
 .accordion-header { width: 100%; background: #007bff; color: white; padding: 15px; text-align: left; border-radius: 10px; margin-top: 10px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; grid-column: 1 / -1; box-shadow: 0 4px 10px rgba(0,123,255,0.2); }
 .accordion-content { display: none; grid-column: 1 / -1; background: white; border-radius: 0 0 10px 10px; padding: 5px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); margin-bottom: 10px; }
 .accordion-content.show { display: block; }
@@ -73,8 +49,6 @@ button {
 .item button { background: #28a745; color: white; padding: 8px 20px; border-radius: 6px; font-size: 15px; box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3); }
 .back-to-cat { grid-column: 1 / -1; background: #6c757d; color: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; }
 .inline-input { padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-right: 5px; font-size: 15px; }
-
-/* 購物車 */
 #cart-container { background: white; border-radius: 15px; padding: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
 #cart-list { max-height: 300px; overflow-y: auto; margin-bottom: 15px; text-align: left; }
 .cart-item-row { display: grid; grid-template-columns: 2fr 1fr auto auto; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px dashed #eee; }
@@ -87,12 +61,11 @@ button {
 .discount-actions { display: flex; gap: 10px; }
 .small-btn { background: #e9ecef; color: #555; border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: bold; }
 #total { font-size: 24px; font-weight: 800; color: #d33; margin: 0; }
-.action-buttons { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 12px; margin-top: 20px; }
+.action-buttons { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-top: 20px; }
 .save-btn { background: #ffc107; color: #333; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 10px; box-shadow: 0 4px 10px rgba(255, 193, 7, 0.3); }
+.reprint-btn { background: #17a2b8; color: white; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 10px; box-shadow: 0 4px 10px rgba(23, 162, 184, 0.3); }
 .checkout-btn { background: #007bff; color: white; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3); }
 .split-btn { background: #6f42c1; color: white; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 10px; box-shadow: 0 4px 10px rgba(111, 66, 193, 0.3); }
-
-/* 成本與設定 */
 .finance-detail-box { background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow: hidden; margin-top: 20px; }
 .finance-detail-box h3 { background: #343a40; color: white; margin: 0; padding: 15px; font-size: 18px; text-align: left; }
 .cost-header-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px; align-items: center; padding: 12px 20px; background: #f1f3f5; font-weight: bold; color: #555; font-size: 15px; border-bottom: 2px solid #e9ecef; }
@@ -104,22 +77,14 @@ button {
 .owner-btn { background: white; color: #333; padding: 20px 30px; font-size: 18px; font-weight: bold; border-radius: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08); border: 2px solid transparent; transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; }
 .owner-btn:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15); border-color: #007bff; color: #007bff; }
 .owner-cancel-btn { width: 100%; margin-top: 25px; background: #6c757d; color: white; padding: 15px; font-size: 18px; font-weight: bold; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
-
-/* 歷史列表美編 */
 .history-header-row { display: grid !important; grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr !important; background: #343a40; color: white; padding: 15px; border-radius: 10px 10px 0 0; font-weight: bold; font-size: 15px; }
 .history-row { display: grid !important; grid-template-columns: 0.8fr 1fr 2fr 1fr 1fr !important; background: white; padding: 15px; border-bottom: 1px solid #eee; align-items: center; font-size: 15px; }
 .end-business-btn { width: 100%; margin-top: 30px; background: #dc3545; color: white; padding: 15px; border-radius: 10px; font-size: 18px; font-weight: bold; box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3); }
-
-/* 列印按鈕與刪除按鈕 */
 .print-btn { background: #17a2b8; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; margin-right: 10px; }
 .delete-single-btn { background: #dc3545; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; }
-
-/* 報表控制項 */
 .report-controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
 .report-controls button { padding: 10px 20px; border-radius: 20px; font-weight: bold; background: white; color: #555; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
 .report-controls button.active { background: #007bff; color: white; box-shadow: 0 4px 10px rgba(0,123,255,0.3); }
-
-/* 報表卡片 */
 .report-card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
 .total-card { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
 .total-card h3 { margin: 0 0 10px 0; opacity: 0.9; font-size: 18px; }
@@ -127,50 +92,30 @@ button {
 .report-split { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .report-split h3 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; font-size: 18px; color: #555; }
 .report-split p { font-size: 28px; font-weight: bold; color: #333; margin: 10px 0; }
-
-/* 日曆 */
 .calendar-wrapper { background: white; border-radius: 15px; padding: 20px; margin-top: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
 .calendar-header h2 { margin: 0; color: #333; font-size: 22px; margin-bottom: 15px; }
 .calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 10px; font-weight: bold; color: #888; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-.calendar-day { 
-    min-height: 60px; /* 確保有高度 */
-    border: 1px solid #eee; 
-    border-radius: 10px; 
-    padding: 5px; 
-    display: flex; 
-    flex-direction: column; 
-    justify-content: flex-start; 
-    font-size: 14px; 
-    position: relative; 
-    background: #fdfdfd; 
-    cursor: pointer; 
-}
+.calendar-day { aspect-ratio: 1 / 1; border: 1px solid #eee; border-radius: 10px; padding: 5px; display: flex; flex-direction: column; justify-content: space-between; font-size: 14px; position: relative; background: #fdfdfd; cursor: pointer; }
 .calendar-day:hover { background: #f0f7ff; }
 .calendar-day.empty { border: none; background: transparent; cursor: default; }
 .calendar-day.today { border: 2px solid #007bff; background: #f0f7ff; }
-.day-num { font-weight: bold; color: #555; text-align: left; margin-bottom: 5px; }
+.day-num { font-weight: bold; color: #555; text-align: left; padding-left: 3px; }
 .day-revenue { font-weight: 800; color: #d33; font-size: 13px; text-align: right; word-break: break-all; }
 .fin-line { font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 1px; }
 .fin-line span:first-child { color: #555; font-weight: bold; }
 .fin-rev { color: #007bff; }
 .fin-cost { color: #999; }
 .fin-profit { color: #28a745; font-weight: bold; }
-
-/* 🔥🔥🔥 財務明細彈窗樣式 🔥🔥🔥 */
 .fin-detail-card { padding: 15px; border-radius: 12px; margin-bottom: 15px; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
 .fin-detail-card h3 { margin: 0 0 10px 0; font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; }
 .fin-detail-card .fin-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 16px; }
 .fin-detail-card .fin-row.total { font-weight: bold; font-size: 20px; margin-top: 5px; }
 .fin-detail-card hr { border: 0; border-top: 1px dashed rgba(255,255,255,0.4); margin: 10px 0; }
-
-.bar-style { background: linear-gradient(135deg, #4facfe, #00f2fe); } /* 藍色 */
-.bbq-style { background: linear-gradient(135deg, #ff9a9e, #fecfef); color: #333; } /* 橘粉色 */
-.total-style { background: linear-gradient(135deg, #667eea, #764ba2); } /* 紫色 */
-
-.red-text { color: #ffeded; font-weight: bold; } /* 成本用淺紅色突顯 */
-
-/* Modal */
+.bar-style { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+.bbq-style { background: linear-gradient(135deg, #ff9a9e, #fecfef); color: #333; }
+.total-style { background: linear-gradient(135deg, #667eea, #764ba2); }
+.red-text { color: #ffeded; font-weight: bold; }
 .modal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); justify-content: center; align-items: center; z-index: 10000; }
 .modal-content { background: white; padding: 30px; border-radius: 20px; width: 95%; max-width: 900px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); animation: fadeIn 0.3s; }
 .modal-header { border-bottom: 1px solid #e9ecef; margin-bottom: 15px; padding-bottom: 10px; }
@@ -193,86 +138,6 @@ button {
 .radio-box input { display: none; }
 .radio-btn { background: #f1f3f5; padding: 12px 10px; border-radius: 8px; text-align: center; font-size: 15px; color: #555; border: 2px solid transparent; transition: 0.2s; }
 .radio-box input:checked + .radio-btn { background: #e7f3ff; border-color: #007bff; color: #007bff; font-weight: bold; box-shadow: 2px 8px rgba(0,123,255,0.2); }
-
-@keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
-
-/* 🔥🔥🔥 修正: iPad 列印專用區塊 (48mm 寬度) 🔥🔥🔥 */
-#receipt-print-area { 
-    position: fixed; 
-    top: 0; 
-    left: -9999px; 
-    width: 48mm;  
-    background: white;
-    z-index: -1;
-    padding-left: 0;
-    box-sizing: border-box;
-}
-
-@media print {
-    @page {
-        margin: 0; 
-        size: auto; 
-    }
-    
-    html, body {
-        height: auto !important;
-        background-color: transparent !important; 
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-        color: black !important;
-    }
-
-    /* 隱藏所有網頁介面 */
-    body > * {
-        display: none !important;
-    }
-
-    /* 顯示列印區塊 */
-    #receipt-print-area {
-        display: block !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 48mm !important; 
-        background-color: transparent !important;
-        font-family: "Courier New", monospace;
-        color: black !important;
-        font-size: 11px; 
-        z-index: 9999;
-        padding-left: 2px; 
-        margin-left: 2px;
-    }
-
-    .receipt-section { 
-        display: block; 
-        width: 100%; 
-        margin-bottom: 0; 
-        padding-bottom: 0;
-        page-break-after: always;
-        break-after: page;
-    }
-    .receipt-section:last-child {
-        page-break-after: avoid;
-    }
-
-    .receipt-header { text-align: center; margin-bottom: 5px; color: black !important; }
-    .store-name { font-size: 16px; font-weight: bold; margin: 0 0 2px 0; }
-    .receipt-info p { margin: 1px 0; font-size: 10px; }
-    .dashed-line { border-top: 1px dashed #000; margin: 3px 0; }
-
-    .receipt-item { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; color: black !important; gap: 2px; }
-    .kitchen-item { font-size: 18px; font-weight: bold; margin: 5px 0; border-bottom: 1px solid #ccc; padding-bottom: 2px; color: black !important; }
-    
-    .receipt-footer { margin-top: 5px; font-size: 11px; color: black !important; }
-    .receipt-footer .row { display: flex; justify-content: space-between; margin: 1px 0; }
-    .receipt-footer .total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 3px; margin-top: 3px; }
-}
-
-@media (max-width: 768px) {
-    #home { grid-template-columns: repeat(3, 1fr); }
-    #menuGrid { grid-template-columns: repeat(2, 1fr); } 
-    .split-checkout-container { flex-direction: column; height: auto; }
-    .checkout-box { width: 100%; height: 250px; }
-    .split-arrow { transform: rotate(90deg); margin: 10px 0; }
-}
+#receipt-print-area { position: fixed; top: 0; left: -9999px; width: 48mm; background: white; z-index: -1; padding-left: 0; box-sizing: border-box; }
+@media print { @page { margin: 0; size: auto; } html, body { height: auto !important; background-color: transparent !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; color: black !important; } body > * { display: none !important; } #receipt-print-area { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 48mm !important; background-color: transparent !important; font-family: "Courier New", monospace; color: black !important; font-size: 11px; z-index: 9999; padding-left: 10px; margin-left: 0; } .receipt-section { display: block; width: 100%; margin-bottom: 0; padding-bottom: 0; page-break-after: always; break-after: page; } .receipt-section:last-child { page-break-after: avoid; } .receipt-header { text-align: center; margin-bottom: 5px; color: black !important; } .store-name { font-size: 16px; font-weight: bold; margin: 0 0 2px 0; } .receipt-info p { margin: 1px 0; font-size: 10px; } .dashed-line { border-top: 1px dashed #000; margin: 3px 0; } .receipt-item { display: flex; justify-content: space-between; margin: 2px 0; font-size: 11px; color: black !important; gap: 2px; } .kitchen-item { font-size: 18px; font-weight: bold; margin: 5px 0; border-bottom: 1px solid #ccc; padding-bottom: 2px; color: black !important; } .receipt-footer { margin-top: 5px; font-size: 11px; color: black !important; } .receipt-footer .row { display: flex; justify-content: space-between; margin: 1px 0; } .receipt-footer .total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 3px; margin-top: 3px; } }
+@media (max-width: 768px) { #home { grid-template-columns: repeat(3, 1fr); } #menuGrid { grid-template-columns: repeat(2, 1fr); } .split-checkout-container { flex-direction: column; height: auto; } .checkout-box { width: 100%; height: 250px; } .split-arrow { transform: rotate(90deg); margin: 10px 0; } }
