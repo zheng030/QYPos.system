@@ -6,6 +6,9 @@ body {
     color: #333;
     text-align: center;
     -webkit-tap-highlight-color: transparent;
+    /* 🔥 禁止觸控縮放延遲 */
+    touch-action: manipulation; 
+    overscroll-behavior: none;
 }
 
 button {
@@ -18,6 +21,23 @@ button {
 
 .btn-effect { transition: all 0.2s; }
 .btn-effect:active { transform: scale(0.95); filter: brightness(0.9); }
+
+/* 🔥 Toast 提示框樣式 */
+#toast-container {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 50px;
+    font-size: 16px;
+    z-index: 20000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+}
 
 /* ========== 2. 登入畫面 ========== */
 #login-screen {
@@ -124,7 +144,7 @@ button {
     box-shadow: 0 8px 20px rgba(0,0,0,0.1);
 }
 
-#orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage {
+#orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage, #pastHistoryPage {
     display: none;
     padding: 20px;
     max-width: 1000px;
@@ -421,7 +441,7 @@ button {
     margin: 0;
 }
 
-/* 🔥🔥🔥 按鈕群組：4 欄排版 (包含補單按鈕) 🔥🔥🔥 */
+/* 按鈕群組 */
 .action-buttons {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 1fr;
@@ -559,6 +579,38 @@ button {
 .print-btn { background: #17a2b8; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; margin-right: 10px; }
 .delete-single-btn { background: #dc3545; color: white; padding: 10px 15px; border-radius: 8px; font-size: 15px; font-weight: bold; }
 
+/* 🔥 歷史訂單切換按鈕美化 */
+.view-toggle-container {
+    display: flex;
+    justify-content: flex-end; 
+    margin-bottom: 15px;
+    padding-right: 5px;
+}
+.view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background-color: #ffffff;
+    color: #555;
+    border: 1px solid #ddd;
+    padding: 8px 20px;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+.view-toggle-btn:hover {
+    border-color: #007bff;
+    color: #007bff;
+    background-color: #f0f7ff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,123,255,0.15);
+}
+.view-toggle-btn span.icon { font-size: 16px; }
+
+
 /* ========== 9. 報表與日曆 ========== */
 .report-controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
 .report-controls button { padding: 10px 20px; border-radius: 20px; font-weight: bold; background: white; color: #555; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
@@ -626,7 +678,7 @@ button {
 
 @keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
 
-/* ========== 11. 列印設定 (右移 30px) ========== */
+/* ========== 11. 列印設定 ========== */
 #receipt-print-area { 
     position: fixed; 
     top: 0; 
@@ -668,7 +720,7 @@ button {
         color: black !important;
         font-size: 11px; 
         z-index: 9999;
-        /* 🔥 關鍵調整：左邊距 30px 🔥 */
+        /* 🔥 左邊距 30px */
         padding-left: 30px; 
         margin-left: 0;
     }

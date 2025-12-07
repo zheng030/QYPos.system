@@ -9,6 +9,8 @@
 <body ontouchstart="">
 
     <div id="receipt-print-area"></div>
+    
+    <div id="toast-container"></div>
 
     <div id="login-screen">
         <div class="login-box">
@@ -41,7 +43,7 @@
 
             <div class="menu-btn">📨 電子發票</div>
             <div class="menu-btn">🧮 日結</div>
-            <div class="menu-btn">📦 進貨記錄</div>
+            <div class="menu-btn" onclick="openPage('pastHistoryPage')">📜 歷史紀錄</div>
             <div class="menu-btn">🔍 商品搜尋</div>
         </div>
 
@@ -71,7 +73,12 @@
             <div id="menuGrid"></div> 
 
             <div id="cart-container">
-                <h2>🧾 訂單明細</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>🧾 訂單明細</h2>
+                    <button onclick="toggleCartView()" class="btn-effect" style="background:#17a2b8; color:white; border-radius:20px; padding:5px 12px; font-size:14px; font-weight:bold;">
+                        👁️ 切換視圖
+                    </button>
+                </div>
                 <div id="cart-list"></div>
                 
                 <div class="summary-row">
@@ -98,6 +105,29 @@
             </div>
             <div id="history-box"></div>
             <button onclick="closeBusiness()" class="end-business-btn btn-effect">🛑 結束營業 (日結)</button>
+        </div>
+
+        <div id="pastHistoryPage" style="display:none;">
+            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+            <div class="title">📜 歷史訂單查詢</div>
+            
+            <div class="calendar-wrapper">
+                <div class="calendar-header">
+                    <h2 id="historyCalendarTitle"></h2>
+                </div>
+                <div class="calendar-grid-header">
+                    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+                </div>
+                <div id="historyCalendarGrid" class="calendar-grid"></div>
+            </div>
+
+            <div id="pastOrderListSection" style="margin-top:20px; display:none;">
+                <h3 id="selectedDateTitle" style="border-bottom: 2px solid #007bff; padding-bottom: 10px; color:#007bff;"></h3>
+                <div class="history-header-row">
+                    <span>序號</span><span>桌號</span><span>內容摘要</span><span>時間</span><span>金額</span>
+                </div>
+                <div id="pastOrderBox"></div>
+            </div>
         </div>
 
         <div id="reportPage">
@@ -173,15 +203,15 @@
 
             <div style="margin-top: 50px; padding-top: 20px; border-top: 2px dashed #ccc;">
                 <h3 style="color:#dc3545;">⚠️ 危險專區</h3>
+                <button onclick="fixAllOrderIds()" class="btn-effect" style="width:100%; padding:15px; font-size:18px; background:#17a2b8; color:white; border-radius:10px; font-weight:bold; margin-bottom:15px;">🔄 一鍵重整歷史單號 (修正 #16 -> #1)</button>
+                
                 <button onclick="clearAllData()" class="btn-effect" style="width:100%; padding:15px; font-size:18px; background:#dc3545; color:white; border-radius:10px; font-weight:bold;">🗑️ 一鍵清空所有訂單 (保留成本設定)</button>
                 <p style="color:#666; font-size:14px; margin-top:10px;">此動作無法復原，將清空今日訂單、歷史報表與桌況。</p>
             </div>
         </div>
 
         <div id="summaryModal" class="modal"><div class="modal-content"><h2>📅 本日營業結算</h2><div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div><div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#d33;">$0</span></div><hr><p style="color:#666; font-size:14px;">確認後將完成日結，資料會自動寫入報表。</p><div class="modal-actions"><button onclick="closeSummaryModal()" class="btn-effect cancel">取消</button><button onclick="confirmClearData()" class="btn-effect confirm-success">✅ 確認日結 (已入帳)</button></div></div></div>
-        
         <div id="paymentModal" class="modal"><div class="modal-content"><h2>💰 結帳確認</h2><div class="payment-info"><div class="pay-row"><span>應收金額 <small id="payDiscLabel" style="color:#888;"></small>：</span><span id="payOriginal" style="font-weight:bold;">$0</span></div><div class="pay-row"><span>$ 折讓/抹零：</span><input type="number" id="payAllowance" value="" oninput="calcFinalPay()" placeholder="輸入金額" style="color:#dc3545;" class="modal-input big-input"></div><hr><div class="pay-row large"><span>實收金額：</span><input type="number" id="payFinal" style="color:#d33; font-weight:bold;" class="modal-input big-input"></div></div><div class="modal-actions"><button onclick="closePaymentModal()" class="btn-effect cancel">取消</button><button onclick="confirmCheckout()" class="btn-effect confirm-success">✅ 確認收款</button></div></div></div>
-        
         <div id="checkoutModal" class="modal"><div class="modal-content" style="max-width:900px;">
             <div class="modal-header"><h2>✂ 拆單結帳</h2></div>
             <div class="modal-body">
@@ -202,7 +232,6 @@
             </div>
             <div class="modal-actions"><button onclick="closeCheckoutModal()" class="btn-effect cancel">取消</button><button onclick="confirmPayment()" class="btn-effect confirm-success">✅ 確認結帳</button></div>
         </div></div>
-
         <div id="reprintSelectionModal" class="modal">
             <div class="modal-content" style="max-width:400px;">
                 <div class="modal-header"><h2>🖨 選擇補單項目</h2></div>
@@ -216,7 +245,6 @@
                 </div>
             </div>
         </div>
-
         <div id="ownerLoginModal" class="modal"><div class="modal-content">
             <div class="modal-header"><h2>🔐 請選擇身分</h2></div>
             <div class="modal-body" style="padding-top: 20px;">
@@ -224,9 +252,7 @@
             </div>
             <button onclick="closeOwnerModal()" class="btn-effect owner-cancel-btn">取消</button>
         </div></div>
-        
         <div id="changePasswordModal" class="modal"><div class="modal-content"><h2>🔑 修改密碼 - <span id="pwdOwnerName"></span></h2><div style="margin-top:15px;"><input type="password" id="oldPwd" placeholder="輸入舊密碼" class="pwd-input modal-input"><input type="password" id="newPwd" placeholder="輸入新密碼" class="pwd-input modal-input"><input type="password" id="confirmPwd" placeholder="再次確認新密碼" class="pwd-input modal-input"></div><div class="modal-actions"><button onclick="closeChangePasswordModal()" class="btn-effect cancel">取消</button><button onclick="confirmChangePassword()" class="btn-effect confirm-primary">✅ 確認修改</button></div></div></div>
-        
         <div id="discountModal" class="modal"><div class="modal-content">
             <div class="modal-header"><h2>% 折扣設定</h2></div>
             <div class="modal-body" style="text-align: center; padding: 30px 0;">
@@ -238,7 +264,6 @@
             </div>
             <div class="modal-actions"><button onclick="closeDiscountModal()" class="btn-effect cancel">取消</button><button onclick="confirmDiscount()" class="btn-effect confirm-warning">確定</button></div>
         </div></div>
-
         <div id="allowanceModal" class="modal"><div class="modal-content">
             <div class="modal-header"><h2>$ 金額折讓</h2></div>
             <div class="modal-body" style="text-align:center; padding:30px 0;">
@@ -250,7 +275,6 @@
             </div>
             <div class="modal-actions"><button onclick="closeAllowanceModal()" class="btn-effect cancel">取消</button><button onclick="confirmAllowance()" class="btn-effect confirm-primary">確定</button></div>
         </div></div>
-
         <div id="financeDetailModal" class="modal"><div class="modal-content">
             <div class="modal-header"><h2 id="fdTitle">📅 財務明細</h2></div>
             <div class="modal-body">
@@ -280,7 +304,6 @@
                 <button onclick="closeFinanceDetailModal()" class="btn-effect" style="background:#6c757d; color:white;">關閉</button>
             </div>
         </div></div>
-
         <div id="customModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🍹 <span id="customTitle">隱藏特調</span>客製化</h2></div><div class="modal-body"><div class="custom-section"><div class="custom-label">1. 香氣選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="flavor" value="花香調" checked><div class="radio-btn btn-effect">花香調 🌸</div></label><label class="radio-box"><input type="radio" name="flavor" value="果香調"><div class="radio-btn btn-effect">果香調 🍎</div></label><label class="radio-box"><input type="radio" name="flavor" value="木質調"><div class="radio-btn btn-effect">木質調 🌲</div></label></div></div><div class="custom-section"><div class="custom-label">2. 口感偏好</div><div class="radio-group"><label class="radio-box"><input type="radio" name="taste" value="偏酸" checked><div class="radio-btn btn-effect">偏酸 🍋</div></label><label class="radio-box"><input type="radio" name="taste" value="偏甜"><div class="radio-btn btn-effect">偏甜 🍯</div></label><label class="radio-box"><input type="radio" name="taste" value="偏苦"><div class="radio-btn btn-effect">偏苦 ☕</div></label><label class="radio-box"><input type="radio" name="taste" value="偏鹹"><div class="radio-btn btn-effect">偏鹹 🧂</div></label></div></div><div id="modalAlcoholSection" class="custom-section"><div class="custom-label">3. 濃度調整 (<span id="alcoholVal">0</span>%)</div><input type="range" id="alcoholRange" min="0" max="100" step="10" value="0" style="width:100%; margin: 15px 0;" oninput="document.getElementById('alcoholVal').innerText=this.value"><div style="display:flex;justify-content:space-between;font-size:12px;color:#888; margin-bottom:10px;"><span>正常</span><span>加重</span><span>雙倍</span></div><button id="extraShotBtn" onclick="toggleExtraShot()" class="extra-shot-btn btn-effect">🍺 濃度升級 (+$40)</button></div><div id="modalNoteSection" class="custom-section" style="display:none;"><div class="custom-label">3. 備註 (選填)</div><textarea id="customNote" rows="2" placeholder="例如：少冰、不要裝飾..." class="modal-input" style="width:100%;"></textarea></div></div><div class="modal-actions"><button onclick="closeCustomModal()" class="btn-effect cancel">取消</button><button onclick="confirmCustomItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
         <div id="drinkModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🥤 <span id="drinkTitle">飲料</span>選項</h2></div><div class="modal-body" style="padding-top: 20px;"><div id="simpleTempSection" class="custom-section" style="display:none;"><div class="custom-label">溫度選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="simpleTemp" value="冰" checked><div class="radio-btn btn-effect">🧊 冰</div></label><label class="radio-box"><input type="radio" name="simpleTemp" value="熱"><div class="radio-btn btn-effect">🔥 熱</div></label></div></div><div id="advanceTempSection" class="custom-section" style="display:none;"><div class="custom-label">冰塊/溫度</div><div class="radio-group" style="font-size:14px;"><label class="radio-box"><input type="radio" name="advTemp" value="去冰" checked><div class="radio-btn btn-effect">去冰</div></label><label class="radio-box"><input type="radio" name="advTemp" value="微冰"><div class="radio-btn btn-effect">微冰</div></label><label class="radio-box"><input type="radio" name="advTemp" value="少冰"><div class="radio-btn btn-effect">少冰</div></label><label class="radio-box"><input type="radio" name="advTemp" value="溫"><div class="radio-btn btn-effect">溫</div></label><label class="radio-box"><input type="radio" name="advTemp" value="熱"><div class="radio-btn btn-effect">熱</div></label></div></div><div id="sugarSection" class="custom-section" style="display:none;"><div class="custom-label">甜度選擇</div><div class="radio-group"><label class="radio-box"><input type="radio" name="sugar" value="無糖" checked><div class="radio-btn btn-effect">無糖</div></label><label class="radio-box"><input type="radio" name="sugar" value="微糖"><div class="radio-btn btn-effect">微糖</div></label><label class="radio-box"><input type="radio" name="sugar" value="少糖"><div class="radio-btn btn-effect">少糖</div></label><label class="radio-box"><input type="radio" name="sugar" value="全糖"><div class="radio-btn btn-effect">全糖</div></label></div></div></div><div class="modal-actions"><button onclick="closeDrinkModal()" class="btn-effect cancel">取消</button><button onclick="confirmDrinkItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
         <div id="foodOptionModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🍛 <span id="foodTitle">餐點</span>配料</h2></div><div class="modal-body" style="padding-top: 20px;"><div class="custom-section"><div class="custom-label">請選擇配料：</div><div class="radio-group nowrap" id="meatOptions"></div></div></div><div class="modal-actions"><button onclick="closeFoodModal()" class="btn-effect cancel">取消</button><button onclick="confirmFoodItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
