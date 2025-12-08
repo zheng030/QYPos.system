@@ -67,7 +67,17 @@ button {
 .back { background: #edf2f7; color: var(--text-main); padding: 10px 20px; border-radius: 50px; font-size: 15px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
 .back:hover { background: #e2e8f0; }
 #systemTime { font-size: 15px; font-weight: 600; color: var(--text-sub); background: #f8f9fa; padding: 8px 16px; border-radius: 50px; }
-#home { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 30px; max-width: 1200px; margin: 0 auto; }
+
+/* 🔥 更新後的首頁 Grid 設定 (3欄) */
+#home { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); /* 強制 3 欄 */
+    gap: 20px; 
+    padding: 30px; 
+    max-width: 1000px; /* 寬度稍微縮小讓 3 欄更好看 */
+    margin: 0 auto; 
+}
+
 .menu-btn { background: var(--card-bg); border-radius: var(--radius-lg); padding: 25px 15px; font-size: 17px; font-weight: 600; color: var(--text-main); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; gap: 10px; transition: all 0.3s ease; border: 1px solid transparent; }
 .menu-btn:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); border-color: var(--primary-color); color: var(--primary-color); }
 #orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage, #pastHistoryPage { display: none; padding: 20px; max-width: 1100px; margin: 0 auto; }
@@ -235,6 +245,7 @@ button {
 
 /* ========== RWD ========== */
 @media (max-width: 900px) {
+    /* 這裡依然維持 3 欄，您也可以改成 2 欄 */
     #home { grid-template-columns: repeat(3, 1fr); }
     .report-dashboard { grid-template-columns: 1fr; }
     .finance-layout { flex-direction: column; }
@@ -243,6 +254,7 @@ button {
     .summary-card { min-width: 260px; }
 }
 @media (max-width: 600px) {
+    /* 手機版自動切換為 2 欄，避免按鈕太小 */
     #home { grid-template-columns: repeat(2, 1fr); }
     .finance-summary-sidebar { flex-direction: column; }
     .summary-card { width: 100%; }
