@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>POS 點餐系統</title>
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
@@ -304,12 +304,29 @@
         <div id="foodOptionModal" class="modal"><div class="modal-content" style="text-align:left;"><div class="modal-header"><h2 style="text-align:center; margin:0;">🍛 <span id="foodTitle">餐點</span>配料</h2></div><div class="modal-body" style="padding-top: 20px;"><div class="custom-section"><div class="custom-label">請選擇配料：</div><div class="radio-group nowrap" id="meatOptions"></div></div></div><div class="modal-actions"><button onclick="closeFoodModal()" class="btn-effect cancel">取消</button><button onclick="confirmFoodItem()" class="btn-effect confirm-success">✅ 確認加入</button></div></div></div>
         <div id="qrCodeModal" class="modal"><div class="modal-content" style="text-align: center;"><div class="modal-header"><h2>📲 客人點餐 QR Code</h2></div><div style="padding: 20px; display: flex; flex-direction: column; align-items: center;"><h3 id="qrTableTitle" style="color: #4361ee; margin-bottom: 10px;"></h3><div id="qrcode" style="margin: 10px auto;"></div><p style="color: #666; font-size: 14px; margin-top: 15px;">請客人掃描此碼即可開始點餐</p></div><div class="modal-actions"><button onclick="closeQrModal()" class="btn-effect" style="background:#6c757d; color:white;">關閉</button></div></div></div>
 
+        <div id="incomingOrderModal" class="modal">
+            <div class="modal-content" style="border-top: 5px solid #ff006e;">
+                <div class="modal-header">
+                    <h2 style="color:#ff006e;">🔔 新的顧客訂單！</h2>
+                </div>
+                <div class="modal-body" style="text-align: center;">
+                    <h3 id="incomingTableTitle" style="font-size: 24px; margin: 10px 0;"></h3>
+                    <p style="color:#666;">顧客剛剛送出了以下餐點：</p>
+                    <div id="incomingList" style="background:#fff0f3; padding:15px; border-radius:10px; text-align:left; max-height:200px; overflow-y:auto; margin-bottom:20px;"></div>
+                </div>
+                <div class="modal-actions">
+                    <button onclick="rejectIncomingOrder()" class="btn-effect" style="background:#f1f5f9; color:#666;">❌ 忽略/拒絕</button>
+                    <button onclick="confirmIncomingOrder()" class="btn-effect" style="background:#ff006e; color:white; font-size:18px;">✅ 確認接單</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="data.js?v=6"></script>
-    <script src="logic.js?v=6"></script>
-    <script src="ui.js?v=6"></script>
+    <script src="data.js?v=7"></script>
+    <script src="logic.js?v=7"></script>
+    <script src="ui.js?v=7"></script>
 </body>
 </html>

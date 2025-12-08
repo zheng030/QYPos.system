@@ -1,4 +1,4 @@
-/* style.css - 完整版 (包含3欄首頁與客人免登入模式) */
+/* style.css - 完整版 (包含3欄首頁、客人模式與訂單顏色) */
 
 /* ========== 1. 全域設定 (現代化風格) ========== */
 :root {
@@ -63,7 +63,7 @@ button {
 .login-box input:focus { border-color: var(--primary-color); }
 .login-box button { width: 100%; padding: 15px; font-size: 18px; background: var(--primary-color); color: white; border-radius: var(--radius-md); font-weight: bold; box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3); }
 
-/* ========== 3. 版面配置 (首頁更新為3欄) ========== */
+/* ========== 3. 版面配置 ========== */
 #app-container { padding-bottom: 40px; }
 .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: var(--card-bg); padding: 15px 20px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 .back { background: #edf2f7; color: var(--text-main); padding: 10px 20px; border-radius: 50px; font-size: 15px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
@@ -259,6 +259,25 @@ body.customer-mode .del-btn {
     color: #999; 
     border: 1px solid #ddd;
     padding: 5px 10px;
+}
+
+/* ========== 🔥 訂單批次顏色 (藍 -> 紅 -> 綠 循環) ========== */
+.batch-blue {
+    background-color: #e0f2fe !important; /* 淺藍 */
+    border-left: 5px solid #007bff !important;
+}
+.batch-red {
+    background-color: #fee2e2 !important; /* 淺紅 */
+    border-left: 5px solid #ef476f !important;
+}
+.batch-green {
+    background-color: #d1fae5 !important; /* 淺綠 */
+    border-left: 5px solid #06d6a0 !important;
+}
+/* 讓購物車內的文字在有背景色時依然清晰 */
+.cart-item-row.batch-blue, .cart-item-row.batch-red, .cart-item-row.batch-green {
+    margin-bottom: 8px;
+    border-radius: 8px;
 }
 
 @keyframes pulse-btn {

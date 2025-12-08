@@ -1,4 +1,4 @@
-/* ui.js - 介面渲染與事件處理 (Fix: Customer Menu & Display) */
+/* ui.js - 介面渲染與事件處理 (Fix: Alert Modal & Color Batches) */
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
@@ -47,7 +47,6 @@ function showQrModal(table) {
     title.innerText = `桌號：${table}`;
     qrContainer.innerHTML = ""; 
     
-    // 這裡會自動抓取當前網址 (例如 github pages 的網址)
     const baseUrl = window.location.href.split('?')[0];
     const orderUrl = `${baseUrl}?table=${encodeURIComponent(table)}`;
     
@@ -57,6 +56,32 @@ function showQrModal(table) {
 }
 
 function closeQrModal() { document.getElementById("qrCodeModal").style.display = "none"; }
+
+/* ========== 🔥 新增：待確認訂單彈窗顯示 ========== */
+function showIncomingOrderModal(table, orderData) {
+    currentIncomingTable = table;
+    const modal = document.getElementById("incomingOrderModal");
+    document.getElementById("incomingTableTitle").innerText = `桌號：${table}`;
+    
+    const list = document.getElementById("incomingList");
+    list.innerHTML = "";
+    
+    if (orderData.items) {
+        orderData.items.forEach(item => {
+            list.innerHTML += `<div style="padding:5px 0; border-bottom:1px solid #ffccd5; display:flex; justify-content:space-between;">
+                <span style="font-weight:bold; color:#333;">${item.name}</span>
+                <span style="color:#ef476f;">$${item.price}</span>
+            </div>`;
+        });
+    }
+    
+    modal.style.display = "flex";
+}
+
+function closeIncomingOrderModal() {
+    document.getElementById("incomingOrderModal").style.display = "none";
+    currentIncomingTable = null;
+}
 
 /* ========== 座位與點餐 UI ========== */
 function renderTableGrid() { 
@@ -179,7 +204,7 @@ function openItems(category) {
     grid.innerHTML = html;
 }
 
-/* ========== 購物車渲染 ========== */
+/* ========== 購物車渲染 (🔥加入批次顏色邏輯) ========== */
 function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); }
 function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
 
@@ -206,6 +231,14 @@ function renderCart() {
         let priceHtml = "";
         let nameHtml = "";
 
+        // 🔥 顏色判斷：根據 batchIdx 決定 class
+        let rowClass = "cart-item-row";
+        if (typeof c.batchIdx !== 'undefined') {
+            if (c.batchIdx === 0) rowClass += " batch-blue";
+            else if (c.batchIdx === 1) rowClass += " batch-red";
+            else if (c.batchIdx === 2) rowClass += " batch-green";
+        }
+
         if (isCartSimpleMode && count > 1) {
              nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
              if(c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${itemTotal}`; }
@@ -215,7 +248,7 @@ function renderCart() {
         }
 
         let actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${i})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
-        cartList.innerHTML += `<div class="cart-item-row">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`; 
+        cartList.innerHTML += `<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`; 
     }); 
 
     discountedTotal = currentOriginalTotal; 

@@ -1,4 +1,4 @@
-/* logic.js - 核心邏輯與資料庫互動 (Fix: Use document.getElementById directly) */
+/* logic.js - 核心邏輯 (加入訂單攔截與顏色循環) */
 
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
@@ -13,7 +13,11 @@ let tableCustomers = {};
 let tableSplitCounters = {}; 
 let itemCosts = {}; 
 let itemPrices = {}; 
-let dailyFinancialData = {}; 
+let ownerPasswords = { "景偉": "0001", "小飛": "0002", "威志": "0003" };
+
+// 🔥 新增：待確認訂單 與 桌號批次計數器
+let incomingOrders = {}; 
+let tableBatchCounts = {}; 
 
 let selectedTable = null;
 let cart = []; 
@@ -28,6 +32,7 @@ let currentDiscount = { type: 'none', value: 0 };
 let discountedTotal = 0;
 let isServiceFeeEnabled = false;
 let isQrMode = false;
+let currentIncomingTable = null; // 目前正在處理哪一桌的通知
 
 let historyViewDate = new Date();
 let isCartSimpleMode = false;
@@ -37,7 +42,8 @@ function getMergedItems(items) {
     if (!items || !Array.isArray(items)) return [];
     let merged = [];
     items.forEach(item => {
-        let existing = merged.find(m => m.name === item.name && m.price === item.price && m.isTreat === item.isTreat);
+        // 增加 batchIdx 判斷，不同批次的商品不合併
+        let existing = merged.find(m => m.name === item.name && m.price === item.price && m.isTreat === item.isTreat && m.batchIdx === item.batchIdx);
         if (existing) { existing.count = (existing.count || 1) + 1; } else { merged.push({ ...item, count: 1 }); }
     });
     return merged;
@@ -88,7 +94,17 @@ function initRealtimeData() {
         tableSplitCounters = data.tableSplitCounters || {}; 
         itemCosts = data.itemCosts || {}; 
         itemPrices = data.itemPrices || {};
+        
+        // 🔥 讀取待確認訂單與批次計數
+        incomingOrders = data.incomingOrders || {};
+        tableBatchCounts = data.tableBatchCounts || {};
+        
         if (data.ownerPasswords) OWNER_PASSWORDS = data.ownerPasswords;
+
+        // 🔥 如果有新訂單，且不是客人模式，則跳出提示
+        if (!document.body.classList.contains('customer-mode')) {
+            checkIncomingOrders();
+        }
 
         if(document.getElementById("tableSelect").style.display === "block") renderTableGrid();
         if(document.getElementById("historyPage").style.display === "block") showHistory();
@@ -103,8 +119,26 @@ function initRealtimeData() {
     });
 }
 
+// 🔥 檢查是否有待確認訂單
+function checkIncomingOrders() {
+    const tables = Object.keys(incomingOrders);
+    if (tables.length > 0) {
+        // 取第一筆來顯示
+        let table = tables[0];
+        let orderData = incomingOrders[table];
+        showIncomingOrderModal(table, orderData);
+    } else {
+        closeIncomingOrderModal();
+    }
+}
+
 function saveAllToCloud() {
-    db.ref('/').update({ historyOrders, tableTimers, tableCarts, tableStatuses, tableCustomers, tableSplitCounters, itemCosts, itemPrices, ownerPasswords: OWNER_PASSWORDS }).catch(err => console.error(err));
+    db.ref('/').update({ 
+        historyOrders, tableTimers, tableCarts, tableStatuses, 
+        tableCustomers, tableSplitCounters, itemCosts, itemPrices, 
+        ownerPasswords: OWNER_PASSWORDS,
+        incomingOrders, tableBatchCounts // 🔥 同步新資料
+    }).catch(err => console.error(err));
 }
 
 function refreshData() { try { let localHist = JSON.parse(localStorage.getItem("orderHistory")); if (localHist && (!historyOrders || historyOrders.length === 0)) historyOrders = localHist; } catch(e) { } }
@@ -127,6 +161,7 @@ function addToCart(name, price) { cart.push({ name, price, isNew: true, isTreat:
 function toggleTreat(index) { cart[index].isTreat = !cart[index].isTreat; renderCart(); }
 function removeItem(index) { cart.splice(index, 1); renderCart(); }
 
+// 店員手動下單 (維持原樣，但要清除 batch 資訊以免混淆)
 function saveOrderManual() { 
     try { 
         if (cart.length === 0) { showToast("購物車是空的，訂單未成立。"); saveAndExit(); return; } 
@@ -140,20 +175,25 @@ function saveOrderManual() {
             tableCustomers[selectedTable].orderId = todayCount + 1; 
         } 
         
-        let newItemsToPrint = cart.filter(item => item.isNew === true); 
-        if (newItemsToPrint.length > 0) { 
-            printReceipt({ seq: tableCustomers[selectedTable].orderId, table: selectedTable, time: new Date().toLocaleString('zh-TW', { hour12: false }), items: newItemsToPrint, original: 0, total: 0 }, true); 
-            cart.forEach(item => delete item.isNew); 
-        } else { 
-            tableCarts[selectedTable] = cart; tableStatuses[selectedTable] = 'yellow'; 
-            tableCustomers[selectedTable].name = document.getElementById("custName").value; // Fix: Direct access
-            tableCustomers[selectedTable].phone = document.getElementById("custPhone").value; // Fix: Direct access
-            saveAllToCloud(); showToast("✅ 暫存成功 (無新商品需列印)"); openTableSelect(); return; 
-        } 
-        tableCarts[selectedTable] = cart; tableStatuses[selectedTable] = 'yellow'; 
-        tableCustomers[selectedTable].name = document.getElementById("custName").value; // Fix: Direct access
-        tableCustomers[selectedTable].phone = document.getElementById("custPhone").value; // Fix: Direct access
-        saveAllToCloud(); showToast(`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`); openTableSelect(); 
+        // 店員手動下單不使用顏色區分，清除 batchIdx
+        let itemsToSave = cart.map(item => {
+             let newItem = {...item};
+             delete newItem.isNew;
+             // 店員點的不加顏色，或者您可以指定一個特殊顏色
+             return newItem;
+        });
+
+        tableCarts[selectedTable] = itemsToSave; 
+        tableStatuses[selectedTable] = 'yellow'; 
+        tableCustomers[selectedTable].name = document.getElementById("custName").value; 
+        tableCustomers[selectedTable].phone = document.getElementById("custPhone").value; 
+        
+        saveAllToCloud(); 
+        
+        // 若有新商品需列印 (這裡邏輯簡化，全印)
+        printReceipt({ seq: tableCustomers[selectedTable].orderId, table: selectedTable, time: new Date().toLocaleString('zh-TW', { hour12: false }), items: cart, original: 0, total: 0 }, true); 
+        
+        showToast(`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`); openTableSelect(); 
     } catch (e) { alert("出單發生錯誤: " + e.message); } 
 }
 
@@ -166,18 +206,104 @@ function saveAndExit() {
     } catch (e) { console.error("返回錯誤:", e); openTableSelect(); }
 }
 
+// 🔥 客人送出訂單 (修改版：送到 incomingOrders + 顏色標記)
 function customerSubmitOrder() {
     if (cart.length === 0) { alert("購物車是空的喔！"); return; }
-    tableCarts[selectedTable] = cart; tableStatuses[selectedTable] = 'yellow'; 
-    if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {};
-    if (!tableCustomers[selectedTable].orderId) {
+    
+    // 1. 計算該桌目前的批次 (Batch Count)
+    let currentBatch = tableBatchCounts[selectedTable] || 0;
+    let nextBatch = currentBatch + 1; // 這是這一桌的第幾次點餐
+
+    // 2. 決定顏色 (0:藍, 1:紅, 2:綠) -> 這裡用 % 3
+    // 因為第一次點餐(1)希望是藍色，所以我們用 (nextBatch - 1) % 3
+    // 1 -> 0 (藍), 2 -> 1 (紅), 3 -> 2 (綠), 4 -> 0 (藍)...
+    let batchColorIdx = (nextBatch - 1) % 3;
+
+    // 3. 幫商品加上批次標記
+    let itemsToSend = cart.map(item => ({
+        ...item,
+        isNew: true,
+        batchIdx: batchColorIdx // 標記顏色
+    }));
+
+    // 4. 準備顧客資料
+    let customerInfo = {
+        name: document.getElementById("custName").value || "",
+        phone: document.getElementById("custPhone").value || ""
+    };
+
+    // 5. 寫入 "incomingOrders" 而不是直接寫入 tableCarts
+    db.ref(`incomingOrders/${selectedTable}`).set({
+        items: itemsToSend,
+        customer: customerInfo,
+        batchId: nextBatch, // 暫存批次號碼
+        timestamp: Date.now()
+    }).then(() => {
+        alert("✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。");
+        cart = []; // 清空客人的本地購物車
+        renderCart();
+    }).catch(err => {
+        alert("傳送失敗，請通知服務人員：" + err.message);
+    });
+}
+
+// 🔥 店員確認訂單 (將 incomingOrders 合併入 tableCarts)
+function confirmIncomingOrder() {
+    if (!currentIncomingTable) return;
+    
+    let pendingData = incomingOrders[currentIncomingTable];
+    if (!pendingData) return;
+
+    let items = pendingData.items || [];
+    let cust = pendingData.customer || {};
+    let batchId = pendingData.batchId;
+
+    // 1. 更新該桌的批次計數
+    tableBatchCounts[currentIncomingTable] = batchId;
+
+    // 2. 合併入現有購物車
+    let currentCart = tableCarts[currentIncomingTable] || [];
+    let newCart = currentCart.concat(items);
+    tableCarts[currentIncomingTable] = newCart;
+
+    // 3. 更新狀態與顧客資訊
+    tableStatuses[currentIncomingTable] = 'yellow';
+    if (!tableCustomers[currentIncomingTable]) tableCustomers[currentIncomingTable] = {};
+    if (cust.name) tableCustomers[currentIncomingTable].name = cust.name;
+    // 賦予單號
+    if (!tableTimers[currentIncomingTable] || !tableCustomers[currentIncomingTable].orderId) {
+        tableTimers[currentIncomingTable] = Date.now();
+        tableSplitCounters[currentIncomingTable] = 1;
         let currentBizDate = getBusinessDate(new Date());
         let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate).length;
-        tableCustomers[selectedTable].orderId = todayCount + 1;
+        tableCustomers[currentIncomingTable].orderId = todayCount + 1;
     }
-    let cName = document.getElementById("custName").value;
-    if(cName) tableCustomers[selectedTable].name = cName;
-    saveAllToCloud(); alert("✅ 點餐成功！廚房已收到您的訂單，請稍候。"); cart.forEach(item => delete item.isNew); renderCart();
+
+    // 4. 列印工單
+    printReceipt({ 
+        seq: tableCustomers[currentIncomingTable].orderId, 
+        table: currentIncomingTable, 
+        time: new Date().toLocaleString('zh-TW', { hour12: false }), 
+        items: items, // 只印新加的
+        original: 0, total: 0 
+    }, true);
+
+    // 5. 清除 incomingOrders
+    delete incomingOrders[currentIncomingTable];
+
+    saveAllToCloud();
+    closeIncomingOrderModal();
+    showToast(`✅ 已接收 ${currentIncomingTable} 的訂單`);
+}
+
+// 🔥 店員拒絕訂單
+function rejectIncomingOrder() {
+    if (!currentIncomingTable) return;
+    if(!confirm("確定要忽略這筆訂單嗎？")) return;
+    
+    delete incomingOrders[currentIncomingTable];
+    saveAllToCloud();
+    closeIncomingOrderModal();
 }
 
 function checkoutAll(manualFinal) { 
@@ -198,6 +324,9 @@ function checkoutAll(manualFinal) {
         historyOrders.push(newOrder); localStorage.setItem("orderHistory", JSON.stringify(historyOrders)); 
     } 
     delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; 
+    // 🔥 結帳時也清除該桌的批次紀錄，讓下一組客人從藍色開始
+    delete tableBatchCounts[selectedTable];
+    
     saveAllToCloud(); cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; 
     alert(`💰 結帳完成！實收 $${payingTotal} \n(如需明細，請至「今日訂單」補印)`); openTableSelect(); 
 }
