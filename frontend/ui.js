@@ -1,4 +1,4 @@
-/* ui.js - 介面渲染與事件處理 (Fix: Use document.getElementById directly) */
+/* ui.js - 介面渲染與事件處理 (Fix: Customer Menu & Display) */
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
@@ -47,6 +47,7 @@ function showQrModal(table) {
     title.innerText = `桌號：${table}`;
     qrContainer.innerHTML = ""; 
     
+    // 這裡會自動抓取當前網址 (例如 github pages 的網址)
     const baseUrl = window.location.href.split('?')[0];
     const orderUrl = `${baseUrl}?table=${encodeURIComponent(table)}`;
     
@@ -101,7 +102,6 @@ function openOrderPageLogic(table) {
     cart = tableCarts[table] || []; 
     let info = tableCustomers[table] || {name:"", phone:""}; 
     
-    // 🔥 Fix: Use getElementById directly
     document.getElementById("custName").value = info.name || ""; 
     document.getElementById("custPhone").value = info.phone || ""; 
     
@@ -124,7 +124,7 @@ function updateSeatTimerText() {
 }
 
 function buildCategories() { 
-    const grid = document.getElementById("menuGrid"); // Fix: Get element
+    const grid = document.getElementById("menuGrid"); 
     grid.innerHTML = ""; 
     
     if (typeof categories === 'undefined') return;
@@ -164,7 +164,7 @@ function openItems(category) {
     const flatListCategories = ["純飲", "shot", "啤酒", "咖啡", "飲料", "主餐", "炸物", "厚片", "甜點", "其他"];
     
     let html = backBtn; 
-    const grid = document.getElementById("menuGrid"); // Fix: Get element
+    const grid = document.getElementById("menuGrid"); 
     
     if (Array.isArray(data)) { 
         if(flatListCategories.includes(category)) { html += `<div class="sub-cat-title">${category}</div>`; data.forEach(item => { html += createItemHtml(item, true); }); } 
@@ -184,8 +184,8 @@ function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); 
 function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
 
 function renderCart() { 
-    const cartList = document.getElementById("cart-list"); // Fix
-    const totalText = document.getElementById("total"); // Fix
+    const cartList = document.getElementById("cart-list"); 
+    const totalText = document.getElementById("total"); 
     cartList.innerHTML = ""; 
     currentOriginalTotal = 0; 
     
@@ -357,7 +357,7 @@ function openPage(pageId) {
 
 function showHistory() { 
     let currentlyOpenIds = []; const openDetails = document.querySelectorAll('.history-detail'); openDetails.forEach(el => { if (el.style.display === 'block') currentlyOpenIds.push(el.id); });
-    const historyBox = document.getElementById("history-box"); // Fix
+    const historyBox = document.getElementById("history-box"); 
     historyBox.innerHTML = ""; 
     if(!historyOrders || historyOrders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單</div>"; return; } 
     let btnIcon = isHistorySimpleMode ? "📝" : "🔢"; let btnText = isHistorySimpleMode ? "切換為詳細清單" : "切換為簡化清單 (合併數量)";
@@ -657,6 +657,8 @@ function closeSummaryModal() { summaryModal.style.display = "none"; }
 window.toggleDetail = function(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } };
 window.toggleAccordion = function(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); };
 
+/* ========== 這裡是最重要的修正區域 ========== */
+/* 在 DOMContentLoaded 監聽器中，加入 buildCategories() 呼叫 */
 window.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const tableParam = urlParams.get('table');
@@ -673,6 +675,10 @@ window.addEventListener('DOMContentLoaded', () => {
             const saveBtn = document.querySelector('.save-btn');
             if(saveBtn) { saveBtn.innerText = "🚀 送出廚房"; saveBtn.onclick = customerSubmitOrder; }
             document.getElementById("seatTimer").style.display = "none";
+            
+            // 🔥 [FIX] 這裡新增了 buildCategories()，確保菜單分類會被建立
+            buildCategories(); 
+            
             if(tableCarts[selectedTable]) { cart = tableCarts[selectedTable]; renderCart(); }
         }, 800);
     } else { if(sessionStorage.getItem("isLoggedIn") === "true") { showApp(); } }
