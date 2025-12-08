@@ -1,4 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (Fix: Alert Modal & Color Batches) */
+/* ui.js - 介面渲染與事件處理 (v10: 防呆介面版) */
+console.log("UI JS v10 Loaded - 介面程式已載入");
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
@@ -8,7 +9,7 @@ function showApp() {
 }
 
 function hideAll() { 
-    ["home", "orderPage", "historyPage", "tableSelect", "reportPage", "confidentialPage", "settingsPage", "pastHistoryPage"].forEach(id => { 
+    ["home", "orderPage", "historyPage", "tableSelect", "reportPage", "confidentialPage", "settingsPage", "pastHistoryPage", "productPage"].forEach(id => { 
         let el = document.getElementById(id); 
         if(el) el.style.display = "none"; 
     }); 
@@ -22,6 +23,17 @@ function openTableSelect() {
     refreshData(); 
     document.getElementById("tableSelect").style.display = "block"; 
     renderTableGrid(); 
+}
+
+function openSettingsPage() {
+    hideAll();
+    document.getElementById("settingsPage").style.display = "block";
+}
+
+function openProductPage() {
+    hideAll();
+    document.getElementById("productPage").style.display = "block";
+    renderProductManagement();
 }
 
 /* ========== QR Code 模式控制 ========== */
@@ -57,7 +69,7 @@ function showQrModal(table) {
 
 function closeQrModal() { document.getElementById("qrCodeModal").style.display = "none"; }
 
-/* ========== 🔥 新增：待確認訂單彈窗顯示 ========== */
+/* ========== 🔥 待確認訂單彈窗 ========== */
 function showIncomingOrderModal(table, orderData) {
     currentIncomingTable = table;
     const modal = document.getElementById("incomingOrderModal");
@@ -86,6 +98,7 @@ function closeIncomingOrderModal() {
 /* ========== 座位與點餐 UI ========== */
 function renderTableGrid() { 
     let grid = document.getElementById("tableSelectGrid"); 
+    if(!grid) return;
     grid.innerHTML = ""; 
     tables.forEach(t => { 
         let btn = document.createElement("div"); 
@@ -154,7 +167,12 @@ function buildCategories() {
     
     if (typeof categories === 'undefined') return;
 
-    categories.forEach(c => { 
+    let listToRender = categories;
+    if (document.body.classList.contains("customer-mode")) {
+        listToRender = categories.filter(c => c !== "甜點" && c !== "其他");
+    }
+
+    listToRender.forEach(c => { 
         let box = document.createElement("div"); 
         box.className = "categoryBtn btn-effect"; 
         box.innerText = c; 
@@ -167,10 +185,15 @@ function buildCategories() {
 function openItems(category) {
     let data = menuData[category]; 
     let backBtn = `<button class="back-to-cat btn-effect" onclick="buildCategories()">⬅ 返回 ${category} 分類</button>`;
+    
     const createItemHtml = (item, isFlat = false) => {
         let actionsHtml = ""; 
         let nameHtml = `<span>${item.name} <b>$${item.price}</b></span>`; 
         let itemClass = isFlat ? "item list-mode" : "item shot-item";
+        
+        let isSoldOut = inventory[item.name] === false;
+        if (isSoldOut) itemClass += " sold-out";
+
         if (item.name === "隱藏啤酒") { 
             nameHtml = `<span style="font-weight:bold; color:var(--primary-color);">🍺 隱藏啤酒</span>`; 
             actionsHtml = `<input id="hbName" class="inline-input" placeholder="品名" style="width:100px;"><input type="number" id="hbPrice" class="inline-input" placeholder="時價" style="width:70px;"><button onclick="addInlineHiddenBeer()">加入</button>`; 
@@ -186,8 +209,8 @@ function openItems(category) {
         }
         return `<div class="${itemClass}">${nameHtml}<div class="shot-actions">${actionsHtml}</div></div>`;
     };
-    const flatListCategories = ["純飲", "shot", "啤酒", "咖啡", "飲料", "主餐", "炸物", "厚片", "甜點", "其他"];
     
+    const flatListCategories = ["純飲", "shot", "啤酒", "咖啡", "飲料", "主餐", "炸物", "厚片", "甜點", "其他"];
     let html = backBtn; 
     const grid = document.getElementById("menuGrid"); 
     
@@ -204,7 +227,6 @@ function openItems(category) {
     grid.innerHTML = html;
 }
 
-/* ========== 購物車渲染 (🔥加入批次顏色邏輯) ========== */
 function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); }
 function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
 
@@ -231,7 +253,6 @@ function renderCart() {
         let priceHtml = "";
         let nameHtml = "";
 
-        // 🔥 顏色判斷：根據 batchIdx 決定 class
         let rowClass = "cart-item-row";
         if (typeof c.batchIdx !== 'undefined') {
             if (c.batchIdx === 0) rowClass += " batch-blue";
@@ -271,7 +292,6 @@ function renderCart() {
     totalText.innerHTML = finalHtml;
 }
 
-/* ========== 特殊商品加入 ========== */
 function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
 function addSalmonPrice() { let price = parseInt(document.getElementById("salmonPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("味繒鮭魚", price); }
 function addFriedSquidPrice() { let price = parseInt(document.getElementById("squidPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("酥炸魷魚", price); }
@@ -286,7 +306,6 @@ function checkItemType(name, price, categoryName) {
 }
 function addShotSet(name, price) { addToCart(`${name} <small style='color:#06d6a0'>[買5送1]</small>`, price * 5); }
 
-/* ========== Modals (彈出視窗) ========== */
 function openFoodModal(name, price, type) { 
     tempCustomItem = { name, price, type }; document.getElementById("foodTitle").innerText = name; let meatOptions = document.getElementById("meatOptions"); let html = ""; 
     if (type === "friedRice") html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=${price}" checked><div class="radio-btn btn-effect">牛 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">豬 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">雞 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">蝦仁 ($${price})</div></label>`; 
@@ -374,43 +393,157 @@ function openPage(pageId) {
     let el = document.getElementById(pageId); 
     if(el) el.style.display = "block"; 
     
-    if(pageId === 'historyPage') showHistory();
-    // 🔥 預設選中「今日」，並觸發滑動動畫
-    if(pageId === 'reportPage') { 
-        generateReport('day'); 
-        renderCalendar(); 
-        moveSegmentHighlighter(0); 
-    } 
-    
-    if(pageId === 'pastHistoryPage') {
-        if(typeof initHistoryDate === 'function') initHistoryDate(); 
-        renderPublicStats();
-    }
+    // 強制延遲執行初始化，確保資料已過濾
+    setTimeout(() => {
+        if(pageId === 'historyPage') showHistory();
+        if(pageId === 'reportPage') { 
+            generateReport('day'); 
+            renderCalendar(); 
+            moveSegmentHighlighter(0); 
+        } 
+        if(pageId === 'pastHistoryPage') {
+            if(typeof initHistoryDate === 'function') initHistoryDate(); 
+            renderPublicStats();
+        }
+    }, 100);
 }
 
 function showHistory() { 
-    let currentlyOpenIds = []; const openDetails = document.querySelectorAll('.history-detail'); openDetails.forEach(el => { if (el.style.display === 'block') currentlyOpenIds.push(el.id); });
-    const historyBox = document.getElementById("history-box"); 
-    historyBox.innerHTML = ""; 
-    if(!historyOrders || historyOrders.length === 0) { historyBox.innerHTML = "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單</div>"; return; } 
-    let btnIcon = isHistorySimpleMode ? "📝" : "🔢"; let btnText = isHistorySimpleMode ? "切換為詳細清單" : "切換為簡化清單 (合併數量)";
-    historyBox.innerHTML += `<div class="view-toggle-container"><button onclick="toggleHistoryView()" class="view-toggle-btn btn-effect"><span class="icon">${btnIcon}</span><span>${btnText}</span></button></div>`;
-    let orders = getVisibleOrders(); 
-    if (orders.length === 0) { historyBox.innerHTML += "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單 (或已日結)</div>"; return; } 
-    orders.forEach((o, index) => { 
-        let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`; 
-        let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>"; 
-        let itemsToDisplay = isHistorySimpleMode ? getMergedItems(o.items) : o.items;
-        let itemsDetail = itemsToDisplay.map(i => { let countStr = (i.count && i.count > 1) ? ` <b style="color:#ef476f;">x${i.count}</b>` : ""; let priceStr = (i.count && i.count > 1) ? `$${i.price * i.count}` : `$${i.price}`; if(i.isTreat) return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name} (招待)${countStr}</span> <span>$0</span></div>`; return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}${countStr}</span> <span>${priceStr}</span></div>`; }).join("");
-        let timeOnly = o.time.split(" ")[1] || o.time; let rowId = `detail-${index}`; let displayStyle = currentlyOpenIds.includes(rowId) ? "block" : "none";
-        let amountDisplay = `$${o.total}`; if (o.originalTotal && o.originalTotal !== o.total) amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#ef476f;">$${o.total}</span>`; 
-        historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;"><span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:${displayStyle};"><div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;"><button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`; 
-    }); 
+    try {
+        let currentlyOpenIds = []; const openDetails = document.querySelectorAll('.history-detail'); openDetails.forEach(el => { if (el.style.display === 'block') currentlyOpenIds.push(el.id); });
+        const historyBox = document.getElementById("history-box"); 
+        if(!historyBox) return; // 防呆
+        historyBox.innerHTML = ""; 
+        
+        // 確保 getVisibleOrders 存在
+        if(typeof getVisibleOrders !== 'function') {
+            historyBox.innerHTML = "<div style='padding:20px;color:red;'>系統初始化中，請稍後...</div>";
+            return;
+        }
+
+        let orders = getVisibleOrders(); 
+
+        if(!orders || orders.length === 0) { 
+            historyBox.innerHTML = "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單 (或已日結)</div>"; return; 
+        } 
+        
+        let btnIcon = isHistorySimpleMode ? "📝" : "🔢"; let btnText = isHistorySimpleMode ? "切換為詳細清單" : "切換為簡化清單 (合併數量)";
+        historyBox.innerHTML += `<div class="view-toggle-container"><button onclick="toggleHistoryView()" class="view-toggle-btn btn-effect"><span class="icon">${btnIcon}</span><span>${btnText}</span></button></div>`;
+        
+        orders.forEach((o, index) => { 
+            let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${orders.length - index}`; 
+            let custInfo = (o.customerName || o.customerPhone) ? `<span style="color:#007bff; font-weight:bold;">${o.customerName||""}</span> ${o.customerPhone||""}` : "<span style='color:#ccc'>-</span>"; 
+            let itemsToDisplay = isHistorySimpleMode ? getMergedItems(o.items) : o.items;
+            let itemsDetail = itemsToDisplay.map(i => { let countStr = (i.count && i.count > 1) ? ` <b style="color:#ef476f;">x${i.count}</b>` : ""; let priceStr = (i.count && i.count > 1) ? `$${i.price * i.count}` : `$${i.price}`; if(i.isTreat) return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name} (招待)${countStr}</span> <span>$0</span></div>`; return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}${countStr}</span> <span>${priceStr}</span></div>`; }).join("");
+            let timeOnly = o.time.split(" ")[1] || o.time; let rowId = `detail-${index}`; let displayStyle = currentlyOpenIds.includes(rowId) ? "block" : "none";
+            let amountDisplay = `$${o.total}`; if (o.originalTotal && o.originalTotal !== o.total) amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#ef476f;">$${o.total}</span>`; 
+            historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;"><span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:${displayStyle};"><div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;"><button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`; 
+        }); 
+    } catch(e) {
+        console.error("showHistory 錯誤", e);
+    }
 }
 
-function generateReport(type) { document.querySelectorAll('.report-controls button').forEach(b => b.classList.remove('active')); let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1); let start = new Date(now); let title = ""; if (type === 'day') { document.getElementById('btnDay').classList.add('active'); start.setHours(5, 0, 0, 0); let end = new Date(start); end.setDate(end.getDate() + 1); title = "💰 今日營業額 (即時)"; filterOrders(start, end, title); } else if (type === 'week') { document.getElementById('btnWeek').classList.add('active'); let day = start.getDay() || 7; if (day !== 1) start.setHours(-24 * (day - 1)); start.setHours(5, 0, 0, 0); title = "💰 本周營業額 (即時)"; filterOrders(start, new Date(), title); } else if (type === 'month') { document.getElementById('btnMonth').classList.add('active'); start.setDate(1); start.setHours(5, 0, 0, 0); title = "💰 當月營業額 (即時)"; filterOrders(start, new Date(), title); } }
-function filterOrders(startTime, endTime, titleText) { let total = 0; let count = 0; let barTotal = 0; let bbqTotal = 0; let kitchenCats = ["燒烤", "主餐", "炸物"]; historyOrders.forEach(order => { let orderTime = getDateFromOrder(order); if (orderTime >= startTime && (endTime ? orderTime < endTime : true)) { total += order.total; count++; order.items.forEach(item => { let itemCat = ""; for (const [cat, content] of Object.entries(menuData)) { if (Array.isArray(content)) { if (content.some(x => item.name.includes(x.name))) itemCat = cat; } else { for (const sub of Object.values(content)) { if (sub.some(x => item.name.includes(x.name))) itemCat = cat; } } } if(itemCat === "") { if(item.name.includes("雞") || item.name.includes("豬") || item.name.includes("牛")) itemCat = "主餐"; } if (kitchenCats.includes(itemCat)) bbqTotal += item.price; else barTotal += item.price; }); } }); document.getElementById("rptTitle").innerText = titleText; document.getElementById("rptTotal").innerText = "$" + total; document.getElementById("rptCount").innerText = "總單數: " + count; document.getElementById("rptBar").innerText = "$" + barTotal; document.getElementById("rptBBQ").innerText = "$" + bbqTotal; }
-function renderCalendar() { let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1); let year = now.getFullYear(); let month = now.getMonth(); document.getElementById("calendarMonthTitle").innerText = `${year}年 ${month + 1}月`; let dailyTotals = {}; historyOrders.forEach(order => { let t = getDateFromOrder(order); if (t.getHours() < 5) t.setDate(t.getDate() - 1); if (t.getFullYear() === year && t.getMonth() === month) { let dayKey = t.getDate(); if (!dailyTotals[dayKey]) dailyTotals[dayKey] = 0; dailyTotals[dayKey] += order.total; } }); let firstDay = new Date(year, month, 1).getDay(); let daysInMonth = new Date(year, month + 1, 0).getDate(); let grid = document.getElementById("calendarGrid"); grid.innerHTML = ""; for (let i = 0; i < firstDay; i++) { let empty = document.createElement("div"); empty.className = "calendar-day empty"; grid.appendChild(empty); } let today = new Date(); if(today.getHours() < 5) today.setDate(today.getDate() - 1); for (let d = 1; d <= daysInMonth; d++) { let cell = document.createElement("div"); cell.className = "calendar-day"; if (d === today.getDate() && month === today.getMonth()) cell.classList.add("today"); let revenue = dailyTotals[d] ? `$${dailyTotals[d]}` : ""; cell.innerHTML = `<div class="day-num">${d}</div><div class="day-revenue">${revenue}</div>`; grid.appendChild(cell); } }
+function generateReport(type) { 
+    try {
+        let reportContent = document.getElementById('reportContent');
+        if (!reportContent || document.getElementById('reportPage').style.display === 'none') return;
+
+        document.querySelectorAll('.segment-option').forEach(b => b.classList.remove('active')); 
+        
+        let index = 0;
+        if (type === 'week') index = 1; 
+        if (type === 'month') index = 2; 
+        
+        let options = document.querySelectorAll('.segment-option');
+        if(options[index]) options[index].classList.add('active');
+        moveSegmentHighlighter(index);
+
+        let now = new Date(); 
+        if (now.getHours() < 5) now.setDate(now.getDate() - 1); 
+        let start = new Date(now); 
+        let title = ""; 
+        
+        if (type === 'day') { 
+            start.setHours(5, 0, 0, 0); 
+            let end = new Date(start); 
+            end.setDate(end.getDate() + 1); 
+            title = "💰 今日營業額 (即時)"; 
+            filterOrders(start, end, title); 
+        } else if (type === 'week') { 
+            let day = start.getDay() || 7; 
+            if (day !== 1) start.setHours(-24 * (day - 1)); 
+            start.setHours(5, 0, 0, 0); 
+            title = "💰 本周營業額 (即時)"; 
+            filterOrders(start, new Date(), title); 
+        } else if (type === 'month') { 
+            start.setDate(1); 
+            start.setHours(5, 0, 0, 0); 
+            title = "💰 當月營業額 (即時)"; 
+            filterOrders(start, new Date(), title); 
+        } 
+    } catch(e) {
+        console.error("generateReport 錯誤", e);
+    }
+}
+
+function filterOrders(startTime, endTime, titleText) { 
+    let total = 0; 
+    let count = 0; 
+    let barTotal = 0; 
+    let bbqTotal = 0; 
+    let kitchenCats = ["燒烤", "主餐", "炸物"]; 
+    
+    // 確保 historyOrders 是陣列
+    if(!Array.isArray(historyOrders)) return;
+
+    historyOrders.forEach(order => { 
+        if(!order) return;
+        let orderTime = getDateFromOrder(order); 
+        if (orderTime >= startTime && (endTime ? orderTime < endTime : true)) { 
+            total += (order.total || 0); 
+            count++; 
+            if(order.items && Array.isArray(order.items)) {
+                order.items.forEach(item => { 
+                    let itemCat = ""; 
+                    for (const [cat, content] of Object.entries(menuData)) { 
+                        if (Array.isArray(content)) { if (content.some(x => item.name.includes(x.name))) itemCat = cat; } 
+                        else { for (const sub of Object.values(content)) { if (sub.some(x => item.name.includes(x.name))) itemCat = cat; } } 
+                    } 
+                    if(itemCat === "") { if(item.name.includes("雞") || item.name.includes("豬") || item.name.includes("牛")) itemCat = "主餐"; } 
+                    if (kitchenCats.includes(itemCat)) bbqTotal += (item.price || 0); else barTotal += (item.price || 0); 
+                }); 
+            }
+        } 
+    }); 
+    
+    if(document.getElementById("rptTitle")) document.getElementById("rptTitle").innerText = titleText; 
+    if(document.getElementById("rptTotal")) document.getElementById("rptTotal").innerText = "$" + total; 
+    if(document.getElementById("rptCount")) document.getElementById("rptCount").innerText = "總單數: " + count; 
+    if(document.getElementById("rptBar")) document.getElementById("rptBar").innerText = "$" + barTotal; 
+    if(document.getElementById("rptBBQ")) document.getElementById("rptBBQ").innerText = "$" + bbqTotal; 
+}
+
+function renderCalendar() { 
+    try {
+        let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1); let year = now.getFullYear(); let month = now.getMonth(); 
+        if(document.getElementById("calendarMonthTitle")) document.getElementById("calendarMonthTitle").innerText = `${year}年 ${month + 1}月`; 
+        let dailyTotals = {}; 
+        
+        if(Array.isArray(historyOrders)) {
+            historyOrders.forEach(order => { 
+                if(!order) return;
+                let t = getDateFromOrder(order); if (t.getHours() < 5) t.setDate(t.getDate() - 1); if (t.getFullYear() === year && t.getMonth() === month) { let dayKey = t.getDate(); if (!dailyTotals[dayKey]) dailyTotals[dayKey] = 0; dailyTotals[dayKey] += (order.total || 0); } 
+            }); 
+        }
+
+        let firstDay = new Date(year, month, 1).getDay(); let daysInMonth = new Date(year, month + 1, 0).getDate(); let grid = document.getElementById("calendarGrid"); 
+        if(!grid) return;
+        grid.innerHTML = ""; for (let i = 0; i < firstDay; i++) { let empty = document.createElement("div"); empty.className = "calendar-day empty"; grid.appendChild(empty); } let today = new Date(); if(today.getHours() < 5) today.setDate(today.getDate() - 1); for (let d = 1; d <= daysInMonth; d++) { let cell = document.createElement("div"); cell.className = "calendar-day"; if (d === today.getDate() && month === today.getMonth()) cell.classList.add("today"); let revenue = dailyTotals[d] ? `$${dailyTotals[d]}` : ""; cell.innerHTML = `<div class="day-num">${d}</div><div class="day-revenue">${revenue}</div>`; grid.appendChild(cell); } 
+    } catch(e) {
+        console.error("renderCalendar 錯誤", e);
+    }
+}
 
 /* ========== 公開歷史統計 (只顯示銷量) ========== */
 function changeStatsMonth(offset) { historyViewDate.setMonth(historyViewDate.getMonth() + offset); renderPublicStats(); }
@@ -418,31 +551,102 @@ function changeStatsMonth(offset) { historyViewDate.setMonth(historyViewDate.get
 function renderPublicStats() {
     let year = historyViewDate.getFullYear();
     let month = historyViewDate.getMonth();
-    document.getElementById("statsMonthTitle").innerText = `${year}年 ${month + 1}月`;
+    if(document.getElementById("statsMonthTitle")) document.getElementById("statsMonthTitle").innerText = `${year}年 ${month + 1}月`;
     
     let stats = {}; 
-    historyOrders.forEach(order => {
-        let t = getDateFromOrder(order);
-        if (t.getHours() < 5) t.setDate(t.getDate() - 1);
-        if (t.getFullYear() === year && t.getMonth() === month) {
-            order.items.forEach(item => {
-                let name = item.name.split(" <")[0].replace(" (招待)", "").trim();
-                if (!stats[name]) stats[name] = { count: 0, type: getItemCategoryType(name) };
-                stats[name].count += (item.count || 1);
-            });
-        }
-    });
+    if(Array.isArray(historyOrders)) {
+        historyOrders.forEach(order => {
+            if(!order) return;
+            let t = getDateFromOrder(order);
+            if (t.getHours() < 5) t.setDate(t.getDate() - 1);
+            if (t.getFullYear() === year && t.getMonth() === month) {
+                if(order.items && Array.isArray(order.items)) {
+                    order.items.forEach(item => {
+                        let name = item.name.split(" <")[0].replace(" (招待)", "").trim();
+                        if (!stats[name]) stats[name] = { count: 0, type: getItemCategoryType(name) };
+                        stats[name].count += (item.count || 1);
+                    });
+                }
+            }
+        });
+    }
 
     let barList = []; let bbqList = [];
     for (let [name, data] of Object.entries(stats)) { if (data.type === 'bar') barList.push({name, count: data.count}); else bbqList.push({name, count: data.count}); }
     barList.sort((a, b) => b.count - a.count); bbqList.sort((a, b) => b.count - a.count);
 
     const renderList = (list, containerId) => {
-        const container = document.getElementById(containerId); container.innerHTML = "";
+        const container = document.getElementById(containerId); 
+        if(!container) return;
+        container.innerHTML = "";
         if(list.length === 0) { container.innerHTML = "<div style='padding:10px; color:#8d99ae;'>無資料</div>"; return; }
         list.forEach((item, index) => { container.innerHTML += `<div class="stats-item-row"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`; });
     };
     renderList(barList, 'publicStatsBar'); renderList(bbqList, 'publicStatsBbq');
+}
+
+/* ========== 🔥 6. 修改：庫存管理 (下拉式選單) ========== */
+function renderProductManagement() {
+    const container = document.getElementById("productManagementList");
+    
+    let openStates = {};
+    const existingContent = container.querySelectorAll('.accordion-content');
+    existingContent.forEach(el => {
+        if(el.classList.contains('show')) {
+            openStates[el.id] = true;
+        }
+    });
+
+    container.innerHTML = "";
+    
+    let index = 0;
+    for (const [category, content] of Object.entries(menuData)) {
+        if (category === "其他") continue;
+        index++;
+        let accId = `mgmt-acc-${index}`;
+        
+        let isOpen = openStates[accId] ? "show" : "";
+        let isActive = openStates[accId] ? "active" : "";
+
+        let catHeader = `
+            <button class="accordion-header-mgmt btn-effect ${isActive}" onclick="toggleAccordion('${accId}')">
+                <span>📂 ${category}</span>
+                <span class="arrow">▼</span>
+            </button>
+            <div id="${accId}" class="accordion-content ${isOpen}">
+        `;
+        
+        let itemsHtml = "";
+        let items = [];
+        if (Array.isArray(content)) {
+            items = content;
+        } else {
+            for (const [subCat, subItems] of Object.entries(content)) {
+                items = items.concat(subItems);
+            }
+        }
+
+        items.forEach(item => {
+            let isAvailable = inventory[item.name] !== false;
+            let checked = isAvailable ? "checked" : "";
+            let statusText = isAvailable ? `<span style="color:#06d6a0; font-weight:bold;">有貨</span>` : `<span style="color:#ef476f; font-weight:bold;">售完</span>`;
+
+            itemsHtml += `
+                <div class="product-mgmt-row">
+                    <span style="font-size:16px; font-weight:500;">${item.name}</span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        ${statusText}
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${checked} onchange="toggleStockStatus('${item.name}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML += catHeader + itemsHtml + `</div>`;
+    }
 }
 
 /* ========== 機密與權限頁面邏輯 ========== */
@@ -505,32 +709,36 @@ function renderConfidentialCalendar(ownerName) {
     let dailyCounts = {};
     let monthStats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 }; 
 
-    historyOrders.forEach(order => { 
-        let t = getDateFromOrder(order); 
-        if (t.getHours() < 5) t.setDate(t.getDate() - 1); 
-        if (t.getFullYear() === year && t.getMonth() === month) { 
-            let dayKey = t.getDate(); 
-            let dateStr = `${year}/${month+1}/${dayKey}`;
-            if (!dailyFinancialData[dateStr]) dailyFinancialData[dateStr] = { barRev:0, barCost:0, bbqRev:0, bbqCost:0 }; 
-            if (!dailyCounts[dayKey]) dailyCounts[dayKey] = 0;
-            dailyCounts[dayKey]++;
+    if(Array.isArray(historyOrders)) {
+        historyOrders.forEach(order => { 
+            if(!order) return;
+            let t = getDateFromOrder(order); 
+            if (t.getHours() < 5) t.setDate(t.getDate() - 1); 
+            if (t.getFullYear() === year && t.getMonth() === month) { 
+                let dayKey = t.getDate(); 
+                let dateStr = `${year}/${month+1}/${dayKey}`;
+                if (!dailyFinancialData[dateStr]) dailyFinancialData[dateStr] = { barRev:0, barCost:0, bbqRev:0, bbqCost:0 }; 
+                if (!dailyCounts[dayKey]) dailyCounts[dayKey] = 0;
+                dailyCounts[dayKey]++;
 
-            order.items.forEach(item => { 
-                let costPerItem = getCostByItemName(item.name);
-                let rawName = item.name.replace(" (招待)", "").trim(); 
-                let type = getItemCategoryType(rawName); 
-                if (type === 'bar') { 
-                    dailyFinancialData[dateStr].barRev += item.price; dailyFinancialData[dateStr].barCost += costPerItem; 
-                    monthStats.barRev += item.price; monthStats.barCost += costPerItem;
-                } else { 
-                    dailyFinancialData[dateStr].bbqRev += item.price; dailyFinancialData[dateStr].bbqCost += costPerItem; 
-                    monthStats.bbqRev += item.price; monthStats.bbqCost += costPerItem;
-                } 
-            }); 
-        } 
-    }); 
+                if(order.items && Array.isArray(order.items)) {
+                    order.items.forEach(item => { 
+                        let costPerItem = getCostByItemName(item.name);
+                        let rawName = item.name.replace(" (招待)", "").trim(); 
+                        let type = getItemCategoryType(rawName); 
+                        if (type === 'bar') { 
+                            dailyFinancialData[dateStr].barRev += (item.price||0); dailyFinancialData[dateStr].barCost += costPerItem; 
+                            monthStats.barRev += (item.price||0); monthStats.barCost += costPerItem;
+                        } else { 
+                            dailyFinancialData[dateStr].bbqRev += (item.price||0); dailyFinancialData[dateStr].bbqCost += costPerItem; 
+                            monthStats.bbqRev += (item.price||0); monthStats.bbqCost += costPerItem;
+                        } 
+                    }); 
+                }
+            } 
+        }); 
+    }
 
-    /* 更新右側財務總表 */
     document.getElementById("monthBarRev").innerText = `$${monthStats.barRev}`;
     document.getElementById("monthBarCost").innerText = `-$${monthStats.barCost}`;
     document.getElementById("monthBarProfit").innerText = `$${monthStats.barRev - monthStats.barCost}`;
@@ -613,21 +821,26 @@ function updateFinanceStats(range) {
 
     let stats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 };
 
-    historyOrders.forEach(order => {
-        let t = getDateFromOrder(order);
-        if (t.getHours() < 5) t.setDate(t.getDate() - 1);
+    if(Array.isArray(historyOrders)) {
+        historyOrders.forEach(order => {
+            if(!order) return;
+            let t = getDateFromOrder(order);
+            if (t.getHours() < 5) t.setDate(t.getDate() - 1);
 
-        if (t >= start && (!end || t < end)) {
-            order.items.forEach(item => {
-                let cost = getCostByItemName(item.name);
-                let name = item.name.replace(" (招待)", "").trim();
-                let type = getItemCategoryType(name);
-                
-                if (type === 'bar') { stats.barRev += item.price; stats.barCost += cost; }
-                else { stats.bbqRev += item.price; stats.bbqCost += cost; }
-            });
-        }
-    });
+            if (t >= start && (!end || t < end)) {
+                if(order.items && Array.isArray(order.items)) {
+                    order.items.forEach(item => {
+                        let cost = getCostByItemName(item.name);
+                        let name = item.name.replace(" (招待)", "").trim();
+                        let type = getItemCategoryType(name);
+                        
+                        if (type === 'bar') { stats.barRev += (item.price||0); stats.barCost += cost; }
+                        else { stats.bbqRev += (item.price||0); stats.bbqCost += cost; }
+                    });
+                }
+            }
+        });
+    }
 
     document.getElementById("financeTitle").innerText = titleText; 
 
