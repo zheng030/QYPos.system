@@ -41,6 +41,9 @@ let currentOriginalTotal = 0;
 let finalTotal = 0;           
 let currentDiscount = { type: 'none', value: 0 }; 
 
+// 🔥🔥🔥【修改點 1：請在這裡新增這一行】🔥🔥🔥
+let discountedTotal = 0;
+
 // 合併顯示模式變數
 let isCartSimpleMode = false;
 let isHistorySimpleMode = false;
@@ -460,7 +463,7 @@ function renderCart() {
         cartList.innerHTML += `<div class="cart-item-row">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`; 
     }); 
 
-    let discountedTotal = currentOriginalTotal; 
+    discountedTotal = currentOriginalTotal; 
     if (currentDiscount.type === 'percent') { 
         discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100)); 
         totalText.innerHTML = `總金額：<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> <span style="color:#d33;">$${discountedTotal}</span> <small>(折扣 ${currentDiscount.value}%)</small>`; 
