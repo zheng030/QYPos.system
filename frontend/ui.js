@@ -267,23 +267,6 @@ function openItems(category) {
     grid.innerHTML = html;
 }
 
-function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); }
-function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
-
-/* ========== 顯示邏輯 (延續 logic.js 中的 renderCart) ========== */
-
-function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
-function checkItemType(name, price, categoryName) { 
-    if (name === "隱藏特調") { openCustomModal(name, price); return; } 
-    let realPrice = itemPrices[name] !== undefined ? itemPrices[name] : price; 
-    if (name === "隱藏啤酒") { addToCart(name, realPrice); return; } 
-    if (categoryName === "咖啡") { openDrinkModal(name, realPrice, "coffee"); return; } 
-    if (categoryName === "飲料") { if (name.includes("茶")) openDrinkModal(name, realPrice, "tea"); else openDrinkModal(name, realPrice, "drink"); return; } 
-    if (categoryName === "主餐") { if (name === "炒飯") { openFoodModal(name, realPrice, "friedRice"); return; } if (name === "日式炒烏龍麵" || name === "親子丼") { openFoodModal(name, realPrice, "meatOnly"); return; } } 
-    addToCart(name, realPrice); 
-}
-function addShotSet(name, price) { addToCart(`${name} <small style='color:#06d6a0'>[買5送1]</small>`, price * 5); }
-
 function openFoodModal(name, price, type) { 
     tempCustomItem = { name, price, type }; document.getElementById("foodTitle").innerText = name; let meatOptions = document.getElementById("meatOptions"); let html = ""; 
     if (type === "friedRice") html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=${price}" checked><div class="radio-btn btn-effect">牛 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">豬 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">雞 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">蝦仁 ($${price})</div></label>`; 
@@ -302,12 +285,17 @@ function toggleExtraShot() { isExtraShot = !isExtraShot; document.getElementById
 function closeCustomModal() { customModal.style.display = "none"; tempCustomItem = null; }
 function confirmCustomItem() { try { if (!tempCustomItem) return; let flavor = document.querySelector('input[name="flavor"]:checked').value; let taste = document.querySelector('input[name="taste"]:checked').value; let extraStr = ""; let finalPrice = tempCustomItem.price; if (tempCustomItem.price === 280) { let alcohol = document.getElementById("alcoholRange").value; if(isExtraShot) { finalPrice += 40; extraStr += "<br><b style='color:#d33;'>🔥 濃度升級 (+$40)</b>"; } extraStr += `<br><small style='color:#666'>(${flavor} / ${taste} / 濃度+${alcohol}%)</small>`; } else { let note = document.getElementById("customNote").value.trim(); if(note) extraStr += `<br><span style='color:#007bff; font-size:14px;'>📝 ${note}</span>`; extraStr += `<br><small style='color:#666'>(${flavor} / ${taste})</small>`; } addToCart(`${tempCustomItem.name} ${extraStr}`, finalPrice); closeCustomModal(); } catch (e) { alert("加入特調失敗: " + e.message); } }
 
+function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); }
+function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
+
 function openDiscountModal() { discountModal.style.display = "flex"; }
 function closeDiscountModal() { discountModal.style.display = "none"; }
 function confirmDiscount() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { alert("請輸入正確折數 (1-100)"); return; } currentDiscount = { type: 'percent', value: val }; renderCart(); closeDiscountModal(); }
+function updateDiscPreview() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } let discounted = Math.round(currentOriginalTotal * (val / 100)); document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; }
 function openAllowanceModal() { allowanceModal.style.display = "flex"; }
 function closeAllowanceModal() { allowanceModal.style.display = "none"; }
 function confirmAllowance() { let val = parseInt(document.getElementById("allowInput").value); if (isNaN(val) || val < 0) { alert("請輸入正確金額"); return; } currentDiscount = { type: 'amount', value: val }; renderCart(); closeAllowanceModal(); }
+
 
 function openPaymentModal() { 
     if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; checkoutAll(0); return; } 
@@ -330,7 +318,6 @@ function renderCheckoutLists() { let leftHTML = ""; let rightHTML = ""; let righ
 function moveToPay(index) { let item = tempLeftList.splice(index, 1)[0]; tempRightList.push(item); renderCheckoutLists(); }
 function removeFromPay(index) { let item = tempRightList.splice(index, 1)[0]; tempLeftList.push(item); renderCheckoutLists(); }
 function closeCheckoutModal() { checkoutModal.style.display = "none"; }
-function updateDiscPreview() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } let discounted = Math.round(currentOriginalTotal * (val / 100)); document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; }
 
 function openReprintModal() {
     if (cart.length === 0) { alert("購物車是空的"); return; }
@@ -347,23 +334,18 @@ function confirmReprintSelection() {
     try { 
         let selectedItems = []; 
         let currentCart = cart.filter(item => !item.isSent);
-        
         currentCart.forEach((item, index) => { 
             let cb = document.getElementById(`reprint-item-${index}`); 
             if (cb && cb.checked) selectedItems.push(item); 
         }); 
-        
         if (selectedItems.length === 0) { alert("請至少選擇一個項目"); return; } 
-        
         let seqNum = "補"; 
         if (tableCustomers[selectedTable] && tableCustomers[selectedTable].orderId) seqNum = tableCustomers[selectedTable].orderId; 
-        
-        // 印出選取的項目作為廚房單 (isKitchenTicket: true)
         printReceipt({ 
             seq: seqNum, 
             table: selectedTable, 
             time: new Date().toLocaleString('zh-TW', { hour12: false }), 
-            items: selectedItems.map(i => ({...i, isNew: true})), // 暫時標記為 new，讓 printReceipt 處理
+            items: selectedItems.map(i => ({...i, isNew: true})), 
             original: 0, 
             total: 0 
         }, true); 
@@ -371,22 +353,15 @@ function confirmReprintSelection() {
     } catch (e) { alert("補單發生錯誤: " + e.message); }
 }
 
-function openChangePasswordModal(owner) {
-    // 應有的功能：打開修改密碼的模態框
-    document.getElementById("pwdOwnerName").innerText = owner;
-    document.getElementById("oldPwd").value = '';
-    document.getElementById("newPwd").value = '';
-    document.getElementById("confirmPwd").value = '';
-    document.getElementById('changePasswordModal').style.display = 'flex';
-}
 function closeChangePasswordModal() { document.getElementById('changePasswordModal').style.display = 'none'; }
 function confirmChangePassword() { /* 實際邏輯需在 logic.js 實作 */ }
-
-
 function closeOwnerModal() { document.getElementById('ownerLoginModal').style.display = 'none'; }
-function checkOwner(owner) { /* 實際檢查密碼邏輯需在 logic.js 實作 */ }
+function showOwnerDetailedOrders() { /* 實際邏輯需在 logic.js 實作 */ }
+function renderConfidentialCalendar() { /* 實際邏輯需在 logic.js 實作 */ }
+function updateFinancialPage(ownerName) { /* 實際邏輯需在 logic.js 實作 */ }
 
 
+// 🔥 核心功能: 渲染商品上下架頁面
 function renderProductManagement() {
     const listContainer = document.getElementById("productManagementList");
     if (!listContainer) return;
@@ -613,7 +588,7 @@ function renderCalendar() {
 }
 
 
-/* --- 其他輔助函式 (為避免錯誤，也需確保存在) --- */
+/* --- 其他輔助函式 (確保存在) --- */
 function moveSegmentHighlighter(index) {
     const highlighter = document.getElementById('reportHighlighter');
     const options = document.querySelectorAll('.segment-control-container .segment-option');
@@ -655,35 +630,26 @@ function confirmClearData() {
     }
 }
 
+function closeSummaryModal() { document.getElementById("summaryModal").style.display = "none"; }
+window.toggleDetail = function(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } };
+window.toggleAccordion = function(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); };
+
+
 function openSplitCheckout() { if (cart.length === 0) { alert("購物車是空的，無法拆單！"); return; } tempLeftList = [...cart]; tempRightList = []; if(document.getElementById("splitDisc")) document.getElementById("splitDisc").value = ""; if(document.getElementById("splitAllow")) document.getElementById("splitAllow").value = ""; renderCheckoutLists(); checkoutModal.style.display = "flex"; }
 function renderCheckoutLists() { let leftHTML = ""; let rightHTML = ""; let rightTotal = 0; if(tempLeftList.length === 0) leftHTML = "<div class='empty-hint'>已無剩餘項目</div>"; else tempLeftList.forEach((item, index) => { leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`; }); if(tempRightList.length === 0) rightHTML = "<div class='empty-hint'>點擊左側加入</div>"; else tempRightList.forEach((item, index) => { rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`; }); document.getElementById("unpaidList").innerHTML = leftHTML; document.getElementById("payingList").innerHTML = rightHTML; calcSplitTotal(); }
 function moveToPay(index) { let item = tempLeftList.splice(index, 1)[0]; tempRightList.push(item); renderCheckoutLists(); }
 function removeFromPay(index) { let item = tempRightList.splice(index, 1)[0]; tempLeftList.push(item); renderCheckoutLists(); }
-function closeCheckoutModal() { checkoutModal.style.display = "none"; }
+function closeCheckoutModal() { document.getElementById("checkoutModal").style.display = "none"; }
 function calcFinalPay() { let allowance = parseInt(document.getElementById("payAllowance").value) || 0; finalTotal = discountedTotal - allowance; if(finalTotal < 0) finalTotal = 0; document.getElementById("payFinal").value = finalTotal; }
 function calcSplitTotal() { let baseTotal = tempRightList.reduce((a, b) => a + b.price, 0); let disc = parseFloat(document.getElementById("splitDisc").value); let allow = parseInt(document.getElementById("splitAllow").value); let finalSplit = baseTotal; if (!isNaN(disc) && disc > 0 && disc <= 100) { finalSplit = Math.round(baseTotal * (disc / 100)); } if (!isNaN(allow) && allow > 0) { finalSplit = finalSplit - allow; } if(finalSplit < 0) finalSplit = 0; document.getElementById("payTotal").innerText = "$" + finalSplit; return finalSplit; }
-function openPaymentModal() { 
-    if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; checkoutAll(0); return; } 
-    document.getElementById("payOriginal").innerText = "$" + discountedTotal; 
-    let labels = [];
-    if(currentDiscount.type === 'percent') labels.push(`${currentDiscount.value} 折`);
-    if(currentDiscount.type === 'amount') labels.push(`折讓 ${currentDiscount.value}`);
-    if(isServiceFeeEnabled) labels.push("10% 服務費");
-    document.getElementById("payDiscLabel").innerText = labels.length > 0 ? `(${labels.join(" + ")})` : "";
-    document.getElementById("payAllowance").value = ""; 
-    document.getElementById("payFinal").value = discountedTotal; 
-    finalTotal = discountedTotal; 
-    paymentModal.style.display = "flex"; 
-}
-function closePaymentModal() { paymentModal.style.display = "none"; }
-function openDiscountModal() { discountModal.style.display = "flex"; }
-function closeDiscountModal() { discountModal.style.display = "none"; }
+function closePaymentModal() { document.getElementById("paymentModal").style.display = "none"; }
+function openDiscountModal() { document.getElementById("discountModal").style.display = "flex"; }
+function closeDiscountModal() { document.getElementById("discountModal").style.display = "none"; }
 function confirmDiscount() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { alert("請輸入正確折數 (1-100)"); return; } currentDiscount = { type: 'percent', value: val }; renderCart(); closeDiscountModal(); }
 function updateDiscPreview() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } let discounted = Math.round(currentOriginalTotal * (val / 100)); document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; }
-function openAllowanceModal() { allowanceModal.style.display = "flex"; }
-function closeAllowanceModal() { allowanceModal.style.display = "none"; }
+function openAllowanceModal() { document.getElementById("allowanceModal").style.display = "flex"; }
+function closeAllowanceModal() { document.getElementById("allowanceModal").style.display = "none"; }
 function confirmAllowance() { let val = parseInt(document.getElementById("allowInput").value); if (isNaN(val) || val < 0) { alert("請輸入正確金額"); return; } currentDiscount = { type: 'amount', value: val }; renderCart(); closeAllowanceModal(); }
-function closeSummaryModal() { summaryModal.style.display = "none"; }
 function closeOwnerModal() { document.getElementById('ownerLoginModal').style.display = 'none'; }
 function openChangePasswordModal(owner) {
     document.getElementById("pwdOwnerName").innerText = owner;
@@ -697,39 +663,32 @@ function confirmChangePassword() { /* 實際邏輯需在 logic.js 實作 */ }
 function showOwnerDetailedOrders() { /* 實際邏輯需在 logic.js 實作 */ }
 function renderConfidentialCalendar() { /* 實際邏輯需在 logic.js 實作 */ }
 function updateFinancialPage(ownerName) { /* 實際邏輯需在 logic.js 實作 */ }
-function openReprintModal() {
-    if (cart.length === 0) { alert("購物車是空的"); return; }
-    const list = document.getElementById('reprintList'); list.innerHTML = '';
-    let currentCart = cart.filter(item => !item.isSent);
-    currentCart.forEach((item, index) => { list.innerHTML += `<label class="checkout-item" style="justify-content: flex-start; gap: 10px;"><input type="checkbox" class="reprint-checkbox" id="reprint-item-${index}" checked><span>${item.name}</span></label>`; });
-    list.innerHTML = `<label class="checkout-item" style="background:#f0f7ff; border-color:#007bff; font-weight:bold;"><input type="checkbox" id="selectAllReprint" checked onchange="toggleAllReprint(this)"><span>全選 / 取消全選</span></label><hr style="margin: 5px 0;">` + list.innerHTML;
-    reprintSelectionModal.style.display = "flex";
-}
-function toggleAllReprint(source) { let checkboxes = document.querySelectorAll('.reprint-checkbox'); checkboxes.forEach(cb => cb.checked = source.checked); }
-function closeReprintModal() { reprintSelectionModal.style.display = "none"; }
-function confirmReprintSelection() {
-    try { 
-        let selectedItems = []; 
-        let currentCart = cart.filter(item => !item.isSent);
-        currentCart.forEach((item, index) => { 
-            let cb = document.getElementById(`reprint-item-${index}`); 
-            if (cb && cb.checked) selectedItems.push(item); 
-        }); 
-        if (selectedItems.length === 0) { alert("請至少選擇一個項目"); return; } 
-        let seqNum = "補"; 
-        if (tableCustomers[selectedTable] && tableCustomers[selectedTable].orderId) seqNum = tableCustomers[selectedTable].orderId; 
-        printReceipt({ 
-            seq: seqNum, 
-            table: selectedTable, 
-            time: new Date().toLocaleString('zh-TW', { hour12: false }), 
-            items: selectedItems.map(i => ({...i, isNew: true})), 
-            original: 0, 
-            total: 0 
-        }, true); 
-        closeReprintModal(); 
-    } catch (e) { alert("補單發生錯誤: " + e.message); }
-}
+function closeItemStatsModal() { document.getElementById('itemStatsModal').style.display = 'none'; }
+function openItemStatsModal() { document.getElementById('itemStatsModal').style.display = 'flex'; }
 
+
+function closeFoodModal() { document.getElementById('foodOptionModal').style.display = "none"; tempCustomItem = null; }
+function closeDrinkModal() { document.getElementById('drinkModal').style.display = "none"; tempCustomItem = null; }
+function closeCustomModal() { document.getElementById('customModal').style.display = "none"; tempCustomItem = null; }
+
+function checkItemType(name, price, categoryName) { 
+    if (name === "隱藏特調") { openCustomModal(name, price); return; } 
+    let realPrice = itemPrices[name] !== undefined ? itemPrices[name] : price; 
+    if (name === "隱藏啤酒") { addToCart(name, realPrice); return; } 
+    if (categoryName === "咖啡") { openDrinkModal(name, realPrice, "coffee"); return; } 
+    if (categoryName === "飲料") { if (name.includes("茶")) openDrinkModal(name, realPrice, "tea"); else openDrinkModal(name, realPrice, "drink"); return; } 
+    if (categoryName === "主餐") { if (name === "炒飯") { openFoodModal(name, realPrice, "friedRice"); return; } if (name === "日式炒烏龍麵" || name === "親子丼") { openFoodModal(name, realPrice, "meatOnly"); return; } } 
+    addToCart(name, realPrice); 
+}
+function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
+function addShotSet(name, price) { addToCart(`${name} <small style='color:#06d6a0'>[買5送1]</small>`, price * 5); }
+
+
+function confirmFoodItem() { try { if (!tempCustomItem) return; let meat = document.querySelector('input[name="meat"]:checked').value; addToCart(`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`, tempCustomItem.price); closeFoodModal(); } catch (e) { alert("加入餐點失敗: " + e.message); } }
+function confirmDrinkItem() { try { if (!tempCustomItem) return; let note = ""; if (tempCustomItem.type === "coffee") { let temp = document.querySelector('input[name="simpleTemp"]:checked').value; note = `<small style='color:#666'>(${temp})</small>`; } else { let temp = document.querySelector('input[name="advTemp"]:checked').value; if (tempCustomItem.type === "tea") { let sugar = document.querySelector('input[name="sugar"]:checked').value; note = `<small style='color:#666'>(${temp} / ${sugar})</small>`; } else { note = `<small style='color:#666'>(${temp})</small>`; } } addToCart(tempCustomItem.name + " " + note, tempCustomItem.price); closeDrinkModal(); } catch (e) { alert("加入飲料失敗: " + e.message); } }
+function confirmCustomItem() { try { if (!tempCustomItem) return; let flavor = document.querySelector('input[name="flavor"]:checked').value; let taste = document.querySelector('input[name="taste"]:checked').value; let extraStr = ""; let finalPrice = tempCustomItem.price; if (tempCustomItem.price === 280) { let alcohol = document.getElementById("alcoholRange").value; if(isExtraShot) { finalPrice += 40; extraStr += "<br><b style='color:#d33;'>🔥 濃度升級 (+$40)</b>"; } extraStr += `<br><small style='color:#666'>(${flavor} / ${taste} / 濃度+${alcohol}%)</small>`; } else { let note = document.getElementById("customNote").value.trim(); if(note) extraStr += `<br><span style='color:#007bff; font-size:14px;'>📝 ${note}</span>`; extraStr += `<br><small style='color:#666'>(${flavor} / ${taste})</small>`; } addToCart(`${tempCustomItem.name} ${extraStr}`, finalPrice); closeCustomModal(); } catch (e) { alert("加入特調失敗: " + e.message); } }
+
+// 列印收據/工作單
 function printReceipt(order, isKitchenTicket) {
     if (!order || !order.items) return;
     const itemsToPrint = isKitchenTicket ? order.items.filter(item => item.isNew) : getMergedItems(order.items);
