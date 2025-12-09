@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v22: 修正列印排版靠左對齊) */
-console.log("UI JS v22 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v23: 修正今日訂單簡化模式) */
+console.log("UI JS v23 Loaded - 介面程式已載入");
 
 let monthlyReportData = {}; // 用於儲存月報表的每日數據
 
@@ -795,7 +795,7 @@ function printReceipt(order, isKitchenTicket) {
                 <span style="flex-grow:1; text-align:left;">${itemName} ${item.isTreat ? ' (招待)' : ''}</span>
                 <span style="width:60px; text-align:right;">${itemTotal}</span>
             </div>
-            ${itemNote ? `<div style="font-size:12px; color:#555; margin-left:30px; text-align:left; margin-bottom:5px;">${itemNote.replace(/<br>/g, ' ')}</div>` : ''}
+            ${itemNote ? `<div style="font-size:12px; color:#555; margin-left:30px; text-align:left; margin-bottom:5px;">${itemNote.replace(/<br>/g, ' ').replace(/<[^>]*>/g, '').trim()}</div>` : ''}
         `;
     });
 
@@ -831,6 +831,110 @@ function showToast(message) { const toast = document.getElementById("toast-conta
 function closeSummaryModal() { summaryModal.style.display = "none"; }
 window.toggleDetail = function(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } };
 window.toggleAccordion = function(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); };
+
+// 🔥 新增：切換今日訂單簡化模式的函式
+function toggleHistoryView() {
+    isHistorySimpleMode = !isHistorySimpleMode;
+    const btn = document.getElementById('toggleSimpleViewBtn');
+    
+    if (isHistorySimpleMode) {
+        btn.classList.add('active');
+        btn.innerText = '✅ 簡化訂單 (合併數量)';
+    } else {
+        btn.classList.remove('active');
+        btn.innerText = '🔄 詳盡訂單 (展開明細)';
+    }
+    
+    // 重新渲染今日訂單列表
+    showHistory();
+}
+
+
+// 🔥 修正：今日訂單列表渲染 (加入簡化/詳盡邏輯)
+function showHistory() {
+    const historyBox = document.getElementById("history-box");
+    const container = document.getElementById("historyPage");
+    if (!historyBox || !container) return;
+    
+    // 檢查並創建/更新切換按鈕
+    if (!document.getElementById('toggleSimpleViewBtn')) {
+        // 確保按鈕被放在正確的位置 (在標題下方，列表上方)
+        const headerRow = container.querySelector('.history-header-row');
+        if (headerRow) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.id = 'toggleSimpleViewBtn';
+            toggleBtn.className = 'view-toggle-btn btn-effect';
+            toggleBtn.onclick = toggleHistoryView;
+            // 由於 HTML 結構中 title 和 header-row 是分開的，我們將按鈕插入到 headerRow 的前面
+            headerRow.parentNode.insertBefore(toggleBtn, headerRow);
+        }
+    }
+
+    const btn = document.getElementById('toggleSimpleViewBtn');
+    if (btn) {
+        if (isHistorySimpleMode) {
+            btn.classList.add('active');
+            btn.innerText = '✅ 簡化訂單 (合併數量)';
+        } else {
+            btn.classList.remove('active');
+            btn.innerText = '🔄 詳盡訂單 (展開明細)';
+        }
+    }
+
+    historyBox.innerHTML = "";
+    
+    let visibleOrders = getVisibleOrders();
+    if (visibleOrders.length === 0) {
+        historyBox.innerHTML = "<div style='text-align:center; color:#888; padding:30px;'>今日尚無已結帳訂單</div>";
+        return;
+    }
+
+    visibleOrders.forEach((o, index) => {
+        let seqDisplay = o.formattedSeq ? `#${o.formattedSeq}` : `#${visibleOrders.length - index}`;
+        let timeOnly = o.time.split(" ")[1] || o.time;
+        
+        // 根據模式選擇使用合併或原始列表
+        const displayItems = isHistorySimpleMode ? getMergedItems(o.items) : o.items;
+        
+        // 摘要始終使用合併後的列表，以便於概覽
+        let summary = getMergedItems(o.items)
+            .map(i => {
+                let n = i.name.replace(" (招待)", "");
+                if (i.count > 1) n += ` x${i.count}`;
+                return n;
+            }).join("、");
+
+        let detailHtml = displayItems.map(item => {
+            const count = item.count || 1;
+            const price = item.isTreat ? 0 : item.price;
+            const itemTotal = price * count;
+            const itemDisplayName = item.name.replace(/<small.*?<\/small>|<br><b.*?<\/b>/g, '').trim(); // 移除修飾符
+            const itemNote = item.name.match(/<small.*?<\/small>|<br><b.*?<\/b>/g)?.join(' ') || '';
+
+            return `<div style="display:flex; justify-content:space-between; font-size:14px; padding:2px 0;">
+                        <span style="color:#333;">${itemDisplayName} ${item.isTreat ? ' (招待)' : ''} x${count}</span>
+                        <span style="font-weight:bold; color:#ef476f;">$${itemTotal}</span>
+                    </div>
+                    ${itemNote ? `<div style="font-size:11px; color:#999; margin-left:15px; margin-bottom:5px;">${itemNote.replace(/<br>/g, ' ').replace(/<[^>]*>/g, '').trim()}</div>` : ''}`;
+        }).join('');
+
+        let rowHtml = `
+            <div class="history-row" onclick="toggleDetail('detail-${index}')">
+                <span class="seq">${seqDisplay}</span>
+                <span class="seat">${o.seat}</span>
+                <span class="cust" style="font-size:13px; color:#64748b;">${summary}</span>
+                <span class="time">${timeOnly}</span>
+                <span class="amt">$${o.total}</span>
+                <button onclick="event.stopPropagation(); printReceipt(historyOrders.find(ord => ord.time === '${o.time}'), false);" class="btn-effect" style="padding:5px 10px; font-size:12px; background:#475569; color:white; border-radius:5px;">🖨 補印</button>
+            </div>
+            <div id="detail-${index}" style="display:none; padding:15px; background:#f8fafc; border-bottom:1px solid #e2e8f0; text-align:left;">
+                <p style="font-weight:bold; margin-top:0; color:var(--primary-color);">訂單內容 (實收: $${o.total} / 原價: $${o.originalTotal || o.total}):</p>
+                ${detailHtml}
+            </div>
+        `;
+        historyBox.innerHTML += rowHtml;
+    });
+}
 
 /* ========== 這裡是最重要的修正區域 (確保功能連動) ========== */
 window.addEventListener('DOMContentLoaded', () => {
