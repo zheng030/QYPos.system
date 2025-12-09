@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>POS 點餐系統</title>
-    <link rel="stylesheet" href="style.css?v=11">     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="style.css?v=12">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body ontouchstart="">
@@ -278,9 +279,9 @@
             <div id="costInputSection" class="finance-detail-box" style="display:none;">
                 <h3 id="costEditTitle">📝 成本輸入</h3>
                 <div class="cost-header-row">
-                    <span>品項名稱</span>
-                    <span style="text-align:right;">售價 (改)</span>
-                    <span style="text-align:right;">成本 (改)</span>
+                    <span>品項名稱 (原價)</span>
+                    <span>售價 (改)</span>
+                    <span>成本 (改)</span>
                 </div>
                 <div id="costEditorList"></div>
             </div>
@@ -383,8 +384,8 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="data.js?v=11"></script>
-    <script src="logic.js?v=11"></script>
-    <script src="ui.js?v=11"></script>
+    <script src="data.js?v=12"></script>
+    <script src="logic.js?v=12"></script>
+    <script src="ui.js?v=12"></script>
 </body>
 </html>
