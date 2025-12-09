@@ -1,4 +1,4 @@
-/* ui.js - 介面渲染與事件處理 (v15: 燒烤 Popular 新增五種蔬菜) */
+/* ui.js - 介面渲染與事件處理 (v15: 終極完整版 - 包含所有彈窗功能) */
 console.log("UI JS v15 Loaded - 介面程式已載入");
 
 function showApp() {
@@ -247,7 +247,7 @@ function renderCart() {
     let displayItems = [];
 
     // 1. 先加入已送出的商品 (若有的話)
-    if (typeof sentItems !== 'undefined' && sentItems.length > 0) {
+    if (sentItems.length > 0) {
         sentItems.forEach(item => {
             displayItems.push({ ...item, isSent: true, count: 1 });
         });
@@ -394,6 +394,23 @@ function removeFromPay(index) { let item = tempRightList.splice(index, 1)[0]; te
 function closeCheckoutModal() { checkoutModal.style.display = "none"; }
 function updateDiscPreview() { let val = parseFloat(document.getElementById("discInput").value); if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } let discounted = Math.round(currentOriginalTotal * (val / 100)); document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; }
 
+function openPaymentModal() { 
+    if (cart.length === 0) { if(!confirm("購物車是空的，確定要直接清桌嗎？")) return; checkoutAll(0); return; } 
+    document.getElementById("payOriginal").innerText = "$" + discountedTotal; 
+    let labels = [];
+    if(currentDiscount.type === 'percent') labels.push(`${currentDiscount.value} 折`);
+    if(currentDiscount.type === 'amount') labels.push(`折讓 ${currentDiscount.value}`);
+    if(isServiceFeeEnabled) labels.push("10% 服務費");
+    document.getElementById("payDiscLabel").innerText = labels.length > 0 ? `(${labels.join(" + ")})` : "";
+    document.getElementById("payAllowance").value = ""; 
+    document.getElementById("payFinal").value = discountedTotal; 
+    finalTotal = discountedTotal; 
+    paymentModal.style.display = "flex"; 
+}
+function closePaymentModal() { paymentModal.style.display = "none"; }
+function confirmCheckout() { let finalAmount = parseInt(document.getElementById("payFinal").value); if(isNaN(finalAmount) || finalAmount < 0) { alert("金額錯誤！"); return; } checkoutAll(finalAmount); closePaymentModal(); }
+
+
 async function printReceipt(data, isTicket = false) {
     let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"];
     let barItems = []; let kitchenItems = [];
@@ -406,14 +423,90 @@ async function printReceipt(data, isTicket = false) {
         if (kitchenCategories.includes(itemCat)) kitchenItems.push(i); else barItems.push(i);
     });
     const printArea = document.getElementById("receipt-print-area");
+    
+    // 🔥 修改：新增 style 標籤強制列印時靠左對齊，並移除 printArea 的內容
+    const styleOverride = `<style>
+        @media print {
+            .receipt-section { text-align: left !important; }
+            .receipt-items { text-align: left !important; }
+            .receipt-item span:first-child { text-align: left !important; }
+            .receipt-item span:last-child { text-align: right !important; }
+            /* 讓項目名稱靠左，數量靠右 */
+            .receipt-item.kitchen-item { display: flex; justify-content: space-between; }
+        }
+    </style>`;
+
     const generateHtml = (title, items, isFullReceipt) => {
-        let itemsHtml = ""; items.forEach(i => { let displayName = i.name; if (i.isTreat) displayName += " (招待)"; let priceStr = isFullReceipt ? (i.isTreat ? "$0" : `$${i.price}`) : ""; let itemClass = isFullReceipt ? "receipt-item" : "receipt-item kitchen-item"; itemsHtml += `<div class="${itemClass}"><span>${displayName}</span><span>${priceStr}</span></div>`; });
-        let footerHtml = ""; if (isFullReceipt) { footerHtml = `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`; }
-        return `<div class="receipt-section"><div class="receipt-header"><h2 class="store-name">${title}</h2><div class="receipt-info"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${itemsHtml}</div><hr class="dashed-line">${footerHtml}</div>`;
+        let itemsHtml = ""; 
+        items.forEach(i => { 
+            let displayName = i.name; 
+            if (i.isTreat) displayName += " (招待)"; 
+            let priceStr = isFullReceipt ? (i.isTreat ? "$0" : `$${i.price}`) : ""; 
+            
+            // 🔥 修正：讓 kitchen-item 具有 space-between 屬性，確保排版靠左
+            let itemClass = isFullReceipt ? "receipt-item" : "receipt-item kitchen-item"; 
+            
+            // 如果是工作單，只顯示名稱和數量
+            if (!isFullReceipt) {
+                // 為了排版正確，我們必須確保這裡的項目是未合併的單品項，但這裡的 data.items 已經是單品項
+                itemsHtml += `<div class="${itemClass}"><span>${displayName}</span><span>${i.count ? 'x' + i.count : 'x1'}</span></div>`;
+            } else {
+                itemsHtml += `<div class="${itemClass}"><span>${displayName}</span><span>${priceStr}</span></div>`;
+            }
+        });
+        
+        let footerHtml = ""; 
+        if (isFullReceipt) { 
+            footerHtml = `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`; 
+        }
+        
+        // 🔥 確保標題靠左
+        let headerAlign = isFullReceipt ? 'center' : 'left';
+        
+        return `${styleOverride}<div class="receipt-section" style="text-align: ${headerAlign};"><div class="receipt-header"><h2 class="store-name" style="text-align: ${headerAlign};">${title}</h2><div class="receipt-info" style="text-align: ${headerAlign};"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${itemsHtml}</div><hr class="dashed-line">${footerHtml}</div>`;
     };
-    const performPrint = (htmlContent) => { return new Promise((resolve) => { printArea.innerHTML = htmlContent; setTimeout(() => { window.print(); setTimeout(resolve, 500); }, 500); }); };
-    if (!isTicket) { await performPrint(generateHtml("結帳收據", data.items, true)); } else { let hasBar = barItems.length > 0; let hasKitchen = kitchenItems.length > 0; if (hasBar) await performPrint(generateHtml("吧檯工作單", barItems, false)); if (hasKitchen) await performPrint(generateHtml("廚房工作單", kitchenItems, false)); }
+    
+    const performPrint = (htmlContent) => { 
+        return new Promise((resolve) => { 
+            // 每次列印前先清空，避免重複內容疊加
+            printArea.innerHTML = "";
+            printArea.innerHTML = htmlContent; 
+            
+            // 將 printArea 暫時移到可視範圍進行列印
+            printArea.style.position = 'static';
+            printArea.style.width = 'auto';
+            printArea.style.height = 'auto';
+            
+            setTimeout(() => { 
+                window.print(); 
+                
+                // 列印完畢後再隱藏
+                printArea.style.position = 'absolute';
+                printArea.style.width = '0';
+                printArea.style.height = '0';
+                
+                setTimeout(resolve, 500); 
+            }, 500); 
+        }); 
+    };
+    
+    if (!isTicket) { 
+        await performPrint(generateHtml("結帳收據", data.items, true)); 
+    } else { 
+        let hasBar = barItems.length > 0; 
+        let hasKitchen = kitchenItems.length > 0; 
+        
+        // 為了確保列印能夠分開，必須對 printArea 進行操作，並處理頁面樣式覆蓋
+        let printQueue = [];
+        if (hasBar) printQueue.push(generateHtml("吧檯工作單", barItems, false));
+        if (hasKitchen) printQueue.push(generateHtml("廚房工作單", kitchenItems, false));
+
+        for (const content of printQueue) {
+            await performPrint(content);
+        }
+    }
 }
+
 
 function openReprintModal() {
     if (cart.length === 0) { alert("購物車是空的"); return; }
