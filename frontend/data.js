@@ -45,5 +45,9 @@ const menuData = {
     "炸物": [{name:"嫩炸豆腐",price:80},{name:"脆薯",price:100},{name:"雞塊",price:100},{name:"鑫鑫腸",price:100},{name:"雞米花",price:100},{name:"洋蔥圈",price:100},{name:"酥炸魷魚",price:0},{name:"炸物拼盤",price:400}],
     "厚片": [{name:"花生厚片",price:80},{name:"奶酥厚片",price:80},{name:"蒜香厚片",price:80},{name:"巧克力厚片",price:80},{name:"巧克力棉花糖厚片",price:80}],
     "甜點": [{name:"起司蛋糕",price:120}],
-    "其他": [{name:"服務費",price:100},{name:"清潔費",price:300},{name:"碎碎平安",price:500}]
+    "其他": [
+        {name:"服務費",price:100},
+        {name:"清潔費",price:300},
+        {name:"碎碎平安",price:500}
+    ]
 };
