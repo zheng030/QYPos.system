@@ -95,6 +95,8 @@ function getItemCategoryType(itemName) {
     if(!itemName) return 'bar';
     // 這裡需要一個更穩健的名稱清理
     let baseName = itemName.split(" <")[0].replace(/\s*\(招待\)$/, "").trim();
+    baseName = baseName.replace(/\s*[\(（].*?[\)）]$/, "").trim(); // 移除括號內的客製化資訊
+
     const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點", "其他"];
     const bbqCats = ["燒烤", "主餐", "炸物"];
     for (const [cat, content] of Object.entries(menuData)) {
@@ -147,6 +149,7 @@ function getItemSalesStats(startTime, endTime) {
             order.items.forEach(item => {
                 // 清理名稱 (移除客製化與招待標記)
                 let name = item.name.split(" <")[0].replace(/\s*\(招待\)$/, "").trim();
+                name = name.replace(/\s*[\(（].*?[\)）]$/, "").trim(); // 移除括號內的客製化資訊
                 
                 // 處理套餐/多數量計數
                 const count = item.count || 1;
