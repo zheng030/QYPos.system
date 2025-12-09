@@ -1,42 +1,42 @@
-/* style.css - 完整版 (包含列印修正及今日訂單按鈕樣式) */
+/* style.css - 完整版 (包含列印修正) */
 
 /* ========== 1. 全域設定 (現代化風格) ========== */
 :root {
-    --primary-color: #4361ee;       /* 主色調：現代藍 */
-    --secondary-color: #3f37c9;     /* 次色調 */
-    --accent-color: #f72585;        /* 強調色：玫紅 */
-    --success-color: #06d6a0;       /* 成功/確認 */
-    --warning-color: #ffd166;       /* 警告/暫存 */
-    --danger-color: #ef476f;        /* 危險/刪除 */
-    --bg-color: #f4f7f6;            /* 背景色：極淡灰綠 */
-    --card-bg: #ffffff;             /* 卡片背景 */
-    --text-main: #2b2d42;           /* 主要文字 */
-    --text-sub: #8d99ae;            /* 次要文字 */
-    --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
-    --radius-md: 12px;
-    --radius-lg: 20px;
+    --primary-color: #4361ee;       /* 主色調：現代藍 */
+    --secondary-color: #3f37c9;     /* 次色調 */
+    --accent-color: #f72585;        /* 強調色：玫紅 */
+    --success-color: #06d6a0;       /* 成功/確認 */
+    --warning-color: #ffd166;       /* 警告/暫存 */
+    --danger-color: #ef476f;        /* 危險/刪除 */
+    --bg-color: #f4f7f6;            /* 背景色：極淡灰綠 */
+    --card-bg: #ffffff;             /* 卡片背景 */
+    --text-main: #2b2d42;           /* 主要文字 */
+    --text-sub: #8d99ae;            /* 次要文字 */
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+    --radius-md: 12px;
+    --radius-lg: 20px;
 }
 
 body {
-    font-family: "Noto Sans TC", "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, sans-serif;
-    margin: 0;
-    background-color: var(--bg-color);
-    color: var(--text-main);
-    text-align: center;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation; 
-    overscroll-behavior: none;
+    font-family: "Noto Sans TC", "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, sans-serif;
+    margin: 0;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    text-align: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; 
+    overscroll-behavior: none;
 }
 
 button {
-    cursor: pointer;
-    font-family: inherit;
-    user-select: none;
-    border: none;
-    outline: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    font-family: inherit;
+    user-select: none;
+    border: none;
+    outline: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-effect:active { transform: scale(0.96); opacity: 0.9; }
@@ -48,10 +48,10 @@ button {
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
 #toast-container {
-    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
-    background: rgba(43, 45, 66, 0.9); color: white; padding: 12px 30px;
-    border-radius: 50px; font-size: 15px; font-weight: 500; z-index: 20000;
-    opacity: 0; transition: all 0.3s ease; pointer-events: none; box-shadow: var(--shadow-lg);
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(43, 45, 66, 0.9); color: white; padding: 12px 30px;
+    border-radius: 50px; font-size: 15px; font-weight: 500; z-index: 20000;
+    opacity: 0; transition: all 0.3s ease; pointer-events: none; box-shadow: var(--shadow-lg);
 }
 
 /* ========== 2. 登入畫面 ========== */
@@ -71,13 +71,13 @@ button {
 #systemTime { font-size: 15px; font-weight: 600; color: var(--text-sub); background: #f8f9fa; padding: 8px 16px; border-radius: 50px; }
 
 /* 首頁 3欄 grid */
-#home { 
-    display: grid; 
-    grid-template-columns: repeat(3, 1fr); 
-    gap: 20px; 
-    padding: 30px; 
-    max-width: 1000px; 
-    margin: 0 auto; 
+#home { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 20px; 
+    padding: 30px; 
+    max-width: 1000px; 
+    margin: 0 auto; 
 }
 
 .menu-btn { background: var(--card-bg); border-radius: var(--radius-lg); padding: 25px 15px; font-size: 17px; font-weight: 600; color: var(--text-main); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; gap: 10px; transition: all 0.3s ease; border: 1px solid transparent; }
@@ -86,30 +86,22 @@ button {
 
 /* ========== 4. 座位選擇 (4x4) ========== */
 .title { font-size: 28px; font-weight: 800; margin-bottom: 25px; color: var(--text-main); text-align: left; border-left: 5px solid var(--primary-color); padding-left: 15px; }
-#tableSelectGrid { 
-    display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 20px; 
+#tableSelectGrid { 
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 20px; 
 }
-.tableBtn { 
-    background: linear-gradient(145deg, #ffffff, #f0f0f0);
-    padding: 30px 10px; border-radius: var(--radius-lg); 
-    display: flex; flex-direction: column; justify-content: center; align-items: center; 
-    box-shadow: 5px 5px 10px #d1d1d1, -5px -5px 10px #ffffff;
-    font-size: 20px; color: var(--text-main); border: 3px solid transparent; position: relative; overflow: hidden; 
+.tableBtn { 
+    background: linear-gradient(145deg, #ffffff, #f0f0f0);
+    padding: 30px 10px; border-radius: var(--radius-lg); 
+    display: flex; flex-direction: column; justify-content: center; align-items: center; 
+    box-shadow: 5px 5px 10px #d1d1d1, -5px -5px 10px #ffffff;
+    font-size: 20px; color: var(--text-main); border: 3px solid transparent; position: relative; overflow: hidden; 
 }
 .tableBtn b { font-size: 22px; z-index: 2; }
 .status-red { background: #fff0f3; border-color: var(--danger-color); color: var(--danger-color); box-shadow: 0 4px 10px rgba(239, 71, 111, 0.2); }
 .status-yellow { background: #fff9db; border-color: var(--warning-color); color: #d97706; box-shadow: 0 4px 10px rgba(255, 209, 102, 0.3); }
 .status-white { background: var(--card-bg); color: var(--text-sub); border: 2px dashed #e2e8f0; }
-
-/* 新增 - 提醒有未處理的 incomingOrder */
-.status-blue { 
-    background: #e0e7ff; 
-    border-color: #4361ee; 
-    color: #4361ee; 
-    box-shadow: 0 4px 10px rgba(67, 97, 238, 0.3);
-}
 
 /* ========== 5. 點餐與菜單 (含售完樣式) ========== */
 .order-header { background: var(--card-bg); padding: 15px 25px; border-radius: var(--radius-lg); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
@@ -120,11 +112,11 @@ button {
 .customer-input-box input { width: 100%; padding: 15px; font-size: 16px; border: 2px solid #eef2f6; border-radius: var(--radius-md); background: var(--card-bg); outline: none; transition: border-color 0.2s; }
 .customer-input-box input:focus { border-color: var(--primary-color); }
 
-#menuGrid { 
-    display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 15px; 
-    margin-bottom: 25px; 
+#menuGrid { 
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 15px; 
+    margin-bottom: 25px; 
 }
 
 .categoryBtn { background: var(--card-bg); border-radius: var(--radius-md); padding: 20px 10px; font-size: 16px; font-weight: bold; color: var(--text-main); box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: center; min-height: 70px; border: 1px solid #f1f5f9; }
@@ -222,30 +214,8 @@ button {
 #pastOrderListSection { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; }
 
 /* 今日訂單功能按鈕 */
-.view-toggle-btn { 
-    /* 基礎樣式 */
-    background: #e0f2fe; 
-    color: #007bff; 
-    padding: 10px 15px; 
-    border-radius: 8px; 
-    font-weight: bold; 
-    font-size: 14px; 
-    border: 2px solid transparent; 
-    margin-bottom: 15px;
-    display: block; 
-    width: 250px; 
-    margin-left: 0; 
-    transition: all 0.2s;
-}
-
-.view-toggle-btn.active {
-    /* 啟用/簡化模式時的狀態 */
-    background: #e0e7ff; 
-    border-color: var(--primary-color); /* 藍色外圈 */
-    color: var(--primary-color);
-}
-
-
+.history-actions { display: flex; gap: 15px; margin-bottom: 15px; justify-content: flex-end; }
+.view-toggle-btn { background: #e0f2fe; color: #007bff; padding: 10px 15px; border-radius: 8px; font-weight: bold; font-size: 14px; }
 .end-business-btn { background: #fee2e2; color: #ef476f; padding: 12px 20px; border-radius: 50px; font-weight: bold; font-size: 16px; margin-top: 20px; width: 100%; box-shadow: 0 4px 10px rgba(239, 71, 111, 0.2); }
 
 .stats-body { display: flex; flex-wrap: wrap; gap: 20px; }
@@ -293,22 +263,22 @@ input:checked + .slider:before { transform: translateX(24px); }
 
 /* ========== RWD ========== */
 @media (max-width: 900px) {
-    #home { grid-template-columns: repeat(3, 1fr); }
-    #tableSelectGrid { grid-template-columns: repeat(4, 1fr); } /* 保持4x4 */
-    #menuGrid { grid-template-columns: repeat(3, 1fr); } /* 平板 3欄 */
-    .report-dashboard { grid-template-columns: 1fr; }
-    .finance-layout { flex-direction: column; }
-    .calendar-container-left, .finance-summary-sidebar { width: 100%; }
-    .finance-summary-sidebar { flex-direction: row; overflow-x: auto; padding-bottom: 5px; }
-    .summary-card { min-width: 260px; }
+    #home { grid-template-columns: repeat(3, 1fr); }
+    #tableSelectGrid { grid-template-columns: repeat(4, 1fr); } /* 保持4x4 */
+    #menuGrid { grid-template-columns: repeat(3, 1fr); } /* 平板 3欄 */
+    .report-dashboard { grid-template-columns: 1fr; }
+    .finance-layout { flex-direction: column; }
+    .calendar-container-left, .finance-summary-sidebar { width: 100%; }
+    .finance-summary-sidebar { flex-direction: row; overflow-x: auto; padding-bottom: 5px; }
+    .summary-card { min-width: 260px; }
 }
 @media (max-width: 600px) {
-    #home { grid-template-columns: repeat(2, 1fr); }
-    #tableSelectGrid { grid-template-columns: repeat(3, 1fr); } /* 手機改3欄 */
-    #menuGrid { grid-template-columns: repeat(2, 1fr); } /* 手機 2欄 */
-    .finance-summary-sidebar { flex-direction: column; }
-    .summary-card { width: 100%; }
-    .action-buttons-compact { grid-template-columns: 1fr 1fr; }
+    #home { grid-template-columns: repeat(2, 1fr); }
+    #tableSelectGrid { grid-template-columns: repeat(3, 1fr); } /* 手機改3欄 */
+    #menuGrid { grid-template-columns: repeat(2, 1fr); } /* 手機 2欄 */
+    .finance-summary-sidebar { flex-direction: column; }
+    .summary-card { width: 100%; }
+    .action-buttons-compact { grid-template-columns: 1fr 1fr; }
 }
 
 /* ========== 客人模式 ========== */
@@ -319,6 +289,7 @@ body.customer-mode .action-buttons-compact button { display: none; }
 body.customer-mode .action-buttons-compact .save-btn { display: flex !important; width: 100%; grid-column: 1 / -1; background: var(--success-color); font-size: 22px; padding: 20px; box-shadow: 0 4px 15px rgba(6, 214, 160, 0.4); animation: pulse-btn 2s infinite; }
 body.customer-mode .action-buttons-compact .save-btn::after { content: ""; }
 body.customer-mode .treat-btn { display: none !important; }
+body.customer-mode .del-btn { background: transparent; color: #999; border: 1px solid #ddd; padding: 5px 10px; }
 .batch-blue { background-color: #e0f2fe !important; border-left: 5px solid #007bff !important; }
 .batch-red { background-color: #fee2e2 !important; border-left: 5px solid #ef476f !important; }
 .batch-green { background-color: #d1fae5 !important; border-left: 5px solid #06d6a0 !important; }
@@ -327,38 +298,29 @@ body.customer-mode .treat-btn { display: none !important; }
 .qr-select-mode .tableBtn { border: 4px solid #6610f2 !important; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 
-/* ========== 11. 列印專用樣式 (確保單據排版靠左) ========== */
+/* ========== 11. 列印專用樣式 (新增 - 解決預覽問題) ========== */
 @media print {
-    body * {
-        visibility: hidden; 
-    }
-    
-    #receipt-print-area, #receipt-print-area * {
-        visibility: visible; 
-        position: static; 
-        width: auto; 
-        height: auto;
-        overflow: visible;
-        text-align: left !important; /* 強制靠左 */
-    }
-    
-    #receipt-print-area {
-        position: absolute;
-        left: 0;
-        top: 0;
-        margin: 0;
-        padding: 0;
-        background: white;
-        z-index: 99999;
-    }
+    body * {
+        visibility: hidden; /* 隱藏所有元素 */
+    }
     
-    /* 確保標題置中 */
-    #receipt-print-area h1 {
-        text-align: center !important;
+    #receipt-print-area, #receipt-print-area * {
+        visibility: visible; /* 只顯示列印區域 */
+    }
+    
+    #receipt-print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: white;
+        z-index: 99999;
     }
 
-    /* 強制隱藏所有彈窗與介面，避免干擾 */
-    .modal, #app-container, #login-screen {
-        display: none !important;
-    }
+    /* 強制隱藏所有彈窗與介面，避免干擾 */
+    .modal, #app-container, #login-screen {
+        display: none !important;
+    }
 }
