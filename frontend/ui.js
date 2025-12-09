@@ -16,7 +16,16 @@ function hideAll() { 
     if(seatTimerInterval) clearInterval(seatTimerInterval); 
 }
 
-function goHome() { hideAll(); document.getElementById("home").style.display = "grid"; }
+function goHome() { 
+    hideAll(); 
+    // 確保 home 使用 grid 佈局
+    const homeEl = document.getElementById("home");
+    if(homeEl) {
+        homeEl.style.display = "grid"; 
+        homeEl.style.gridTemplateColumns = "repeat(3, 1fr)";
+        homeEl.style.gap = "20px";
+    }
+}
 
 function openTableSelect() { 
     hideAll(); 
@@ -313,7 +322,7 @@ function renderCart() { 
              // 這裡的 index 需要修正，因為 displayItems 包含了 sentItems
              // 我們需要找到這個 item 在原本 cart 陣列的 index
              // 簡單做法：displayItems 後半段就是 cart，所以 index 減去 sentItems 長度
-             let realCartIndex = i - (typeof sentItems !== 'undefined' ? sentItems.length : 0);
+             let realCartIndex = i - sentItems.length;
              
              actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${realCartIndex})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${realCartIndex})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
         }
@@ -486,6 +495,7 @@ function showHistory() { 
         console.error("showHistory 錯誤", e);
     }
 }
+
 function toggleHistoryView() { isHistorySimpleMode = !isHistorySimpleMode; showHistory(); }
 window.reprintOrder = function(index) {
     let order = getVisibleOrders()[index];
@@ -626,7 +636,7 @@ function renderCalendar() { 
     }
 }
 
-/* ========== 公開歷史統計 (只顯示銷量) ========== */
+/* ========== 公開歷史統計 (月報) ========== */
 function changeStatsMonth(offset) { historyViewDate.setMonth(historyViewDate.getMonth() + offset); renderPublicStats(); }
 
 function renderPublicStats() {
@@ -634,8 +644,9 @@ function renderPublicStats() {
     let month = historyViewDate.getMonth();
     if(document.getElementById("statsMonthTitle")) document.getElementById("statsMonthTitle").innerText = `${year}年 ${month + 1}月`;
     
-    const start = new Date(year, month, 1, 5, 0, 0, 0); // 該月第一天 5點
-    const end = new Date(year, month + 1, 1, 5, 0, 0, 0); // 下月第一天 5點
+    // 計算該月的第一天 5:00AM 和下個月的第一天 5:00AM
+    const start = new Date(year, month, 1); start.setHours(5, 0, 0, 0); 
+    const end = new Date(year, month + 1, 1); end.setHours(5, 0, 0, 0); 
 
     // 使用新的獲取統計數據函數
     const stats = getItemSalesStats(start, end);
@@ -644,8 +655,8 @@ function renderPublicStats() {
         const container = document.getElementById(containerId); 
         if(!container) return;
         container.innerHTML = "";
-        if(list.length === 0) { container.innerHTML = "<div style='padding:10px; color:#8d99ae;'>無資料</div>"; return; }
-        list.forEach((item, index) => { container.innerHTML += `<div class="stats-item-row"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`; });
+        if(list.length === 0) { container.innerHTML = "<div style='padding:10px; color:#8d99ae; text-align:center;'>無資料</div>"; return; }
+        list.forEach((item, index) => { container.innerHTML += `<div class="stats-item-row top-stat-item"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`; });
     };
     renderList(stats.bar, 'publicStatsBar'); renderList(stats.bbq, 'publicStatsBbq');
 }
@@ -664,13 +675,16 @@ function closeItemStatsModal() {
 
 function renderItemStats(range, button) {
     // 設置 active 狀態
-    document.querySelectorAll('.report-controls button').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('#itemStatsModal .report-controls button').forEach(btn => btn.classList.remove('active'));
     if(button) button.classList.add('active');
 
     let now = new Date();
+    // 根據營業日調整 now
     if (now.getHours() < 5) now.setDate(now.getDate() - 1);
+    
     let start = new Date(now);
     let end = new Date(now);
+    let currentMoment = new Date();
 
     if (range === 'day') {
         start.setHours(5, 0, 0, 0);
@@ -679,16 +693,26 @@ function renderItemStats(range, button) {
         let day = start.getDay() || 7;
         start.setDate(start.getDate() - (day - 1));
         start.setHours(5, 0, 0, 0);
-        end.setDate(end.getDate() + (7 - day) + 1); end.setHours(5, 0, 0, 0);
+        // 結束時間為當前時刻
     } else if (range === 'month') {
         start.setDate(1);
         start.setHours(5, 0, 0, 0);
-        end.setMonth(end.getMonth() + 1); end.setDate(1); end.setHours(5, 0, 0, 0);
+        // 結束時間為當前時刻
     }
     
-    // 修正結束時間不超過當下
-    if (end > new Date()) end = new Date();
-
+    // 最終的結束時間是「現在」，而不是計算出來的下一個營業日/周的開始
+    if (range === 'day' && currentMoment.getHours() < 5) {
+        // 如果現在是凌晨 0~5 點，則統計範圍是從昨天的 5 點到現在
+        start = new Date(currentMoment);
+        start.setDate(start.getDate() - 1);
+        start.setHours(5, 0, 0, 0);
+    } else if (range !== 'day') {
+        // 週報和月報的結束時間應是當前時刻
+        end = currentMoment;
+    }
+    
+    // 確保結束時間永遠不會晚於當前時間
+    end = currentMoment;
 
     const stats = getItemSalesStats(start, end);
 
@@ -696,7 +720,7 @@ function renderItemStats(range, button) {
         const container = document.getElementById(containerId);
         if(!container) return;
         container.innerHTML = "";
-        if(list.length === 0) { container.innerHTML = "<div style='padding:10px; color:#8d99ae;'>無資料</div>"; return; }
+        if(list.length === 0) { container.innerHTML = "<div style='padding:10px; color:#8d99ae; text-align:center;'>無資料</div>"; return; }
         list.forEach((item, index) => { 
             container.innerHTML += `<div class="stats-item-row top-stat-item"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`; 
         });
@@ -824,14 +848,15 @@ function updateFinancialPage(ownerName) {
         else { Object.values(data).forEach(subList => { items = items.concat(subList); }); } 
 
         items.forEach(item => { 
+            // 實際顯示的售價 (如果有調整價)
             let currentPrice = itemPrices[item.name] !== undefined ? itemPrices[item.name] : item.price; 
             let currentCost = itemCosts[item.name] !== undefined ? itemCosts[item.name] : 0; 
             
             let row = document.createElement("div"); 
-            row.className = "cost-editor-row"; // 新增的 CSS class
+            row.className = "cost-editor-row"; 
             
             row.innerHTML = `
-                <span class="cost-item-name">${item.name} ($${item.price})</span>
+                <span class="cost-item-name">${item.name} (${item.price} 元)</span>
                 <div class="cost-input-group">
                     <input type="number" value="${currentPrice}" placeholder="售價" onchange="updateItemData('${item.name}', 'price', this.value)" class="cost-input-price">
                     <input type="number" value="${currentCost}" placeholder="成本" onchange="updateItemData('${item.name}', 'cost', this.value)" class="cost-input-cost">
