@@ -10,7 +10,8 @@
 </head>
 <body ontouchstart="">
 
-    <div id="receipt-print-area"></div>
+    <div id="receipt-print-area" style="position: absolute; top: -9999px; left: -9999px; width: 0; height: 0; overflow: hidden;"></div>
+    
     <div id="toast-container"></div>
 
     <div id="login-screen">
@@ -126,7 +127,7 @@
                             % 設定折扣
                         </button>
                     </div>
-            
+                    
                     <div class="total-display">
                         <p id="total">總金額：0 元</p>
                     </div>
