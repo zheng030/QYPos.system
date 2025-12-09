@@ -247,8 +247,6 @@ function saveOrderManual() {
         tableCustomers[selectedTable].name = document.getElementById("custName").value; 
         tableCustomers[selectedTable].phone = document.getElementById("custPhone").value; 
         
-        saveAllToCloud(); 
-        
         printReceipt({ seq: tableCustomers[selectedTable].orderId, table: selectedTable, time: new Date().toLocaleString('zh-TW', { hour12: false }), items: cart, original: 0, total: 0 }, true); 
         
         showToast(`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`); openTableSelect(); 
@@ -439,7 +437,7 @@ function renderCart() {
     }
 
     // 2. 再加入目前購物車
-    let currentCartItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, item: 1 }));
+    let currentCartItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, count: 1 }));
     displayItems = [...displayItems, ...currentCartItems];
 
     if (displayItems.length === 0) {
