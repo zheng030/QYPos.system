@@ -319,7 +319,6 @@ body.customer-mode .action-buttons-compact button { display: none; }
 body.customer-mode .action-buttons-compact .save-btn { display: flex !important; width: 100%; grid-column: 1 / -1; background: var(--success-color); font-size: 22px; padding: 20px; box-shadow: 0 4px 15px rgba(6, 214, 160, 0.4); animation: pulse-btn 2s infinite; }
 body.customer-mode .action-buttons-compact .save-btn::after { content: ""; }
 body.customer-mode .treat-btn { display: none !important; }
-body.customer-mode .del-btn { background: transparent; color: #999; border: 1px solid #ddd; padding: 5px 10px; }
 .batch-blue { background-color: #e0f2fe !important; border-left: 5px solid #007bff !important; }
 .batch-red { background-color: #fee2e2 !important; border-left: 5px solid #ef476f !important; }
 .batch-green { background-color: #d1fae5 !important; border-left: 5px solid #06d6a0 !important; }
@@ -328,18 +327,19 @@ body.customer-mode .del-btn { background: transparent; color: #999; border: 1px 
 .qr-select-mode .tableBtn { border: 4px solid #6610f2 !important; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 
-/* ========== 11. 列印專用樣式 (新增 - 解決預覽問題) ========== */
+/* ========== 11. 列印專用樣式 (確保單據排版靠左) ========== */
 @media print {
     body * {
-        visibility: hidden; /* 隱藏所有元素 */
+        visibility: hidden; 
     }
     
     #receipt-print-area, #receipt-print-area * {
-        visibility: visible; /* 只顯示列印區域 */
-        position: static; /* 確保列印內容佔據空間 */
-        width: auto; /* 讓內容自動寬度 */
+        visibility: visible; 
+        position: static; 
+        width: auto; 
         height: auto;
         overflow: visible;
+        text-align: left !important; /* 強制靠左 */
     }
     
     #receipt-print-area {
@@ -351,6 +351,11 @@ body.customer-mode .del-btn { background: transparent; color: #999; border: 1px 
         background: white;
         z-index: 99999;
     }
+    
+    /* 確保標題置中 */
+    #receipt-print-area h1 {
+        text-align: center !important;
+    }
 
     /* 強制隱藏所有彈窗與介面，避免干擾 */
     .modal, #app-container, #login-screen {
