@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v12: 移除酥炸魷魚時價輸入框) */
-console.log("UI JS v12 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v13: 美化成本頁面表格) */
+console.log("UI JS v13 Loaded - 介面程式已載入");
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
@@ -715,7 +715,88 @@ function openConfidentialPage(ownerName) {
     } 
 }
 
-function updateFinancialPage(ownerName) { const listContainer = document.getElementById("costEditorList"); listContainer.innerHTML = ""; let targetCategories = []; let canEdit = true; const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點"]; const bbqCats = ["燒烤", "主餐", "炸物"]; if (ownerName === "小飛") { targetCategories = barCats; } else if (ownerName === "威志") { targetCategories = bbqCats; } else { targetCategories = [...barCats, ...bbqCats, "其他"]; } targetCategories.forEach(cat => { if (!menuData[cat]) return; let catHeader = document.createElement("div"); catHeader.className = "sub-cat-title"; catHeader.style.marginTop = "15px"; catHeader.innerText = cat; listContainer.appendChild(catHeader); let items = []; let data = menuData[cat]; if (Array.isArray(data)) { items = data; } else { Object.values(data).forEach(subList => { items = items.concat(subList); }); } items.forEach(item => { let currentPrice = itemPrices[item.name] !== undefined ? itemPrices[item.name] : item.price; let currentCost = itemCosts[item.name] !== undefined ? itemCosts[item.name] : 0; let row = document.createElement("div"); row.className = "cost-row"; row.innerHTML = `<span>${item.name}</span><input type="number" value="${currentPrice}" placeholder="售價" onchange="updateItemData('${item.name}', 'price', this.value)"><input type="number" value="${currentCost}" placeholder="成本" onchange="updateItemData('${item.name}', 'cost', this.value)">`; listContainer.appendChild(row); }); }); }
+/* 🔥 修改：美化後的成本輸入介面 (使用 Table) */
+function updateFinancialPage(ownerName) {
+    const listContainer = document.getElementById("costEditorList");
+    listContainer.innerHTML = "";
+
+    // 動態加入專用 CSS 樣式，確保不影響其他頁面
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .cost-table-container { width: 100%; overflow-x: auto; }
+        .cost-table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .cost-table th { background: #f8f9fa; color: #495057; padding: 12px; text-align: left; font-size: 14px; border-bottom: 2px solid #e9ecef; }
+        .cost-table td { padding: 10px 12px; border-bottom: 1px solid #f1f3f5; vertical-align: middle; }
+        .cost-table tr:last-child td { border-bottom: none; }
+        .cost-table tr:hover { background-color: #f8f9fa; }
+        .cost-input { width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; transition: border-color 0.2s; box-sizing: border-box; }
+        .cost-input:focus { border-color: #4dabf7; outline: none; box-shadow: 0 0 0 3px rgba(77, 171, 247, 0.1); }
+        .cat-badge { display: inline-block; padding: 4px 10px; background: #e7f5ff; color: #1c7ed6; border-radius: 20px; font-size: 13px; font-weight: bold; margin-top: 20px; margin-bottom: 5px; }
+    `;
+    listContainer.appendChild(style);
+
+    let targetCategories = [];
+    const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點"];
+    const bbqCats = ["燒烤", "主餐", "炸物"];
+
+    if (ownerName === "小飛") { targetCategories = barCats; }
+    else if (ownerName === "威志") { targetCategories = bbqCats; }
+    else { targetCategories = [...barCats, ...bbqCats, "其他"]; }
+
+    targetCategories.forEach(cat => {
+        if (!menuData[cat]) return;
+
+        // 分類標題
+        let catHeader = document.createElement("div");
+        catHeader.className = "cat-badge";
+        catHeader.innerText = cat;
+        listContainer.appendChild(catHeader);
+
+        // 建立表格容器
+        let tableContainer = document.createElement("div");
+        tableContainer.className = "cost-table-container";
+
+        let tableHtml = `
+            <table class="cost-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">品項名稱</th>
+                        <th style="width: 30%;">售價 (改)</th>
+                        <th style="width: 30%;">成本 (改)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        let items = [];
+        let data = menuData[cat];
+        if (Array.isArray(data)) { items = data; }
+        else { Object.values(data).forEach(subList => { items = items.concat(subList); }); }
+
+        items.forEach(item => {
+            let currentPrice = itemPrices[item.name] !== undefined ? itemPrices[item.name] : item.price;
+            let currentCost = itemCosts[item.name] !== undefined ? itemCosts[item.name] : 0;
+
+            tableHtml += `
+                <tr>
+                    <td style="font-weight: 500; color: #343a40;">${item.name}</td>
+                    <td>
+                        <input type="number" class="cost-input" value="${currentPrice}" placeholder="售價"
+                            onchange="updateItemData('${item.name}', 'price', this.value)">
+                    </td>
+                    <td>
+                        <input type="number" class="cost-input" value="${currentCost}" placeholder="成本"
+                            onchange="updateItemData('${item.name}', 'cost', this.value)" style="color: #e03131; font-weight:bold;">
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `</tbody></table>`;
+        tableContainer.innerHTML = tableHtml;
+        listContainer.appendChild(tableContainer);
+    });
+}
 
 function openFinanceDetailModal(dateKey, stats) {
     document.getElementById("fdTitle").innerText = `📅 ${dateKey} 財務明細`;
