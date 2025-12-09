@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v11: 包含已下單顯示與列印修正版) */
-console.log("UI JS v11 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v12: 移除酥炸魷魚時價輸入框) */
+console.log("UI JS v12 Loaded - 介面程式已載入");
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
@@ -206,9 +206,6 @@ function openItems(category) {
         } else if (item.name === "味繒鮭魚") { 
             nameHtml = `<span>味繒鮭魚 <b style="color:var(--danger-color);">(時價)</b></span>`; 
             actionsHtml = `<input type="number" id="salmonPrice" class="inline-input" placeholder="金額" style="width:80px;"><button onclick="addSalmonPrice()">加入</button>`; 
-        } else if (item.name === "酥炸魷魚") { 
-            nameHtml = `<span>酥炸魷魚 <b style="color:var(--danger-color);">(時價)</b></span>`; 
-            actionsHtml = `<input type="number" id="squidPrice" class="inline-input" placeholder="金額" style="width:80px;"><button onclick="addFriedSquidPrice()">加入</button>`; 
         } else { 
             actionsHtml = `<button onclick='checkItemType("${item.name}", ${item.price}, "${category}")'>加入</button>`; 
             if (category === "shot") { actionsHtml += `<button onclick='addShotSet("${item.name}", ${item.price})' class="set-btn btn-effect" style="margin-left:5px; background:var(--secondary-color);">🔥 一組</button>`; } 
@@ -342,11 +339,10 @@ function renderCart() {
 
 function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
 function addSalmonPrice() { let price = parseInt(document.getElementById("salmonPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("味繒鮭魚", price); }
-function addFriedSquidPrice() { let price = parseInt(document.getElementById("squidPrice").value); if(isNaN(price) || price <= 0) { alert("請輸入金額！"); return; } addToCart("酥炸魷魚", price); }
 function checkItemType(name, price, categoryName) { 
     if (name === "隱藏特調") { openCustomModal(name, price); return; } 
     let realPrice = itemPrices[name] !== undefined ? itemPrices[name] : price; 
-    if (name === "隱藏啤酒" || name === "味繒鮭魚" || name === "酥炸魷魚") { addToCart(name, realPrice); return; } 
+    if (name === "隱藏啤酒" || name === "味繒鮭魚") { addToCart(name, realPrice); return; } 
     if (categoryName === "咖啡") { openDrinkModal(name, realPrice, "coffee"); return; } 
     if (categoryName === "飲料") { if (name.includes("茶")) openDrinkModal(name, realPrice, "tea"); else openDrinkModal(name, realPrice, "drink"); return; } 
     if (categoryName === "主餐") { if (name === "炒飯") { openFoodModal(name, realPrice, "friedRice"); return; } if (name === "日式炒烏龍麵" || name === "親子丼") { openFoodModal(name, realPrice, "meatOnly"); return; } } 
