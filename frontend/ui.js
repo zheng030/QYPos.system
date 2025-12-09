@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v21: 修正接單後隱藏、空購物車直接離開) */
-console.log("UI JS v21 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v22: 修正列印排版靠左對齊) */
+console.log("UI JS v22 Loaded - 介面程式已載入");
 
 let monthlyReportData = {}; // 用於儲存月報表的每日數據
 
@@ -45,7 +45,7 @@ function openSettingsPage() {
 function openProductPage() {
     hideAll();
     document.getElementById("productPage").style.display = "block";
-    // renderProductManagement(); // 依賴其他未提供程式碼
+    // renderProductManagement(); 
 }
 
 /* ========== QR Code 模式控制 ========== */
@@ -254,7 +254,6 @@ function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); 
 function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
 
 /* ========== 顯示邏輯 (延續 logic.js 中的 renderCart) ========== */
-// renderCart 邏輯在 logic.js 中已經定義
 
 function addInlineHiddenBeer() { let name = document.getElementById("hbName").value.trim(); let price = parseInt(document.getElementById("hbPrice").value); if(!name) name = "隱藏啤酒"; if(isNaN(price) || price < 0) { alert("請輸入正確價格"); return; } addToCart(name, price); }
 function checkItemType(name, price, categoryName) { 
@@ -747,7 +746,7 @@ function confirmClearData() {
     }
 }
 
-// 新增列印功能 (ui.js)
+// 新增列印功能 (ui.js) - 已修改為靠左對齊
 function printReceipt(order, isKitchenTicket) {
     if (!order || !order.items) return;
 
@@ -762,7 +761,7 @@ function printReceipt(order, isKitchenTicket) {
     printArea.innerHTML = ''; // 清空列印區域
     printArea.style.width = '300px'; // 模擬收據機寬度
 
-    const title = isKitchenTicket ? '🔔 廚房/吧檯出單' : '🧾 消費明細';
+    const title = isKitchenTicket ? '🔔 廚房/吧檯工作單' : '🧾 消費明細';
     const totalLine = isKitchenTicket ? '' : `<div style="border-top:1px dashed black; margin-top:10px; padding-top:10px; font-size:18px; font-weight:bold;">總計: $${order.total}</div>`;
 
     let itemHtml = '';
@@ -771,7 +770,7 @@ function printReceipt(order, isKitchenTicket) {
         // 確保列印時的單價和總價是正確的
         let itemPrice = item.isTreat ? 0 : item.price; 
         let itemQty = item.count || 1;
-        let itemTotal = item.isTreat ? '0' : `$${itemPrice * itemQty}`;
+        let itemTotal = item.isTreat ? '招待' : `$${itemPrice * itemQty}`;
         let itemNote = '';
         
         // 提取客製化/備註資訊
@@ -789,27 +788,29 @@ function printReceipt(order, isKitchenTicket) {
              itemName = itemName.replace(extraShotMatch[0], '').trim();
         }
         
-
+        // 修正：將數量、名稱、總價分開列印
         itemHtml += `
-            <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;">
-                <span style="flex-grow:1; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:left;">${itemName} ${item.isTreat ? ' (招待)' : ''}</span>
-                <span style="width:30px; text-align:center;">x${itemQty}</span>
-                <span style="width:50px; text-align:right;">${itemTotal}</span>
+            <div style="display:flex; justify-content:space-between; font-size:15px; margin-bottom:2px; font-weight:bold;">
+                <span style="width:30px;">x${itemQty}</span>
+                <span style="flex-grow:1; text-align:left;">${itemName} ${item.isTreat ? ' (招待)' : ''}</span>
+                <span style="width:60px; text-align:right;">${itemTotal}</span>
             </div>
-            ${itemNote ? `<div style="font-size:12px; color:#555; margin-left:10px; text-align:left;">${itemNote.replace(/<br>/g, ' ')}</div>` : ''}
+            ${itemNote ? `<div style="font-size:12px; color:#555; margin-left:30px; text-align:left; margin-bottom:5px;">${itemNote.replace(/<br>/g, ' ')}</div>` : ''}
         `;
     });
 
+    // 修正：將最外層改為 text-align:left
     const receiptHtml = `
-        <div style="width:280px; margin:0 auto; padding:10px; text-align:center;">
-            <h1 style="font-size:20px; margin-bottom:5px;">${title}</h1>
-            <p style="font-size:14px; margin:5px 0;">桌號: ${order.table} | 單號: ${order.seq}</p>
+        <div style="width:280px; margin:0 auto; padding:10px; text-align:left;">
+            <h1 style="font-size:20px; margin-bottom:5px; text-align:center;">${title}</h1>
+            <p style="font-size:14px; margin:5px 0;">單號: ${order.seq}</p>
+            <h2 style="font-size:16px; margin:5px 0;">桌號: ${order.table}</h2>
             <p style="font-size:12px; margin:5px 0 10px 0;">時間: ${order.time}</p>
             <div style="border-top:1px dashed black; padding-top:10px;">
                 ${itemHtml}
             </div>
             ${totalLine}
-            ${isKitchenTicket ? '' : `<div style="margin-top:15px; font-size:12px;">謝謝您的惠顧！</div>`}
+            ${isKitchenTicket ? '' : `<div style="margin-top:15px; font-size:12px; text-align:center;">謝謝您的惠顧！</div>`}
         </div>
     `;
 
