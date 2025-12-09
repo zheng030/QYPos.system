@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v14: 移除味繒鮭魚時價輸入框) */
-console.log("UI JS v14 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v15: 燒烤 Popular 新增五種蔬菜) */
+console.log("UI JS v15 Loaded - 介面程式已載入");
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
