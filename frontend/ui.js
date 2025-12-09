@@ -557,7 +557,7 @@ function renderConfidentialCalendar(ownerName) {
     
     document.getElementById("monthBbqRev").innerText = `$${monthStats.bbqRev}`;
     document.getElementById("monthBbqCost").innerText = `-$${monthStats.bbqCost}`;
-    document.getElementById("monthBbqProfit").innerText = `$${monthStats.bbqRev - monthStats.bbqCost}`;
+    document.getElementById("monthBbqProfit").innerText = `$${monthStats.bbqRev - stats.bbqCost}`;
 
     let totalRev = monthStats.barRev + monthStats.bbqRev;
     let totalCost = monthStats.barCost + monthStats.bbqCost;
