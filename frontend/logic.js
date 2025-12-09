@@ -1,5 +1,5 @@
-/* logic.js - 核心邏輯 (v10: 強力除錯與防呆版) */
-console.log("Logic JS v10 Loaded - 核心邏輯已載入");
+/* logic.js - 核心邏輯 (v11: 包含已下單顯示與列印修正版) */
+console.log("Logic JS v11 Loaded - 核心邏輯已載入");
 
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
@@ -23,13 +23,16 @@ let tableBatchCounts = {};
 
 let selectedTable = null;
 let cart = []; 
+// 🔥 新增：用來儲存客人已送出的商品 (從暫存讀取)
+let sentItems = JSON.parse(sessionStorage.getItem("sentItems")) || [];
+
 let seatTimerInterval = null;
 let tempCustomItem = null;
 let isExtraShot = false; 
 let tempLeftList = [];
 let tempRightList = [];
 let currentOriginalTotal = 0; 
-let finalTotal = 0;            
+let finalTotal = 0;             
 let currentDiscount = { type: 'none', value: 0 }; 
 let discountedTotal = 0;
 let isServiceFeeEnabled = false;
@@ -47,7 +50,8 @@ function getMergedItems(items) {
     let merged = [];
     items.forEach(item => {
         if(!item) return; // 防呆
-        let existing = merged.find(m => m.name === item.name && m.price === item.price && m.isTreat === item.isTreat && m.batchIdx === item.batchIdx);
+        // 修改：加入 isSent 的判斷，避免已送出和未送出的合併
+        let existing = merged.find(m => m.name === item.name && m.price === item.price && m.isTreat === item.isTreat && m.batchIdx === item.batchIdx && m.isSent === item.isSent);
         if (existing) { existing.count = (existing.count || 1) + 1; } else { merged.push({ ...item, count: 1 }); }
     });
     return merged;
@@ -71,21 +75,15 @@ function getBusinessDate(dateObj) {
     return d.getTime();
 }
 
-// 🔥 [關鍵修復] 這個函式必須存在且不可報錯
 function getVisibleOrders() {
     if (!historyOrders || !Array.isArray(historyOrders) || historyOrders.length === 0) return [];
-    
     try {
         let currentBizDate = getBusinessDate(new Date());
-        
-        // 過濾出屬於今天營業日的訂單
         let filtered = historyOrders.filter(o => {
             if (!o) return false;
-            // 雙重檢查：確保有 items 且總金額不是 undefined
             if (!o.items || !Array.isArray(o.items)) return false;
             return getBusinessDate(getDateFromOrder(o)) === currentBizDate;
         });
-
         return filtered.reverse();
     } catch (e) {
         console.error("getVisibleOrders Error:", e);
@@ -121,11 +119,8 @@ function initRealtimeData() {
     db.ref('/').on('value', (snapshot) => {
         const data = snapshot.val() || {};
         
-        // 🔥 [超級過濾器]：只留下健康的資料
-        // 如果歷史訂單爛掉，這行會把它修好，只保留格式正確的
         let rawHistory = data.historyOrders ? (Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders)) : [];
         historyOrders = rawHistory.filter(order => {
-            // 條件：必須是物件、必須有 items 陣列、必須有 total 金額
             return order && typeof order === 'object' && Array.isArray(order.items) && order.total !== undefined;
         });
 
@@ -147,10 +142,8 @@ function initRealtimeData() {
             checkIncomingOrders();
         }
 
-        // 更新介面 (如果該頁面是開著的)
         if(document.getElementById("tableSelect") && document.getElementById("tableSelect").style.display === "block") renderTableGrid();
         
-        // 延遲執行以確保 DOM 穩定
         setTimeout(() => {
             if(document.getElementById("historyPage") && document.getElementById("historyPage").style.display === "block") showHistory();
             
@@ -174,7 +167,6 @@ function initRealtimeData() {
             if(document.getElementById("pastHistoryPage") && document.getElementById("pastHistoryPage").style.display === "block") { renderPublicStats(); }
         }, 50);
 
-        // 權限頁面更新
         let currentOwner = document.getElementById("ownerWelcome") ? document.getElementById("ownerWelcome").innerText : "";
         if(document.getElementById("confidentialPage") && document.getElementById("confidentialPage").style.display === "block" && currentOwner) {
             let savedMode = sessionStorage.getItem('ownerMode') || 'finance';
@@ -297,8 +289,14 @@ function customerSubmitOrder() {
         timestamp: Date.now()
     }).then(() => {
         alert("✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。");
+        
+        // 🔥 修改：將購物車內容移至 sentItems
+        let justSent = cart.map(item => ({ ...item, isSent: true }));
+        sentItems = [...sentItems, ...justSent];
+        sessionStorage.setItem("sentItems", JSON.stringify(sentItems));
+        
         cart = []; 
-        renderCart();
+        renderCart(); 
     }).catch(err => {
         alert("傳送失敗，請通知服務人員：" + err.message);
     });
@@ -375,6 +373,10 @@ function checkoutAll(manualFinal) {
     delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; 
     delete tableBatchCounts[selectedTable];
     
+    // 清除該桌的 sentItems
+    sentItems = [];
+    sessionStorage.removeItem("sentItems");
+
     saveAllToCloud(); cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; 
     alert(`💰 結帳完成！實收 $${payingTotal} \n(如需明細，請至「今日訂單」補印)`); openTableSelect(); 
 }
@@ -412,3 +414,107 @@ function getOrdersByDate(targetDate) {
 
 setInterval(updateSystemTime, 1000);
 function updateSystemTime() { document.getElementById("systemTime").innerText = "🕒 " + new Date().toLocaleString('zh-TW', { hour12: false }); }
+
+/* ========== 🔥 顯示邏輯修改 (包含已下單區塊) ========== */
+function renderCart() { 
+    const cartList = document.getElementById("cart-list"); 
+    const totalText = document.getElementById("total"); 
+    cartList.innerHTML = ""; 
+    currentOriginalTotal = 0; 
+    
+    const svcBtn = document.getElementById("svcBtn");
+    if(svcBtn) {
+        if(isServiceFeeEnabled) { svcBtn.classList.add("active"); svcBtn.innerHTML = "✅ 收 10% 服務費"; } 
+        else { svcBtn.classList.remove("active"); svcBtn.innerHTML = "◻️ 收 10% 服務費"; }
+    }
+
+    // 🔥 顯示邏輯：合併「已送出」與「目前購物車」
+    let displayItems = [];
+
+    // 1. 先加入已送出的商品 (若有的話)
+    if (sentItems.length > 0) {
+        sentItems.forEach(item => {
+            displayItems.push({ ...item, isSent: true, count: 1 });
+        });
+    }
+
+    // 2. 再加入目前購物車
+    let currentCartItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, count: 1 }));
+    displayItems = [...displayItems, ...currentCartItems];
+
+    if (displayItems.length === 0) {
+        cartList.innerHTML = `<div style="text-align:center; color:#ccc; padding:20px;">購物車空空的</div>`;
+    }
+
+    displayItems.forEach((c, i) => { 
+        let count = c.count || 1;
+        let itemTotal = (c.isTreat ? 0 : c.price) * count;
+        
+        // 只有「未送出」的才計入目前應付金額 (避免客人以為重複算錢)
+        if (!c.isSent) {
+            currentOriginalTotal += itemTotal;
+        }
+
+        let treatClass = c.isTreat ? "treat-btn active btn-effect" : "treat-btn btn-effect";
+        let treatText = c.isTreat ? "已招待" : "🎁 招待";
+        let priceHtml = "";
+        let nameHtml = "";
+        let rowClass = "cart-item-row";
+
+        // 已下單樣式
+        if (c.isSent) {
+            nameHtml = `<div class="cart-item-name" style="color:#adb5bd;">${c.name} <small>(已下單)</small></div>`;
+            priceHtml = `<span style="color:#adb5bd;">$${itemTotal}</span>`;
+            rowClass += " sent-item"; 
+        } else {
+            // 一般樣式
+            if (typeof c.batchIdx !== 'undefined') {
+                if (c.batchIdx === 0) rowClass += " batch-blue";
+                else if (c.batchIdx === 1) rowClass += " batch-red";
+                else if (c.batchIdx === 2) rowClass += " batch-green";
+            }
+
+            if (isCartSimpleMode && count > 1) {
+                nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
+                if(c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${itemTotal}`; }
+            } else {
+                nameHtml = `<div class="cart-item-name">${c.name}</div>`;
+                if (c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${c.price}`; }
+            }
+        }
+
+        let actionButtons = "";
+        // 已下單的沒有刪除鈕
+        if (c.isSent) {
+             actionButtons = `<small style="color:#ccc;">已傳送</small>`;
+        } else {
+             // 這裡的 index 需要修正，因為 displayItems 包含了 sentItems
+             // 我們需要找到這個 item 在原本 cart 陣列的 index
+             // 簡單做法：displayItems 後半段就是 cart，所以 index 減去 sentItems 長度
+             let realCartIndex = i - sentItems.length;
+             
+             actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${realCartIndex})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${realCartIndex})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
+        }
+        
+        cartList.innerHTML += `<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`; 
+    }); 
+
+    discountedTotal = currentOriginalTotal; 
+    if (currentDiscount.type === 'percent') { discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100)); } 
+    else if (currentDiscount.type === 'amount') { discountedTotal = currentOriginalTotal - currentDiscount.value; if(discountedTotal < 0) discountedTotal = 0; }
+
+    let serviceFee = 0;
+    if (isServiceFeeEnabled) { serviceFee = Math.round(currentOriginalTotal * 0.1); discountedTotal += serviceFee; }
+
+    let finalHtml = `總金額：`;
+    if(currentDiscount.type !== 'none' || isServiceFeeEnabled) { finalHtml += `<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> `; }
+    finalHtml += `<span style="color:#ef476f;">$${discountedTotal}</span>`;
+
+    let noteText = [];
+    if (currentDiscount.type === 'percent') noteText.push(`折扣 ${currentDiscount.value}%`);
+    if (currentDiscount.type === 'amount') noteText.push(`折讓 -${currentDiscount.value}`);
+    if (isServiceFeeEnabled) noteText.push(`含服務費 +$${serviceFee}`);
+    
+    if(noteText.length > 0) { finalHtml += ` <small style="color:#555;">(${noteText.join(", ")})</small>`; }
+    totalText.innerHTML = finalHtml;
+}

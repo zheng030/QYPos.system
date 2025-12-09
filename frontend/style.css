@@ -1,4 +1,4 @@
-/* style.css - 完整版 (包含3欄首頁、客人模式優化、返回按鈕美化、成本美化) */
+/* style.css - 完整版 (包含列印修正) */
 
 /* ========== 1. 全域設定 (現代化風格) ========== */
 :root {
@@ -297,3 +297,30 @@ body.customer-mode .del-btn { background: transparent; color: #999; border: 1px 
 @keyframes pulse-btn { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 .qr-select-mode .tableBtn { border: 4px solid #6610f2 !important; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+/* ========== 11. 列印專用樣式 (新增 - 解決預覽問題) ========== */
+@media print {
+    body * {
+        visibility: hidden; /* 隱藏所有元素 */
+    }
+    
+    #receipt-print-area, #receipt-print-area * {
+        visibility: visible; /* 只顯示列印區域 */
+    }
+    
+    #receipt-print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: white;
+        z-index: 99999;
+    }
+
+    /* 強制隱藏所有彈窗與介面，避免干擾 */
+    .modal, #app-container, #login-screen {
+        display: none !important;
+    }
+}

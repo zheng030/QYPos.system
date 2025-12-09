@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v10: 防呆介面版) */
-console.log("UI JS v10 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v11: 包含已下單顯示與列印修正版) */
+console.log("UI JS v11 Loaded - 介面程式已載入");
 
 function showApp() {
     document.getElementById("login-screen").style.display = "none";
@@ -146,6 +146,12 @@ function openOrderPageLogic(table) {
     currentDiscount = { type: 'none', value: 0 }; 
     isServiceFeeEnabled = false; 
     
+    // 如果是從後台進入，清空已送出暫存，避免混淆
+    if(!document.body.classList.contains("customer-mode")) {
+        sentItems = [];
+        sessionStorage.removeItem("sentItems");
+    }
+
     buildCategories(); 
     renderCart(); 
 }
@@ -230,6 +236,7 @@ function openItems(category) {
 function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); }
 function toggleServiceFee() { isServiceFeeEnabled = !isServiceFeeEnabled; renderCart(); }
 
+/* ========== 🔥 顯示邏輯 (與 logic.js 同步，確保 UI 渲染正確) ========== */
 function renderCart() { 
     const cartList = document.getElementById("cart-list"); 
     const totalText = document.getElementById("total"); 
@@ -242,33 +249,74 @@ function renderCart() {
         else { svcBtn.classList.remove("active"); svcBtn.innerHTML = "◻️ 收 10% 服務費"; }
     }
 
-    let displayItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, count: 1 }));
+    // 🔥 顯示邏輯：合併「已送出」與「目前購物車」
+    let displayItems = [];
+
+    // 1. 先加入已送出的商品 (若有的話)
+    if (typeof sentItems !== 'undefined' && sentItems.length > 0) {
+        sentItems.forEach(item => {
+            displayItems.push({ ...item, isSent: true, count: 1 });
+        });
+    }
+
+    // 2. 再加入目前購物車
+    let currentCartItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, count: 1 }));
+    displayItems = [...displayItems, ...currentCartItems];
+
+    if (displayItems.length === 0) {
+        cartList.innerHTML = `<div style="text-align:center; color:#ccc; padding:20px;">購物車空空的</div>`;
+    }
 
     displayItems.forEach((c, i) => { 
         let count = c.count || 1;
         let itemTotal = (c.isTreat ? 0 : c.price) * count;
-        currentOriginalTotal += itemTotal;
+        
+        // 只有「未送出」的才計入目前應付金額 (避免客人以為重複算錢)
+        if (!c.isSent) {
+            currentOriginalTotal += itemTotal;
+        }
+
         let treatClass = c.isTreat ? "treat-btn active btn-effect" : "treat-btn btn-effect";
         let treatText = c.isTreat ? "已招待" : "🎁 招待";
         let priceHtml = "";
         let nameHtml = "";
-
         let rowClass = "cart-item-row";
-        if (typeof c.batchIdx !== 'undefined') {
-            if (c.batchIdx === 0) rowClass += " batch-blue";
-            else if (c.batchIdx === 1) rowClass += " batch-red";
-            else if (c.batchIdx === 2) rowClass += " batch-green";
-        }
 
-        if (isCartSimpleMode && count > 1) {
-             nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
-             if(c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${itemTotal}`; }
+        // 已下單樣式
+        if (c.isSent) {
+            nameHtml = `<div class="cart-item-name" style="color:#adb5bd;">${c.name} <small>(已下單)</small></div>`;
+            priceHtml = `<span style="color:#adb5bd;">$${itemTotal}</span>`;
+            rowClass += " sent-item"; 
         } else {
-            nameHtml = `<div class="cart-item-name">${c.name}</div>`;
-            if (c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${c.price}`; }
+            // 一般樣式
+            if (typeof c.batchIdx !== 'undefined') {
+                if (c.batchIdx === 0) rowClass += " batch-blue";
+                else if (c.batchIdx === 1) rowClass += " batch-red";
+                else if (c.batchIdx === 2) rowClass += " batch-green";
+            }
+
+            if (isCartSimpleMode && count > 1) {
+                nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
+                if(c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${itemTotal}`; }
+            } else {
+                nameHtml = `<div class="cart-item-name">${c.name}</div>`;
+                if (c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${c.price}`; }
+            }
         }
 
-        let actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${i})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${i})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
+        let actionButtons = "";
+        // 已下單的沒有刪除鈕
+        if (c.isSent) {
+             actionButtons = `<small style="color:#ccc;">已傳送</small>`;
+        } else {
+             // 這裡的 index 需要修正，因為 displayItems 包含了 sentItems
+             // 我們需要找到這個 item 在原本 cart 陣列的 index
+             // 簡單做法：displayItems 後半段就是 cart，所以 index 減去 sentItems 長度
+             let realCartIndex = i - (typeof sentItems !== 'undefined' ? sentItems.length : 0);
+             
+             actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${realCartIndex})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${realCartIndex})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
+        }
+        
         cartList.innerHTML += `<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`; 
     }); 
 
@@ -393,7 +441,6 @@ function openPage(pageId) {
     let el = document.getElementById(pageId); 
     if(el) el.style.display = "block"; 
     
-    // 強制延遲執行初始化，確保資料已過濾
     setTimeout(() => {
         if(pageId === 'historyPage') showHistory();
         if(pageId === 'reportPage') { 
@@ -412,10 +459,9 @@ function showHistory() {
     try {
         let currentlyOpenIds = []; const openDetails = document.querySelectorAll('.history-detail'); openDetails.forEach(el => { if (el.style.display === 'block') currentlyOpenIds.push(el.id); });
         const historyBox = document.getElementById("history-box"); 
-        if(!historyBox) return; // 防呆
+        if(!historyBox) return; 
         historyBox.innerHTML = ""; 
         
-        // 確保 getVisibleOrders 存在
         if(typeof getVisibleOrders !== 'function') {
             historyBox.innerHTML = "<div style='padding:20px;color:red;'>系統初始化中，請稍後...</div>";
             return;
@@ -494,7 +540,6 @@ function filterOrders(startTime, endTime, titleText) {
     let bbqTotal = 0; 
     let kitchenCats = ["燒烤", "主餐", "炸物"]; 
     
-    // 確保 historyOrders 是陣列
     if(!Array.isArray(historyOrders)) return;
 
     historyOrders.forEach(order => { 
@@ -585,7 +630,7 @@ function renderPublicStats() {
     renderList(barList, 'publicStatsBar'); renderList(bbqList, 'publicStatsBbq');
 }
 
-/* ========== 🔥 6. 修改：庫存管理 (下拉式選單) ========== */
+/* ========== 6. 修改：庫存管理 (下拉式選單) ========== */
 function renderProductManagement() {
     const container = document.getElementById("productManagementList");
     
@@ -922,7 +967,6 @@ window.addEventListener('DOMContentLoaded', () => {
             if(saveBtn) { saveBtn.innerText = "🚀 送出廚房"; saveBtn.onclick = customerSubmitOrder; }
             document.getElementById("seatTimer").style.display = "none";
             
-            // 🔥 [FIX] 這裡新增了 buildCategories()，確保菜單分類會被建立
             buildCategories(); 
             
             if(tableCarts[selectedTable]) { cart = tableCarts[selectedTable]; renderCart(); }
