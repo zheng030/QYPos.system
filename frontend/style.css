@@ -102,6 +102,11 @@ button {
 .status-red { background: #fff0f3; border-color: var(--danger-color); color: var(--danger-color); box-shadow: 0 4px 10px rgba(239, 71, 111, 0.2); }
 .status-yellow { background: #fff9db; border-color: var(--warning-color); color: #d97706; box-shadow: 0 4px 10px rgba(255, 209, 102, 0.3); }
 .status-white { background: var(--card-bg); color: var(--text-sub); border: 2px dashed #e2e8f0; }
+.status-blue { 
+    background: #e0e7ff; 
+    border-color: #4361ee; 
+    color: #4361ee; 
+    box-shadow: 0 4px 10px rgba(67, 97, 238, 0.3);}
 
 /* ========== 5. 點餐與菜單 (含售完樣式) ========== */
 .order-header { background: var(--card-bg); padding: 15px 25px; border-radius: var(--radius-lg); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
