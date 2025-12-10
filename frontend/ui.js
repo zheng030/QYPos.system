@@ -423,7 +423,46 @@ function openSplitCheckout() {
     checkoutModal.style.display = "flex"; 
 }
 
-// ... (省略其他功能函數，因為它們與主改動無關且已在 logic.js 中保留)
+function updateDiscPreview() { 
+    let val = parseFloat(document.getElementById("discInput").value); 
+    if (isNaN(val) || val <= 0 || val > 100) { document.getElementById("discPreviewText").innerText = ""; return; } 
+    let discounted = Math.round(currentOriginalTotal * (val / 100)); 
+    document.getElementById("discPreviewText").innerText = `原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`; 
+}
+
+function openPage(pageId) { 
+    hideAll(); 
+    let el = document.getElementById(pageId); 
+    if(el) el.style.display = "block"; 
+    
+    setTimeout(() => {
+        if(pageId === 'historyPage') showHistory();
+        if(pageId === 'reportPage') { 
+            generateReport('day'); 
+            renderCalendar(); 
+            moveSegmentHighlighter(0); 
+        } 
+        if(pageId === 'pastHistoryPage') {
+            if(typeof initHistoryDate === 'function') initHistoryDate(); 
+            renderPublicStats();
+        }
+    }, 100);
+}
+
+function closeSummaryModal() { summaryModal.style.display = "none"; }
+window.toggleDetail = function(id) { let el = document.getElementById(id); if (el.style.display === "none") { el.style.display = "block"; } else { el.style.display = "none"; } };
+window.toggleAccordion = function(id) { let el = document.getElementById(id); if(!el) return; let btn = el.previousElementSibling; el.classList.toggle("show"); if (btn) btn.classList.toggle("active"); };
+
+function showToast(message) { 
+    const toast = document.getElementById("toast-container"); 
+    toast.innerText = message; 
+    toast.style.opacity = "1"; 
+    toast.style.transform = "translateX(-50%) translateY(0)"; // 向上滑動進入
+    setTimeout(() => { 
+        toast.style.opacity = "0"; 
+        toast.style.transform = "translateX(-50%) translateY(20px)"; // 向下滑動退出
+    }, 2500); 
+}
 
 /* ========== 客人模式初始化 (需依賴 order_logic.js) ========== */
 window.addEventListener('DOMContentLoaded', () => {
