@@ -1,5 +1,5 @@
-/* logic.js - 核心邏輯與資料初始化 (v13: 簡化核心, 專注於同步) */
-console.log("Logic JS v13 Loaded - 核心邏輯與資料初始化已載入");
+/* logic.js - 核心邏輯與資料初始化 (v15: 修復 data.js 載入問題) */
+console.log("Logic JS v15 Loaded - 核心邏輯與資料初始化已載入");
 
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
@@ -224,10 +224,14 @@ function saveAllToCloud() {
 
 function checkLogin() {
     try {
+        // 修正：檢查 SYSTEM_PASSWORD 是否已定義
+        if (typeof SYSTEM_PASSWORD === 'undefined') {
+            throw new Error("SYSTEM_PASSWORD is not defined (Please check data.js loading)");
+        }
         let input = document.getElementById("loginPass").value;
         if (input === SYSTEM_PASSWORD) { sessionStorage.setItem("isLoggedIn", "true"); document.getElementById("loginError").style.display = "none"; showApp(); } 
         else { document.getElementById("loginError").style.display = "block"; document.getElementById("loginPass").value = ""; }
-    } catch (e) { alert("登入錯誤: SYSTEM_PASSWORD is not defined (請檢查 data.js 是否成功載入)"); }
+    } catch (e) { alert("載入錯誤: " + e.message); }
 }
 
 function updateItemData(name, type, value) { 
