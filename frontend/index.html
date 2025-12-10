@@ -182,6 +182,7 @@
                     <div id="publicStatsBbq"></div>
                 </div>
             </div>
+            <button onclick="location.reload()" class="end-business-btn btn-effect" style="margin-top: 20px; width: 50%; background: #007bff; color: white;">🔄 刷新數據 (強制重載)</button>
         </div>
 
         <div id="reportPage">
@@ -215,7 +216,6 @@
                         <div class="card-icon">🍖</div>
                         <h3>燒烤部營收</h3>
                         <p id="rptBBQ">$0</p>
-                        <small>燒烤/主餐/炸物</small>
                     </div>
                 </div>
             </div>
@@ -343,15 +343,9 @@
                 </div>
                 <div class="modal-body" style="padding-top: 20px;">
                     <div class="owner-buttons" style="display:flex; flex-direction:column; gap:15px;">
-                        <button onclick="checkOwner('景偉')" class="btn-effect owner-btn" style="padding:15px; font-size:18px; border-radius:12px; background:#e0f2fe; color:#007bff; display:flex; align-items:center; justify-content:center; gap:10px;">
-                            <span style="font-size:24px;">👨‍💼</span> 景偉 (總管)
-                        </button>
-                        <button onclick="checkOwner('小飛')" class="btn-effect owner-btn" style="padding:15px; font-size:18px; border-radius:12px; background:#fce7f3; color:#ec4899; display:flex; align-items:center; justify-content:center; gap:10px;">
-                            <span style="font-size:24px;">🍸</span> 小飛 (酒吧)
-                        </button>
-                        <button onclick="checkOwner('威志')" class="btn-effect owner-btn" style="padding:15px; font-size:18px; border-radius:12px; background:#ffedd5; color:#f97316; display:flex; align-items:center; justify-content:center; gap:10px;">
-                            <span style="font-size:24px;">🍖</span> 威志 (燒烤)
-                        </button>
+                        <button onclick="checkOwner('景偉')" class="btn-effect owner-btn" style="padding:15px; font-size:18px; border-radius:12px; background:#e0f2fe; color:#007bff;">👨‍💼 修改 景偉 密碼</button>
+                        <button onclick="checkOwner('小飛')" class="btn-effect owner-btn" style="padding:15px; font-size:18px; border-radius:12px; background:#fce7f3; color:#ec4899;">🍸 修改 小飛 密碼</button>
+                        <button onclick="checkOwner('威志')" class="btn-effect owner-btn" style="padding:15px; font-size:18px; border-radius:12px; background:#ffedd5; color:#f97316;">🍖 修改 威志 密碼</button>
                     </div>
                 </div>
                 <button onclick="closeOwnerModal()" class="btn-effect" style="margin-top:20px; background:transparent; color:#999; width:100%;">取消</button>
