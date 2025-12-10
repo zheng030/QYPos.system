@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>POS 點餐系統</title>
-    <link rel="stylesheet" href="style.css?v=14">     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="style.css?v=15">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body ontouchstart="">
@@ -60,225 +61,6 @@
                 <span>熱銷統計 (即時)</span>
             </div>
             <div class="menu-btn" onclick="openPage('pastHistoryPage')">
-                <span style="font-size: 32px;">📜</span>
-                <span>歷史銷量 (月報)</span>
-            </div>
-
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">🔍</span>
-                <span>商品搜尋</span>
-            </div>
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
-                <span>(預留功能)</span>
-            </div>
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
-                <span>(預留功能)</span>
-            </div>
-        </div>
-
-                <div id="tableSelect">
-            <div class="header-row">
-                <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-                <button class="btn-effect" onclick="toggleQrMode()" style="background: #6610f2; color: white; padding: 10px 20px; border-radius: 50px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 10px rgba(102,16,242,0.3);">
-                    📲 顯示 QR Code
-                </button>
-                <button class="btn-effect" onclick="createNewOrder('外帶')" style="background: var(--success-color); color: white; padding: 10px 20px; border-radius: 50px; font-weight: bold; font-size: 15px; margin-left: 10px;">
-                    📝 新增外帶單
-                </button>
-                <div id="systemTime">載入中...</div>
-            </div>
-            <div class="title">請選擇座位或拖曳訂單 (將卡片拖至桌子或另一張卡片上)</div>
-            
-                        <div class="standby-zone" id="standbyZone" ondrop="dropToStandby(event)" ondragover="allowDrop(event)">
-                <h3 class="zone-title">暫存區 (未歸位訂單)</h3>
-                <div id="standbyOrdersContainer" class="order-list-container"></div>
-            </div>
-            
-                        <div id="tableSelectGrid" class="table-grid-custom"></div>
-        </div>
-
-        <div id="orderPage">
-            <div class="order-header">
-                <button class="back btn-effect" onclick="saveAndExit()">⬅ 暫存 / 返回</button>
-                <div class="title-group">
-                    <span class="title" style="border:none; padding:0; margin:0;">🛒 訂單 <span id="orderIdLabel">#T</span> 於 <span id="seatLabel"></span></span>
-                    <div id="seatTimer"></div>
-                </div>
-            </div>
-            
-            <div class="customer-input-box">
-                <input type="text" id="custName" placeholder="輸入客人姓名">
-                <input type="tel" id="custPhone" placeholder="輸入電話號碼">
-            </div>
-
-            <div id="menuGrid"></div> 
-
-            <div id="cart-container">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin:0; font-size: 20px; color: #2b2d42;">🧾 訂單明細</h2>
-                    <button onclick="toggleCartView()" class="btn-effect" style="background:#e2e8f0; color:#475569; border-radius:20px; padding:6px 15px; font-size:14px; font-weight:bold;">
-                        👁️ 切換視圖
-                    </button>
-                </div>
-                
-                <div id="cart-list"></div>
-                
-                <div class="summary-section">
-                    <div class="summary-controls">
-                        <button id="svcBtn" class="control-btn btn-effect" onclick="toggleServiceFee()">
-                            ◻️ 收 10% 服務費
-                        </button>
-                        <button class="control-btn btn-effect" onclick="openDiscountModal()">
-                            % 設定折扣
-                        </button>
-                    </div>
-            
-                    <div class="total-display">
-                        <p id="total">總金額：0 元</p>
-                    </div>
-                </div>
-                
-                <div class="action-buttons-compact">
-                    <button class="action-btn save-btn btn-effect" onclick="updateOrderManual()">📝 儲存訂單</button>
-                    <button class="action-btn reprint-btn btn-effect" onclick="openReprintModal()">🖨 補單</button>
-                    <button class="action-btn checkout-btn btn-effect" onclick="openPaymentModal()">💰 結帳</button>
-                    <button class="action-btn delete-btn btn-effect" onclick="deleteCurrentOrder()">🗑 刪除訂單</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="historyPage">
-            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-            <div class="title">📋 今日訂單列表</div>
-            <div class="history-header-row">
-                <span>序號</span><span>桌號</span><span>客人資訊</span><span>時間</span><span>金額</span><span>操作</span>
-            </div>
-            <div id="history-box"></div>
-            <button onclick="closeBusiness()" class="end-business-btn btn-effect">🛑 結束營業 (日結)</button>
-        </div>
-
-        <div id="pastHistoryPage" style="display:none;">
-            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-            <div class="title">📜 歷史銷量統計 (月報)</div>
-            <div class="calendar-wrapper" style="margin-bottom: 20px;">
-                <div class="calendar-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px;">
-                    <button onclick="changeStatsMonth(-1)" class="btn-effect" style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">◀</button>
-                    <h2 id="statsMonthTitle" style="margin:0;"></h2>
-                    <button onclick="changeStatsMonth(1)" class="btn-effect" style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">▶</button>
-                </div>
-            </div>
-            <div class="stats-body">
-                <div class="stats-column">
-                    <h3 style="background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; padding: 10px; border-radius: 8px 8px 0 0; margin-top:0;">🍺 酒吧部銷量</h3>
-                    <div class="stats-header-row" style="padding: 10px 20px;"><span>品項</span><span>數量</span></div>
-                    <div id="publicStatsBar"></div>
-                </div>
-                <div class="stats-column">
-                    <h3 style="background: linear-gradient(135deg, #ff9a9e, #fecfef); color: #333; padding: 10px; border-radius: 8px 8px 0 0; margin-top:0;">🍖 燒烤部銷量</h3>
-                    <div class="stats-header-row" style="padding: 10px 20px;"><span>品項</span><span>數量</span></div>
-                    <div id="publicStatsBbq"></div>
-                </div>
-            </div>
-            <button onclick="location.reload()" class="end-business-btn btn-effect" style="margin-top: 20px; width: 50%; background: #007bff; color: white;">🔄 刷新數據 (強制重載)</button>
-        </div>
-
-        <div id="reportPage">
-            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-            <div class="title">📊 營業報表</div>
-            
-            <div id="reportContent">
-                <div class="segment-control-wrapper">
-                    <div class="segment-control-container">
-                        <div class="segment-highlighter" id="reportHighlighter"></div>
-                        <div class="segment-option active" onclick="generateReport('day')">今日</div>
-                        <div class="segment-option" onclick="generateReport('week')">本周</div>
-                        <div class="segment-option" onclick="generateReport('month')">當月</div>
-                    </div>
-                </div>
-
-                <div class="report-dashboard">
-                    <div class="stat-card total-gradient">
-                        <div class="card-icon">💰</div>
-                        <h3 id="rptTitle">今日營業額</h3>
-                        <p id="rptTotal">$0</p>
-                        <small id="rptCount">總單數: 0</small>
-                    </div>
-                    <div class="stat-card bar-gradient">
-                        <div class="card-icon">🍺</div>
-                        <h3>酒吧部營收</h3>
-                        <p id="rptBar">$0</p>
-                        <small>調酒/純飲/啤酒/飲料</small>
-                    </div>
-                    <div class="stat-card bbq-gradient">
-                        <div class="card-icon">🍖</div>
-                        <h3>燒烤部營收</h3>
-                        <p id="rptBBQ">$0</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="calendar-wrapper">
-                <div class="calendar-header"><h2 id="calendarMonthTitle"></h2></div>
-                <div class="calendar-grid-header">
-                    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
-                </div>
-                <div id="calendarGrid" class="calendar-grid"></div>
-            </div>
-            <div style="margin-top:20px; color:#888; font-size:14px;">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
-        </div>
-
-        <div id="confidentialPage">
-            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-            <div class="title">🤫 <span id="ownerWelcome"></span> <span id="confidentialTitle"></span></div>
-            <div id="financeDashboard" class="finance-container" style="display:none;"></div>
-            <div id="financeCalendarSection" style="display:none;">
-                <div class="calendar-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0 10px; margin-bottom: 15px;">
-                    <button onclick="changeOwnerMonth(-1)" class="btn-effect" style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">◀</button>
-                    <h2 id="finCalendarTitle" style="margin:0; font-size:22px;"></h2>
-                    <button onclick="changeOwnerMonth(1)" class="btn-effect" style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">▶</button>
-                </div>
-                <div class="finance-layout">
-                    <div class="calendar-container-left">
-                        <div class="calendar-grid-header">
-                            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
-                        </div>
-                        <div id="finCalendarGrid" class="calendar-grid"></div>
-                        <div style="text-align:center; color:#007bff; font-size:14px; margin-top:10px; font-weight:bold;">(💡 點擊日期可查看當日詳細訂單)</div>
-                    </div>
-                    <div class="finance-summary-sidebar">
-                        <div class="finance-controls">
-                            <button onclick="updateFinanceStats('day')" id="finBtnDay" class="btn-effect">今日</button>
-                            <button onclick="updateFinanceStats('week')" id="finBtnWeek" class="btn-effect">本周</button>
-                            <button onclick="updateFinanceStats('month')" id="finBtnMonth" class="btn-effect active">當月</button>
-                        </div>
-                        <div class="summary-card total-theme">
-                            <h3 id="financeTitle">🏠 全店總計 (本月)</h3>
-                            <div class="sum-row"><span>總營收</span><span id="monthTotalRev">$0</span></div>
-                            <div class="sum-row"><span>總成本</span><span id="monthTotalCost" class="cost-text">$0</span></div>
-                            <hr>
-                            <div class="sum-row highlight"><span>淨利潤</span><span id="monthTotalProfit">$0</span></div>
-                        </div>
-                        <div class="summary-card bar-theme">
-                            <h3>🍺 酒吧部</h3>
-                            <div class="sum-row"><span>營收</span><span id="monthBarRev">$0</span></div>
-                            <div class="sum-row"><span>成本</span><span id="monthBarCost" class="cost-text">$0</span></div>
-                            <hr>
-                            <div class="sum-row highlight"><span>毛利</span><span id="monthBarProfit">$0</span></div>
-                        </div>
-                        <div class="summary-card bbq-theme">
-                            <h3>🍖 燒烤部</h3>
-                            <div class="sum-row"><span>營收</span><span id="monthBbqRev">$0</span></div>
-                            <div class="sum-row"><span>成本</span><span id="monthBbqCost" class="cost-text">$0</span></div>
-                            <hr>
-                            <div class="sum-row highlight"><span>毛利</span><span id="monthBbqProfit">$0</span></div>
-                        </div>
-                    </div>
-                </div>
-                <div id="ownerOrderListSection" style="margin-top:20px; display:none;">
-                    <h3 id="ownerSelectedDateTitle" style="border-bottom: 2px solid #007bff; padding-bottom: 10px; color:#007bff;"></h3>
-                    <div class="history-header-row" style="grid-template-columns: 0.5fr 0.8fr 2fr 0.8fr 0.8fr auto !important;">
     在 tableSelect 的結構中，我已經排除了 Modal 內容的誤顯示，並使用了 `table-grid-custom` 佈局。
 
 ### 📄 檔案五：`style.css` (覆蓋 - 強制修正網格與 Modal 樣式)
@@ -341,6 +123,22 @@ button {
     border-radius: 50px; font-size: 15px; font-weight: 500; z-index: 20000;
     opacity: 0; transition: all 0.3s ease; pointer-events: none; box-shadow: var(--shadow-lg);
 }
+
+/* Modal 預設隱藏 (修正誤顯示問題) */
+.modal { 
+    display: none; 
+    position: fixed; 
+    left: 0; 
+    top: 0; 
+    width: 100%; 
+    height: 100%; 
+    background-color: rgba(15, 23, 42, 0.6); 
+    backdrop-filter: blur(4px); 
+    justify-content: center; 
+    align-items: center; 
+    z-index: 10000; 
+}
+
 
 /* ========== 2. 登入畫面 & 全域排版 ========== */
 #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%); display: flex; justify-content: center; align-items: center; z-index: 9999; }
