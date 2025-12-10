@@ -1,5 +1,5 @@
-/* order_logic.js - 訂單管理核心邏輯 (v13: 支援獨立訂單卡片) */
-console.log("Order Logic JS v13 Loaded - 訂單管理核心已載入");
+/* order_logic.js - 訂單管理核心邏輯 (v15: 支援獨立訂單卡片) */
+console.log("Order Logic JS v15 Loaded - 訂單管理核心已載入");
 
 let currentTableId = null;
 let currentOrderId = null; // 當前正在編輯的訂單 ID
@@ -81,7 +81,6 @@ function createNewOrder(seat = '暫存') {
 
 /**
  * 員工手動儲存/更新訂單內容 (取代 saveOrderManual)
- * 將 cart 內容保存到 order.unsentItems 或 sentItems
  */
 function updateOrderManual(isCheckout = false) {
     if (!currentOrderId || !tableOrders[currentOrderId]) {
