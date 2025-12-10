@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>POS 點餐系統</title>
-    <link rel="stylesheet" href="style.css?v=13">     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="style.css?v=14">     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body ontouchstart="">
@@ -24,7 +24,7 @@
 
     <div id="app-container" style="display:none;">
         
-        <div id="home">
+                <div id="home">
             <div class="menu-btn" onclick="openTableSelect()">
                 <span style="font-size: 32px;">🛒</span>
                 <span>點餐系統</span>
@@ -64,8 +64,8 @@
                 <span>商品搜尋</span>
             </div>
         </div>
-
-        <div id="tableSelect">
+        
+                <div id="tableSelect">
             <div class="header-row">
                 <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
                 <button class="btn-effect" onclick="toggleQrMode()" style="background: #6610f2; color: white; padding: 10px 20px; border-radius: 50px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 10px rgba(102,16,242,0.3);">
@@ -368,8 +368,8 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="data.js?v=13"></script>
-    <script src="logic.js?v=13"></script>
-    <script src="ui.js?v=13"></script>
+    <script src="data.js?v=14"></script>
+    <script src="logic.js?v=14"></script>
+    <script src="ui.js?v=14"></script>
 </body>
 </html>
