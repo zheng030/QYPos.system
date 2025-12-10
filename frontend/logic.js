@@ -227,7 +227,7 @@ function checkLogin() {
         let input = document.getElementById("loginPass").value;
         if (input === SYSTEM_PASSWORD) { sessionStorage.setItem("isLoggedIn", "true"); document.getElementById("loginError").style.display = "none"; showApp(); } 
         else { document.getElementById("loginError").style.display = "block"; document.getElementById("loginPass").value = ""; }
-    } catch (e) { alert("登入錯誤: " + e.message); }
+    } catch (e) { alert("登入錯誤: SYSTEM_PASSWORD is not defined (請檢查 data.js 是否成功載入)"); }
 }
 
 function updateItemData(name, type, value) { 
