@@ -1,5 +1,5 @@
-/* ui.js - 介面渲染與事件處理 (v13: 通用介面渲染) */
-console.log("UI JS v13 Loaded - 通用介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v15: 通用介面渲染) */
+console.log("UI JS v15 Loaded - 通用介面程式已載入");
 
 // 全域變數
 let currentDiscount = { type: 'none', value: 0 }; 
