@@ -272,10 +272,11 @@ function customerSubmitOrder() {
     let nextBatch = currentBatch + 1; 
     let batchColorIdx = (nextBatch - 1) % 3;
 
-    let itemsToSend = cart.map(item => ({
+    let itemsToSend = cart.map((item, idx) => ({
         ...item,
         isNew: true,
-        batchIdx: batchColorIdx 
+        batchIdx: batchColorIdx,
+        incomingIdx: idx 
     }));
 
     let customerInfo = {
@@ -309,9 +310,15 @@ function confirmIncomingOrder() {
     let pendingData = incomingOrders[currentIncomingTable];
     if (!pendingData) return;
 
-    let items = pendingData.items || [];
-    let cust = pendingData.customer || {};
+    // 將顧客送出的同一批次訂單附上時間/批次，避免被拆成多次列印
+    let sentAt = pendingData.timestamp || Date.now();
     let batchId = pendingData.batchId;
+    let rawItems = Array.isArray(pendingData.items) ? pendingData.items : Object.values(pendingData.items || {});
+    let items = rawItems
+        .filter(Boolean)
+        .map((i, idx) => ({ ...i, batchId, sentAt, incomingIdx: i.incomingIdx !== undefined ? i.incomingIdx : idx }))
+        .sort((a, b) => (a.incomingIdx || 0) - (b.incomingIdx || 0));
+    let cust = pendingData.customer || {};
 
     tableBatchCounts[currentIncomingTable] = batchId;
 
@@ -334,7 +341,7 @@ function confirmIncomingOrder() {
     printReceipt({ 
         seq: tableCustomers[currentIncomingTable].orderId, 
         table: currentIncomingTable, 
-        time: new Date().toLocaleString('zh-TW', { hour12: false }), 
+        time: new Date(sentAt).toLocaleString('zh-TW', { hour12: false }), 
         items: items, 
         original: 0, total: 0 
     }, true);
