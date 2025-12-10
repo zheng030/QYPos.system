@@ -366,7 +366,19 @@ function checkoutAll(manualFinal) {
         let splitNum = tableSplitCounters[selectedTable]; let displaySeq = info.orderId; let displaySeat = selectedTable; 
         if(splitNum && splitNum > 1) { displaySeq = `${info.orderId}-${splitNum}`; displaySeat = `${selectedTable} (拆單)`; } 
         let processedItems = cart.map(item => { if (item.isTreat) { return { ...item, price: 0, name: item.name + " (招待)" }; } return item; }); 
-        let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, timestamp: Date.now(), items: processedItems, total: payingTotal, originalTotal: originalTotal, customerName: info.name, customerPhone: info.phone, isClosed: false }; 
+        // Firebase 不接受 undefined，確保客人資訊至少為空字串
+        let newOrder = { 
+            seat: displaySeat, 
+            formattedSeq: displaySeq, 
+            time: time, 
+            timestamp: Date.now(), 
+            items: processedItems, 
+            total: payingTotal, 
+            originalTotal: originalTotal, 
+            customerName: info.name || "", 
+            customerPhone: info.phone || "", 
+            isClosed: false 
+        }; 
         if(!Array.isArray(historyOrders)) historyOrders = []; 
         historyOrders.push(newOrder); localStorage.setItem("orderHistory", JSON.stringify(historyOrders)); 
     } 
