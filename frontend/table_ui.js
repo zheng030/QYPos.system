@@ -1,4 +1,3 @@
-
 /* table_ui.js - 桌位與訂單卡片渲染及拖曳邏輯 (v13) */
 console.log("Table UI JS v13 Loaded - 桌位互動已載入");
 
@@ -130,7 +129,7 @@ function createOrderCard(orderId) {
     
     // 根據未送出狀態添加視覺提示
     if (unsentCount > 0) {
-        card.style.borderColor = var(--danger-color);
+        card.style.borderColor = 'var(--danger-color)';
         card.style.borderLeft = `5px solid var(--danger-color)`;
     }
 
