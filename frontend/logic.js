@@ -1,5 +1,5 @@
-/* logic.js - 核心邏輯 (v24: 最終整合版 - 確保所有功能核心存在) */
-console.log("Logic JS v24 Loaded - 核心邏輯已載入");
+/* logic.js - 核心邏輯 (v11: 包含已下單顯示與列印修正版) */
+console.log("Logic JS v11 Loaded - 核心邏輯已載入");
 
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
@@ -23,13 +23,16 @@ let tableBatchCounts = {}; 
 
 let selectedTable = null;
 let cart = []; 
+// 🔥 新增：用來儲存客人已送出的商品 (從暫存讀取)
 let sentItems = JSON.parse(sessionStorage.getItem("sentItems")) || [];
 
 let seatTimerInterval = null;
+let tempCustomItem = null;
+let isExtraShot = false; 
 let tempLeftList = [];
 let tempRightList = [];
 let currentOriginalTotal = 0; 
-let finalTotal = 0; 
+let finalTotal = 0;             
 let currentDiscount = { type: 'none', value: 0 }; 
 let discountedTotal = 0;
 let isServiceFeeEnabled = false;
@@ -38,10 +41,7 @@ let currentIncomingTable = null; 
 
 let historyViewDate = new Date();
 let isCartSimpleMode = false;
-let isHistorySimpleMode = false; 
-let dailyFinancialData = {}; 
-let tempCustomItem = null;
-let isExtraShot = false;
+let isHistorySimpleMode = false;
 
 /* ========== 輔助函式 ========== */
 
@@ -82,8 +82,7 @@ function getVisibleOrders() {
         let filtered = historyOrders.filter(o => {
             if (!o) return false;
             if (!o.items || !Array.isArray(o.items)) return false;
-            // 顯示當前營業日所有未結清的訂單
-            return getBusinessDate(getDateFromOrder(o)) === currentBizDate && o.isClosed !== true; 
+            return getBusinessDate(getDateFromOrder(o)) === currentBizDate;
         });
         return filtered.reverse();
     } catch (e) {
@@ -146,7 +145,6 @@ function initRealtimeData() {
         if(document.getElementById("tableSelect") && document.getElementById("tableSelect").style.display === "block") renderTableGrid();
         
         setTimeout(() => {
-            // 確保頁面重新載入後能更新內容
             if(document.getElementById("historyPage") && document.getElementById("historyPage").style.display === "block") showHistory();
             
             if(document.getElementById("reportPage") && document.getElementById("reportPage").style.display === "block") { 
@@ -155,7 +153,18 @@ function initRealtimeData() {
                 generateReport(type); 
                 renderCalendar(); 
             }
-            // 其他頁面更新邏輯 (略)
+            
+            if(document.getElementById("itemStatsModal") && document.getElementById("itemStatsModal").style.display === "flex") { 
+                 let activeBtn = document.querySelector('.report-controls button.active');
+                 let range = 'day';
+                 if(activeBtn) {
+                     if(activeBtn.id === 'statBtnWeek') range = 'week';
+                     if(activeBtn.id === 'statBtnMonth') range = 'month';
+                 }
+                 renderItemStats(range);
+            }
+            
+            if(document.getElementById("pastHistoryPage") && document.getElementById("pastHistoryPage").style.display === "block") { renderPublicStats(); }
         }, 50);
 
         let currentOwner = document.getElementById("ownerWelcome") ? document.getElementById("ownerWelcome").innerText : "";
@@ -167,23 +176,15 @@ function initRealtimeData() {
 }
 
 function checkIncomingOrders() {
-    if(!incomingOrders) return;
-    // 篩選出目前沒有正在處理的 incomingOrders
-    // 避免重複顯示同一個桌號的 incomingOrder
-    const pendingTables = Object.keys(incomingOrders).filter(table => {
-        return table !== currentIncomingTable;
-    });
-
-    if (pendingTables.length > 0) {
-        let table = pendingTables[0];
-        let orderData = incomingOrders[table];
-        showIncomingOrderModal(table, orderData);
-    } else {
-        // 如果當前正在處理的 currentIncomingTable 被清空了，也會關閉 Modal
-        if (!incomingOrders[currentIncomingTable]) { 
-            closeIncomingOrderModal();
-        }
-    }
+    if(!incomingOrders) return;
+    const tables = Object.keys(incomingOrders);
+    if (tables.length > 0) {
+        let table = tables[0];
+        let orderData = incomingOrders[table];
+        showIncomingOrderModal(table, orderData);
+    } else {
+        closeIncomingOrderModal();
+    }
 }
 
 function saveAllToCloud() {
@@ -231,8 +232,7 @@ function saveOrderManual() { 
             tableTimers[selectedTable] = Date.now(); 
             tableSplitCounters[selectedTable] = 1; 
             let currentBizDate = getBusinessDate(new Date());
-            // 只計算當日已結和未結的訂單數量
-            let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate && o.isClosed !== true).length;
+            let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate).length;
             tableCustomers[selectedTable].orderId = todayCount + 1; 
         } 
         
@@ -247,20 +247,10 @@ function saveOrderManual() { 
         tableCustomers[selectedTable].name = document.getElementById("custName").value; 
         tableCustomers[selectedTable].phone = document.getElementById("custPhone").value; 
         
-        // 這裡只印出新增的 (isNew:true) 項目作為廚房單
-        printReceipt({ 
-            seq: tableCustomers[selectedTable].orderId, 
-            table: selectedTable, 
-            time: new Date().toLocaleString('zh-TW', { hour12: false }), 
-            items: cart, 
-            original: 0, 
-            total: 0 
-        }, true); 
+        saveAllToCloud(); 
         
-        // 清除 isNew 標記
-        cart.forEach(item => delete item.isNew);
-        
-        saveAllToCloud();
+        printReceipt({ seq: tableCustomers[selectedTable].orderId, table: selectedTable, time: new Date().toLocaleString('zh-TW', { hour12: false }), items: cart, original: 0, total: 0 }, true); 
+        
         showToast(`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`); openTableSelect(); 
     } catch (e) { alert("出單發生錯誤: " + e.message); } 
 }
@@ -268,22 +258,8 @@ function saveOrderManual() { 
 function saveAndExit() {
     try {
         if (!Array.isArray(cart)) cart = [];
-        
-        // 檢查購物車和資料庫中是否有任何商品
-        let hasItemsInCart = cart.length > 0;
-        let hasItemsInDB = tableCarts[selectedTable] && tableCarts[selectedTable].length > 0;
-        
-        if (hasItemsInCart || hasItemsInDB) {
-             let hasUnsentItems = cart.some(item => item.isNew === true);
-             if (hasUnsentItems) { 
-                 if (!confirm("⚠️ 購物車內有未送出的商品，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)")) return; 
-             }
-        } else {
-             // 如果購物車和資料庫都是空的，直接離開，無需提示
-             cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; tempCustomItem = null; openTableSelect();
-             return;
-        }
-
+        let hasUnsentItems = cart.some(item => item.isNew === true);
+        if (hasUnsentItems) { if (!confirm("⚠️ 購物車內有未送出的商品，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)")) return; }
         cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; tempCustomItem = null; openTableSelect();
     } catch (e) { console.error("返回錯誤:", e); openTableSelect(); }
 }
@@ -327,47 +303,46 @@ function customerSubmitOrder() {
 }
 
 function confirmIncomingOrder() {
-    if (!currentIncomingTable) return;
-    
-    let pendingData = incomingOrders[currentIncomingTable];
-    if (!pendingData) return;
+    if (!currentIncomingTable) return;
+    
+    let pendingData = incomingOrders[currentIncomingTable];
+    if (!pendingData) return;
 
-    let items = pendingData.items || [];
-    let cust = pendingData.customer || {};
-    let batchId = pendingData.batchId;
+    let items = pendingData.items || [];
+    let cust = pendingData.customer || {};
+    let batchId = pendingData.batchId;
 
-    tableBatchCounts[currentIncomingTable] = batchId;
+    tableBatchCounts[currentIncomingTable] = batchId;
 
-    let currentCart = tableCarts[currentIncomingTable] || [];
-    let newCart = currentCart.concat(items);
-    tableCarts[currentIncomingTable] = newCart;
+    let currentCart = tableCarts[currentIncomingTable] || [];
+    let newCart = currentCart.concat(items);
+    tableCarts[currentIncomingTable] = newCart;
 
-    tableStatuses[currentIncomingTable] = 'yellow';
-    if (!tableCustomers[currentIncomingTable]) tableCustomers[currentIncomingTable] = {};
-    if (cust.name) tableCustomers[currentIncomingTable].name = cust.name;
-    
-    if (!tableTimers[currentIncomingTable] || !tableCustomers[currentIncomingTable].orderId) {
-        tableTimers[currentIncomingTable] = Date.now();
-        tableSplitCounters[currentIncomingTable] = 1;
-        let currentBizDate = getBusinessDate(new Date());
-        let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate && o.isClosed !== true).length;
-        tableCustomers[currentIncomingTable].orderId = todayCount + 1;
-    }
+    tableStatuses[currentIncomingTable] = 'yellow';
+    if (!tableCustomers[currentIncomingTable]) tableCustomers[currentIncomingTable] = {};
+    if (cust.name) tableCustomers[currentIncomingTable].name = cust.name;
+    
+    if (!tableTimers[currentIncomingTable] || !tableCustomers[currentIncomingTable].orderId) {
+        tableTimers[currentIncomingTable] = Date.now();
+        tableSplitCounters[currentIncomingTable] = 1;
+        let currentBizDate = getBusinessDate(new Date());
+        let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate).length;
+        tableCustomers[currentIncomingTable].orderId = todayCount + 1;
+    }
 
-    printReceipt({ 
-        seq: tableCustomers[currentIncomingTable].orderId, 
-        table: currentIncomingTable, 
-        time: new Date().toLocaleString('zh-TW', { hour12: false }), 
-        items: items, 
-        original: 0, total: 0 
-    }, true);
+    printReceipt({ 
+        seq: tableCustomers[currentIncomingTable].orderId, 
+        table: currentIncomingTable, 
+        time: new Date().toLocaleString('zh-TW', { hour12: false }), 
+        items: items, 
+        original: 0, total: 0 
+    }, true);
 
-    // 清除該桌的 incomingOrder，防止重複彈窗
-    delete incomingOrders[currentIncomingTable];
+    delete incomingOrders[currentIncomingTable];
 
-    saveAllToCloud();
-    closeIncomingOrderModal();
-    showToast(`✅ 已接收 ${currentIncomingTable} 的訂單`);
+    saveAllToCloud();
+    closeIncomingOrderModal();
+    showToast(`✅ 已接收 ${currentIncomingTable} 的訂單`);
 }
 
 function rejectIncomingOrder() {
@@ -384,7 +359,7 @@ function checkoutAll(manualFinal) { 
     let originalTotal = currentOriginalTotal; 
     let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" }; 
     let currentBizDate = getBusinessDate(new Date());
-    let todayOrders = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate && o.isClosed !== true);
+    let todayOrders = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate);
     if(!info.orderId || info.orderId === "?" || info.orderId === "T") { info.orderId = todayOrders.length + 1; } 
 
     if (originalTotal > 0 || payingTotal > 0) { 
@@ -394,11 +369,7 @@ function checkoutAll(manualFinal) { 
         let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, timestamp: Date.now(), items: processedItems, total: payingTotal, originalTotal: originalTotal, customerName: info.name, customerPhone: info.phone, isClosed: false }; 
         if(!Array.isArray(historyOrders)) historyOrders = []; 
         historyOrders.push(newOrder); localStorage.setItem("orderHistory", JSON.stringify(historyOrders)); 
-        
-        // 印出消費明細 (非廚房單)
-        printReceipt(newOrder, false);
     } 
-    
     delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; 
     delete tableBatchCounts[selectedTable];
     
@@ -414,49 +385,24 @@ function calcFinalPay() { let allowance = parseInt(document.getElementById("payA
 function calcSplitTotal() { let baseTotal = tempRightList.reduce((a, b) => a + b.price, 0); let disc = parseFloat(document.getElementById("splitDisc").value); let allow = parseInt(document.getElementById("splitAllow").value); let finalSplit = baseTotal; if (!isNaN(disc) && disc > 0 && disc <= 100) { finalSplit = Math.round(baseTotal * (disc / 100)); } if (!isNaN(allow) && allow > 0) { finalSplit = finalSplit - allow; } if(finalSplit < 0) finalSplit = 0; document.getElementById("payTotal").innerText = "$" + finalSplit; return finalSplit; }
 
 function fixAllOrderIds() {
-    if (!confirm("⚠️ 確定要執行「一鍵重整」嗎？\n\n1. 將所有歷史訂單依照日期重新編號 (#1, #2...)\n2. 修正目前桌上未結帳訂單的錯誤單號")) return;
-    
-    // 1. 先把訂單依照時間排序，確保順序正確
-    historyOrders.sort((a, b) => new Date(a.time) - new Date(b.time));
-
-    // 2. 建立一個對應表來記錄每一天的計數
-    let dateCounters = {};
-
-    // 3. 遍歷所有訂單並重新編號
-    historyOrders.forEach(order => {
-        // 取得營業日 (凌晨5點前算前一天)
-        let d = getDateFromOrder(order);
-        if (d.getHours() < 5) d.setDate(d.getDate() - 1);
-        let dateKey = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
-
-        // 如果這一天還沒出現過，初始化為 0
-        if (!dateCounters[dateKey]) dateCounters[dateKey] = 0;
-        
-        // 計數 + 1
-        dateCounters[dateKey]++;
-
-        // 🔥 更新訂單編號
-        order.formattedSeq = dateCounters[dateKey];
-        order.seq = dateCounters[dateKey]; // 舊欄位也更新
-    });
-
-    // 4. 更新目前桌位訂單號碼
-    let now = new Date(); 
-    if (now.getHours() < 5) now.setDate(now.getDate() - 1);
-    let todayKey = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
-    let currentMaxSeq = dateCounters[todayKey] || 0;
-
-    for (let table in tableCustomers) {
+    if (!confirm("⚠️ 確定要執行「一鍵重整」嗎？\n\n1. 將所有歷史訂單依照日期重新編號 (#1, #2...)\n2. 修正目前桌上未結帳訂單的錯誤單號")) return;
+    historyOrders.sort((a, b) => new Date(a.time) - new Date(b.time));
+    let dateCounters = {};
+    historyOrders.forEach(order => {
+        let d = new Date(order.time); if (d.getHours() < 5) d.setDate(d.getDate() - 1);
+        let dateKey = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+        if (!dateCounters[dateKey]) dateCounters[dateKey] = 0; dateCounters[dateKey]++;
+        order.formattedSeq = dateCounters[dateKey]; order.seq = dateCounters[dateKey];
+    });
+    let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1);
+    let todayKey = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
+    let currentMaxSeq = dateCounters[todayKey] || 0;
+    for (let table in tableCustomers) {
         if (tableCustomers[table] && tableStatuses[table] === 'yellow') {
-            currentMaxSeq++; 
-            tableCustomers[table].orderId = currentMaxSeq;
+            currentMaxSeq++; tableCustomers[table].orderId = currentMaxSeq;
         }
     }
-
-    // 5. 存回資料庫
-    saveAllToCloud(); 
-    alert("✅ 修復完成！\n歷史訂單已重整，目前桌位單號已校正。\n網頁將自動重新整理。"); 
-    location.reload(); 
+    saveAllToCloud(); alert("✅ 修復完成！\n歷史訂單已重整，目前桌位單號已校正。\n網頁將自動重新整理。"); location.reload(); 
 }
 
 function initHistoryDate() { let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1); historyViewDate = new Date(now); }
@@ -469,7 +415,7 @@ function getOrdersByDate(targetDate) {
 setInterval(updateSystemTime, 1000);
 function updateSystemTime() { document.getElementById("systemTime").innerText = "🕒 " + new Date().toLocaleString('zh-TW', { hour12: false }); }
 
-/* ========== 顯示邏輯 (與 ui.js 保持一致) ========== */
+/* ========== 🔥 顯示邏輯修改 (包含已下單區塊) ========== */
 function renderCart() { 
     const cartList = document.getElementById("cart-list"); 
     const totalText = document.getElementById("total"); 
@@ -545,7 +491,7 @@ function renderCart() { 
              // 這裡的 index 需要修正，因為 displayItems 包含了 sentItems
              // 我們需要找到這個 item 在原本 cart 陣列的 index
              // 簡單做法：displayItems 後半段就是 cart，所以 index 減去 sentItems 長度
-             let realCartIndex = i - (typeof sentItems !== 'undefined' ? sentItems.length : 0);
+             let realCartIndex = i - sentItems.length;
              
              actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${realCartIndex})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${realCartIndex})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
         }
@@ -572,82 +518,3 @@ function renderCart() { 
     if(noteText.length > 0) { finalHtml += ` <small style="color:#555;">(${noteText.join(", ")})</small>`; }
     totalText.innerHTML = finalHtml;
 }
-
-
-/* ========== 歷史訂單與報表邏輯 (確保存在) ========== */
-
-function showHistory() {
-    // 此函式實作在 ui.js 中
-}
-
-function generateReportData(range, dateObj = new Date()) {
-    let now = new Date(dateObj);
-    // 營業日計算：凌晨 5 點前算前一天
-    if (now.getHours() < 5) now.setDate(now.getDate() - 1);
-    
-    let start = new Date(now);
-    let end = new Date(now);
-    let orders = [];
-
-    // 確定時間範圍
-    if (range === 'day') {
-        start.setHours(5, 0, 0, 0);
-        end.setDate(end.getDate() + 1); // 到隔日 5 點前
-    } else if (range === 'week') {
-        let day = start.getDay() || 7; // 0=日, 1=一 ... 改為 1=一, 7=日
-        start.setDate(start.getDate() - day + 1); // 設為本周一
-        start.setHours(5, 0, 0, 0);
-        // 計算本周最後一天 (周日) 的下一天 5:00AM (即下周一)
-        end = new Date(start);
-        end.setDate(end.getDate() + 7); 
-    } else if (range === 'month') {
-        start.setDate(1);
-        start.setHours(5, 0, 0, 0);
-        // 設定為下個月的 1 號 5:00AM
-        end.setMonth(end.getMonth() + 1);
-        end.setDate(1);
-        end.setHours(5, 0, 0, 0);
-    }
-    
-    // 篩選訂單：過濾出已結帳的訂單
-    orders = historyOrders.filter(order => {
-        let t = getDateFromOrder(order);
-        let bizDate = getBusinessDate(t);
-        // 營業日邏輯：如果訂單時間在 start (該週期起始日5AM) 到 end (該週期結束日5AM) 之間
-        return t >= start && t < end && order.total > 0;
-    });
-
-    let stats = { totalRev: 0, totalCount: 0, barRev: 0, bbqRev: 0, barCost: 0, bbqCost: 0 };
-
-    // 計算統計數據
-    orders.forEach(order => {
-        if (!order || !order.items) return;
-        stats.totalCount++;
-        stats.totalRev += (order.total || 0);
-
-        order.items.forEach(item => {
-            let name = item.name.replace(" (招待)", "").trim();
-            let type = getItemCategoryType(name);
-            let revenue = (item.price || 0);
-            let cost = getCostByItemName(name);
-            
-            if (type === 'bar') { 
-                stats.barRev += revenue; 
-                stats.barCost += cost;
-            } 
-            else { 
-                stats.bbqRev += revenue; 
-                stats.bbqCost += cost;
-            }
-        });
-    });
-
-    return stats;
-}
-
-function renderCalendar() {
-    // 此函式實作在 ui.js 中
-}
-
-function closeOwnerModal() { document.getElementById('ownerLoginModal').style.display = 'none'; }
-function checkOwner(owner) { /* 實際檢查密碼邏輯需在此實作 */ }
