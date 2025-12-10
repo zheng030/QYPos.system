@@ -138,6 +138,7 @@ function openOrderPageLogic(table) {
     } 
     
     cart = tableCarts[table] || []; 
+    entryCartSignature = JSON.stringify(cart || []);
     let info = tableCustomers[table] || {name:"", phone:""}; 
     
     document.getElementById("custName").value = info.name || ""; 

@@ -38,6 +38,7 @@ let discountedTotal = 0;
 let isServiceFeeEnabled = false;
 let isQrMode = false;
 let currentIncomingTable = null; 
+let entryCartSignature = "[]"; // 紀錄進入點餐頁時的購物車狀態
 
 let historyViewDate = new Date();
 let isCartSimpleMode = false;
@@ -258,9 +259,9 @@ function saveOrderManual() {
 function saveAndExit() {
     try {
         if (!Array.isArray(cart)) cart = [];
-        let hasUnsentItems = cart.some(item => item.isNew === true);
-        if (hasUnsentItems) { if (!confirm("⚠️ 購物車內有未送出的商品，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)")) return; }
-        cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; tempCustomItem = null; openTableSelect();
+        let hasChanges = JSON.stringify(cart) !== entryCartSignature;
+        if (hasChanges) { if (!confirm("⚠️ 本次點餐有變更，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)")) return; }
+        cart = []; entryCartSignature = "[]"; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; tempCustomItem = null; openTableSelect();
     } catch (e) { console.error("返回錯誤:", e); openTableSelect(); }
 }
 
