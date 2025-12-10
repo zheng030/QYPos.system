@@ -98,6 +98,177 @@ function showIncomingOrderModal(table, orderData) {
             list.innerHTML += `<div style="padding:5px 0; border-bottom:1px solid #ffccd5; display:flex; justify-content:space-between;">
                 <span style="font-weight:bold; color:#333;">${item.name}</span>
                 <span style="color:#ef476f;">$${item.price}</span>
+            </div>`;
+        });
+    }
+    
+    modal.style.display = "flex";
+}
+
+function closeIncomingOrderModal() {
+    document.getElementById("incomingOrderModal").style.display = "none";
+    currentIncomingTable = null;
+}
+
+/* ========== 點餐介面功能 (使用原邏輯，但依賴 order_logic.js 中的狀態) ========== */
+function startSeatTimerDisplay(startTime) { 
+    if(typeof updateSeatTimerText === 'function') {
+        updateSeatTimerText(startTime); 
+        seatTimerInterval = setInterval(() => updateSeatTimerText(startTime), 1000); 
+    }
+}
+let seatTimerInterval = null;
+function updateSeatTimerText(startTime) { 
+    if(!startTime) return; 
+    let diff = Math.floor((Date.now() - startTime) / 1000); 
+    let h = Math.floor(diff / 3600).toString().padStart(2,'0'); 
+    let m = Math.floor((diff % 3600) / 60).toString().padStart(2,'0'); 
+    let s = (diff % 60).toString().padStart(2,'0'); 
+    document.getElementById("seatTimer").innerText = `⏳ 已入座：${h}:${m}:${s}`; 
+}
+function clearSeatTimer() {
+    if(seatTimerInterval) clearInterval(seatTimerInterval);
+    document.getElementById("seatTimer").innerText = "⏳ 尚未計時";
+}
+
+function buildCategories() { 
+    const grid = document.getElementById("menuGrid"); 
+    grid.innerHTML = ""; 
+    
+    if (typeof categories === 'undefined') return;
+
+    let listToRender = categories;
+    if (document.body.classList.contains("customer-mode")) {
+        listToRender = categories.filter(c => c !== "甜點" && c !== "其他");
+    }
+
+    listToRender.forEach(c => { 
+        let box = document.createElement("div"); 
+        box.className = "categoryBtn btn-effect"; 
+        box.innerText = c; 
+        if (menuData[c]) box.onclick = () => openItems(c); 
+        else box.style.opacity = "0.5"; 
+        grid.appendChild(box); 
+    }); 
+}
+
+function openItems(category) {
+    let data = menuData[category]; 
+    let backBtn = `<button class="back-to-cat btn-effect" onclick="buildCategories()">⬅ 返回 ${category} 分類</button>`;
+    
+    const createItemHtml = (item, isFlat = false) => {
+        let actionsHtml = ""; 
+        let realPrice = itemPrices[item.name] !== undefined ? itemPrices[item.name] : item.price;
+        let nameHtml = `<span>${item.name} <b>$${realPrice}</b></span>`; 
+        let itemClass = isFlat ? "item list-mode" : "item shot-item";
+        
+        let isSoldOut = inventory[item.name] === false;
+        if (isSoldOut) itemClass += " sold-out";
+
+        if (item.name === "隱藏啤酒") { 
+            nameHtml = `<span style="font-weight:bold; color:var(--primary-color);">🍺 隱藏啤酒</span>`; 
+            actionsHtml = `<input id="hbName" class="inline-input" placeholder="品名" style="width:100px;"><input type="number" id="hbPrice" class="inline-input" placeholder="時價" style="width:70px;"><button onclick="addInlineHiddenBeer()">加入</button>`; 
+        } else if (item.name === "味繒鮭魚") { 
+            nameHtml = `<span>味繒鮭魚 <b style="color:var(--danger-color);">(時價)</b></span>`; 
+            actionsHtml = `<input type="number" id="salmonPrice" class="inline-input" placeholder="金額" style="width:80px;"><button onclick="addSalmonPrice()">加入</button>`; 
+        } else if (item.name === "酥炸魷魚") { 
+            nameHtml = `<span>酥炸魷魚 <b style="color:var(--danger-color);">(時價)</b></span>`; 
+            actionsHtml = `<input type="number" id="squidPrice" class="inline-input" placeholder="金額" style="width:80px;"><button onclick="addFriedSquidPrice()">加入</button>`; 
+        } else { 
+            actionsHtml = `<button onclick='checkItemType("${item.name}", ${item.price}, "${category}")'>加入</button>`; 
+            if (category === "shot") { actionsHtml += `<button onclick='addShotSet("${item.name}", ${item.price})' class="set-btn btn-effect" style="margin-left:5px; background:var(--secondary-color);">🔥 一組</button>`; } 
+        }
+        return `<div class="${itemClass}">${nameHtml}<div class="shot-actions">${actionsHtml}</div></div>`;
+    };
+    
+    const flatListCategories = ["純飲", "shot", "啤酒", "咖啡", "飲料", "主餐", "炸物", "厚片", "甜點", "其他"];
+    let html = backBtn; 
+    const grid = document.getElementById("menuGrid"); 
+    
+    if (Array.isArray(data)) { 
+        if(flatListCategories.includes(category)) { html += `<div class="sub-cat-title">${category}</div>`; data.forEach(item => { html += createItemHtml(item, true); }); } 
+        else { data.forEach(item => { html += createItemHtml(item, true); }); }
+    } else { 
+        Object.keys(data).forEach((subCat, index) => { 
+            let items = data[subCat]; 
+            if(flatListCategories.includes(category)) { html += `<div class="sub-cat-title">${subCat}</div>`; items.forEach(item => { html += createItemHtml(item, true); }); } 
+            else { let accId = `acc-${index}`; html += `<button class="accordion-header btn-effect" onclick="toggleAccordion('${accId}')">${subCat} <span class="arrow">▼</span></button><div id="${accId}" class="accordion-content">`; items.forEach(item => { html += createItemHtml(item, false); }); html += `</div>`; }
+        }); 
+    } 
+    grid.innerHTML = html;
+}
+
+function toggleCartView() { isCartSimpleMode = !isCartSimpleMode; renderCart(); }
+function toggleServiceFee() { 
+    isServiceFeeEnabled = !isServiceFeeEnabled; 
+    if(selectedOrderId && typeof saveOrderDiscount === 'function') {
+        saveOrderDiscount(selectedOrderId, currentDiscount, isServiceFeeEnabled);
+    }
+    renderCart(); 
+}
+
+function renderCart() { 
+    const cartList = document.getElementById("cart-list"); 
+    const totalText = document.getElementById("total"); 
+    cartList.innerHTML = ""; 
+    currentOriginalTotal = 0; 
+    
+    const svcBtn = document.getElementById("svcBtn");
+    if(svcBtn) {
+        if(isServiceFeeEnabled) { svcBtn.classList.add("active"); svcBtn.innerHTML = "✅ 收 10% 服務費"; } 
+        else { svcBtn.classList.remove("active"); svcBtn.innerHTML = "◻️ 收 10% 服務費"; }
+    }
+
+    const order = selectedOrderId ? tableOrders[selectedOrderId] : null;
+
+    let displayItems = [];
+
+    // 1. 合併已送出和未送出的品項到 displayItems
+    if (order && order.sentItems && order.sentItems.length > 0) {
+        order.sentItems.forEach(item => {
+            displayItems.push({ ...item, isSent: true, count: item.count || 1 });
+        });
+    }
+    
+    // 2. 再加入目前購物車/未送出的 items
+    let currentCartItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, count: 1 }));
+    displayItems = [...displayItems, ...currentCartItems];
+
+    if (displayItems.length === 0) {
+        cartList.innerHTML = `<div style="text-align:center; color:#ccc; padding:20px;">購物車空空的</div>`;
+    }
+
+    displayItems.forEach((c, i) => { 
+        let count = c.count || 1;
+        let itemTotal = (c.isTreat ? 0 : c.price) * count;
+        
+        if (!c.isSent) {
+            currentOriginalTotal += itemTotal;
+        }
+
+        let treatClass = c.isTreat ? "treat-btn active btn-effect" : "treat-btn btn-effect";
+        let treatText = c.isTreat ? "已招待" : "🎁 招待";
+        let priceHtml = "";
+        let nameHtml = "";
+        let rowClass = "cart-item-row";
+
+        if (c.isSent) {
+            nameHtml = `<div class="cart-item-name" style="color:#adb5bd;">${c.name} <small>(已送出)</small></div>`;
+            priceHtml = `<span style="color:#adb5bd;">$${itemTotal}</span>`;
+            rowClass += " sent-item"; 
+        } else {
+            if (typeof c.batchIdx !== 'undefined') {
+                if (c.batchIdx === 0) rowClass += " batch-blue";
+                else if (c.batchIdx === 1) rowClass += " batch-red";
+                else if (c.batchIdx === 2) rowClass += " batch-green";
+            }
+
+            if (isCartSimpleMode && count > 1) {
+                nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
+                if(c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${itemTotal}`; }
+            } else {
+                nameHtml = `<div class="cart-item-name">${c.name}</div>`;
+                if (c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${c.price}`; }
     在 tableSelect 的結構中，我已經排除了 Modal 內容的誤顯示，並使用了 `table-grid-custom` 佈局。
 
 ### 📄 檔案五：`style.css` (覆蓋 - 強制修正網格與 Modal 樣式)
