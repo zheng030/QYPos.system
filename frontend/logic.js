@@ -1,589 +1,521 @@
-/* logic.js - 核心邏輯與資料初始化 (v15: 修復 data.js 載入問題) */
-console.log("Logic JS v15 Loaded - 核心邏輯與資料初始化已載入");
+!!logic.js
+/* logic.js - 核心邏輯 (v11: 包含已下單顯示與列印修正版) */
+console.log("Logic JS v11 Loaded - 核心邏輯已載入");
 
 if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
 }
 const db = firebase.database();
 
 // 全域變數初始化
 let historyOrders = [];
-let itemCosts = {}; 
-let itemPrices = {}; 
-let inventory = {}; 
 let tableTimers = {};
-let incomingOrders = {};
-let tableBatchCounts = {};
-
-// 🔥 新增/變更：新的訂單結構
-let tableOrders = {}; // 儲存 { orderId: { seat: "A1", items: [], ... }, ... }
-let selectedOrderId = null; // 當前正在編輯的訂單 ID
-let lastOrderId = 0; // 用於產生新的訂單 ID
+let tableCarts = {};
+let tableStatuses = {};
+let tableCustomers = {};
+let tableSplitCounters = {}; 
+let itemCosts = {}; 
+let itemPrices = {}; 
+let inventory = {}; 
 
 let ownerPasswords = { "景偉": "0001", "小飛": "0002", "威志": "0003" };
-let cart = []; // 購物車 (當前訂單的 Items 緩衝)
+let incomingOrders = {}; 
+let tableBatchCounts = {}; 
+
+let selectedTable = null;
+let cart = []; 
+// 🔥 新增：用來儲存客人已送出的商品 (從暫存讀取)
 let sentItems = JSON.parse(sessionStorage.getItem("sentItems")) || [];
+
+let seatTimerInterval = null;
+let tempCustomItem = null;
+let isExtraShot = false; 
+let tempLeftList = [];
+let tempRightList = [];
+let currentOriginalTotal = 0; 
+let finalTotal = 0;             
+let currentDiscount = { type: 'none', value: 0 }; 
+let discountedTotal = 0;
+let isServiceFeeEnabled = false;
+let isQrMode = false;
+let currentIncomingTable = null; 
 
 let historyViewDate = new Date();
 let isCartSimpleMode = false;
 let isHistorySimpleMode = false;
 
-/* ========== 輔助函式 (保持不變) ========== */
+/* ========== 輔助函式 ========== */
 
 function getMergedItems(items) {
-    if (!items || !Array.isArray(items)) return [];
-    let merged = [];
-    items.forEach(item => {
-        if(!item) return;
-        let existing = merged.find(m => m.name === item.name && m.price === item.price && m.isTreat === item.isTreat && m.batchIdx === item.batchIdx && m.isSent === item.isSent);
-        if (existing) { existing.count = (existing.count || 1) + 1; } else { merged.push({ ...item, count: 1 }); }
-    });
-    return merged;
+    if (!items || !Array.isArray(items)) return [];
+    let merged = [];
+    items.forEach(item => {
+        if(!item) return; // 防呆
+        // 修改：加入 isSent 的判斷，避免已送出和未送出的合併
+        let existing = merged.find(m => m.name === item.name && m.price === item.price && m.isTreat === item.isTreat && m.batchIdx === item.batchIdx && m.isSent === item.isSent);
+        if (existing) { existing.count = (existing.count || 1) + 1; } else { merged.push({ ...item, count: 1 }); }
+    });
+    return merged;
 }
 
 function getDateFromOrder(order) {
-    if (!order) return new Date();
-    if (order.timestamp) return new Date(order.timestamp);
-    if (order.time) {
-        let d = new Date(order.time);
-        if (!isNaN(d.getTime())) return d;
-    }
-    return new Date(); 
+    if (!order) return new Date();
+    if (order.timestamp) return new Date(order.timestamp);
+    if (order.time) {
+        let d = new Date(order.time);
+        if (!isNaN(d.getTime())) return d;
+    }
+    return new Date(); 
 }
 
 function getBusinessDate(dateObj) {
-    let d = new Date(dateObj);
-    if (isNaN(d.getTime())) d = new Date();
-    if (d.getHours() < 5) d.setDate(d.getDate() - 1);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+    let d = new Date(dateObj);
+    if (isNaN(d.getTime())) d = new Date(); // 防呆
+    if (d.getHours() < 5) d.setDate(d.getDate() - 1);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
 }
 
 function getVisibleOrders() {
-    if (!historyOrders || !Array.isArray(historyOrders) || historyOrders.length === 0) return [];
-    try {
-        let currentBizDate = getBusinessDate(new Date());
-        let filtered = historyOrders.filter(o => {
-            if (!o) return false;
-            if (!o.items || !Array.isArray(o.items)) return false;
-            return getBusinessDate(getDateFromOrder(o)) === currentBizDate;
-        });
-        return filtered.reverse();
-    } catch (e) {
-        console.error("getVisibleOrders Error:", e);
-        return [];
-    }
+    if (!historyOrders || !Array.isArray(historyOrders) || historyOrders.length === 0) return [];
+    try {
+        let currentBizDate = getBusinessDate(new Date());
+        let filtered = historyOrders.filter(o => {
+            if (!o) return false;
+            if (!o.items || !Array.isArray(o.items)) return false;
+            return getBusinessDate(getDateFromOrder(o)) === currentBizDate;
+        });
+        return filtered.reverse();
+    } catch (e) {
+        console.error("getVisibleOrders Error:", e);
+        return [];
+    }
 }
 
 function getItemCategoryType(itemName) {
-    if(!itemName) return 'bar';
-    // 這裡需要一個更穩健的名稱清理
-    let baseName = itemName.split(" <")[0].replace(/\s*\(招待\)$/, "").trim();
-    baseName = baseName.replace(/\s*[\(（].*?[\)）]$/, "").trim();
-
-    const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點", "其他"];
-    const bbqCats = ["燒烤", "主餐", "炸物"];
-    for (const [cat, content] of Object.entries(menuData)) {
-        if (Array.isArray(content)) { if (content.some(x => baseName === x.name.trim())) { if (barCats.includes(cat)) return 'bar'; if (bbqCats.includes(cat)) return 'bbq'; } } 
-        else { for (const subContent of Object.values(content)) { if (subContent.some(x => baseName === x.name.trim())) { if (barCats.includes(cat)) return 'bar'; if (bbqCats.includes(cat)) return 'bbq'; } } }
-    }
-    if(baseName.includes("雞") || baseName.includes("豬") || baseName.includes("牛") || baseName.includes("飯") || baseName.includes("麵") || baseName.includes("鮭魚") || baseName.includes("魷魚")) return 'bbq';
-    return 'bar'; 
+    if(!itemName) return 'bar';
+    const barCats = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "厚片", "甜點", "其他"];
+    const bbqCats = ["燒烤", "主餐", "炸物"];
+    for (const [cat, content] of Object.entries(menuData)) {
+        if (Array.isArray(content)) { if (content.some(x => itemName.includes(x.name))) { if (barCats.includes(cat)) return 'bar'; if (bbqCats.includes(cat)) return 'bbq'; } } 
+        else { for (const subContent of Object.values(content)) { if (subContent.some(x => itemName.includes(x.name))) { if (barCats.includes(cat)) return 'bar'; if (bbqCats.includes(cat)) return 'bbq'; } } }
+    }
+    if(itemName.includes("雞") || itemName.includes("豬") || itemName.includes("牛") || itemName.includes("飯") || itemName.includes("麵")) return 'bbq';
+    return 'bar'; 
 }
 
 function getCostByItemName(itemName) {
-    if(!itemName) return 0;
-    
-    let cleanName = itemName.split(" <")[0].replace(/\s*\(招待\)$/, "").trim();
-    let baseName = cleanName.replace(/\s*[\(（].*?[\)）]$/, "").trim();
-    
-    if (itemCosts[cleanName] !== undefined) return itemCosts[cleanName];
-    if (itemCosts[baseName] !== undefined) return itemCosts[baseName];
-
-    if (cleanName.includes("隱藏特調")) { 
-        if (itemCosts["隱藏特調"] !== undefined) return itemCosts["隱藏特調"]; 
-    }
-    
-    return 0; 
+    if(!itemName) return 0;
+    let cleanName = itemName.replace(" (招待)", "").trim();
+    if (itemCosts[cleanName] !== undefined) return itemCosts[cleanName];
+    let baseName = cleanName.replace(/\s*[\(（].*?[\)）]$/, "").trim();
+    if (itemCosts[baseName] !== undefined) return itemCosts[baseName];
+    if (cleanName.includes("隱藏特調")) { if (itemCosts["隱藏特調"] !== undefined) return itemCosts["隱藏特調"]; }
+    return 0; 
 }
 
-function getItemSalesStats(startTime, endTime) {
-    let stats = {};
-    
-    if (!historyOrders || historyOrders.length === 0) return { bar: [], bbq: [] };
-
-    historyOrders.forEach(order => {
-        if (!order || !order.items) return;
-        const orderTime = getDateFromOrder(order);
-        if (orderTime >= startTime && orderTime < endTime) {
-            order.items.forEach(item => {
-                let name = item.name.split(" <")[0].replace(/\s*\(招待\)$/, "").trim();
-                name = name.replace(/\s*[\(（].*?[\)）]$/, "").trim();
-                const count = item.count || 1;
-                
-                if (name) {
-                    if (!stats[name]) stats[name] = 0;
-                    stats[name] += count;
-                }
-            });
-        }
-    });
-
-    let barList = [];
-    let bbqList = [];
-
-    for (const [name, count] of Object.entries(stats)) {
-        if (inventory[name] === false) continue;
-        const itemType = getItemCategoryType(name);
-        
-        if (itemType === 'bar') {
-            barList.push({ name, count });
-        } else if (itemType === 'bbq') {
-            bbqList.push({ name, count });
-        }
-    }
-
-    barList.sort((a, b) => b.count - a.count);
-    bbqList.sort((a, b) => b.count - a.count);
-
-    return { bar: barList, bbq: bbqList };
-}
-
-/* ========== 資料庫監聽與初始化 (保持不變) ========== */
+/* ========== 資料庫監聽與初始化 ========== */
 
 function initRealtimeData() {
-    db.ref('/').on('value', (snapshot) => {
-        const data = snapshot.val() || {};
-        
-        let rawHistory = data.historyOrders ? (Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders)) : [];
-        historyOrders = rawHistory.filter(order => {
-            return order && typeof order === 'object' && Array.isArray(order.items) && order.total !== undefined;
-        });
+    db.ref('/').on('value', (snapshot) => {
+        const data = snapshot.val() || {};
+        
+        let rawHistory = data.historyOrders ? (Array.isArray(data.historyOrders) ? data.historyOrders : Object.values(data.historyOrders)) : [];
+        historyOrders = rawHistory.filter(order => {
+            return order && typeof order === 'object' && Array.isArray(order.items) && order.total !== undefined;
+        });
 
-        // 🔥 更新：使用新的資料結構
-        tableOrders = data.tableOrders || {};
-        tableTimers = data.tableTimers || {}; // 沿用舊的計時器 (未來可移除)
-        incomingOrders = data.incomingOrders || {};
-        tableBatchCounts = data.tableBatchCounts || {};
-        lastOrderId = data.lastOrderId || 0;
-        
-        // 舊資料
-        itemCosts = data.itemCosts || {}; 
-        itemPrices = data.itemPrices || {};
-        inventory = data.inventory || {}; 
-        if (data.ownerPasswords) OWNER_PASSWORDS = data.ownerPasswords;
+        tableTimers = data.tableTimers || {};
+        tableCarts = data.tableCarts || {};
+        tableStatuses = data.tableStatuses || {};
+        tableCustomers = data.tableCustomers || {};
+        tableSplitCounters = data.tableSplitCounters || {}; 
+        itemCosts = data.itemCosts || {}; 
+        itemPrices = data.itemPrices || {};
+        inventory = data.inventory || {}; 
+        incomingOrders = data.incomingOrders || {};
+        tableBatchCounts = data.tableBatchCounts || {};
+        
+        if (data.ownerPasswords) OWNER_PASSWORDS = data.ownerPasswords;
 
-        // 檢查新訂單 (排除客人模式)
-        if (!document.body.classList.contains('customer-mode')) {
-            // 檢查是否有 incomingOrders，由 order_logic.js 處理
-            if (Object.keys(incomingOrders).length > 0) {
-                checkIncomingOrders();
+        // 檢查新訂單 (排除客人模式)
+        if (!document.body.classList.contains('customer-mode')) {
+            checkIncomingOrders();
+        }
+
+        if(document.getElementById("tableSelect") && document.getElementById("tableSelect").style.display === "block") renderTableGrid();
+        
+        setTimeout(() => {
+            if(document.getElementById("historyPage") && document.getElementById("historyPage").style.display === "block") showHistory();
+            
+            if(document.getElementById("reportPage") && document.getElementById("reportPage").style.display === "block") { 
+                let activeOption = document.querySelector('.segment-option.active');
+                let type = activeOption && activeOption.innerText === '本周' ? 'week' : (activeOption && activeOption.innerText === '當月' ? 'month' : 'day');
+                generateReport(type); 
+                renderCalendar(); 
             }
-        }
+            
+            if(document.getElementById("itemStatsModal") && document.getElementById("itemStatsModal").style.display === "flex") { 
+                 let activeBtn = document.querySelector('.report-controls button.active');
+                 let range = 'day';
+                 if(activeBtn) {
+                     if(activeBtn.id === 'statBtnWeek') range = 'week';
+                     if(activeBtn.id === 'statBtnMonth') range = 'month';
+                 }
+                 renderItemStats(range);
+            }
+            
+            if(document.getElementById("pastHistoryPage") && document.getElementById("pastHistoryPage").style.display === "block") { renderPublicStats(); }
+        }, 50);
 
-        // 重新渲染頁面
-        setTimeout(() => {
-            if(document.getElementById("tableSelect") && document.getElementById("tableSelect").style.display === "block") renderTableGrid();
-            
-            // ... (其餘頁面渲染邏輯不變，由 ui.js 處理)
-            if(document.getElementById("historyPage") && document.getElementById("historyPage").style.display === "block") showHistory();
-            if(document.getElementById("reportPage") && document.getElementById("reportPage").style.display === "block") { 
-    在 tableSelect 的結構中，我已經排除了 Modal 內容的誤顯示，並使用了 `table-grid-custom` 佈局。
-
-### 📄 檔案五：`style.css` (覆蓋 - 強制修正網格與 Modal 樣式)
-
-我將在 `style.css` 中加入 `!important` 確保主頁面的網格佈局生效，並確保 Modal 預設是隱藏的。
-
-```css
-/* style.css - 完整版 (包含成本美化、銷量統計及新訂單拖曳介面) */
-
-/* ========== 1. 全域設定 (現代化風格) ========== */
-:root {
-    --primary-color: #4361ee;       /* 主色調：現代藍 */
-    --secondary-color: #3f37c9;     /* 次色調 */
-    --accent-color: #f72585;        /* 強調色：玫紅 */
-    --success-color: #06d6a0;       /* 成功/確認 */
-    --warning-color: #ffd166;       /* 警告/暫存 */
-    --danger-color: #ef476f;        /* 危險/刪除 */
-    --bg-color: #f4f7f6;            /* 背景色：極淡灰綠 */
-    --card-bg: #ffffff;             /* 卡片背景 */
-    --text-main: #2b2d42;           /* 主要文字 */
-    --text-sub: #8d99ae;            /* 次要文字 */
-    --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
-    --radius-md: 12px;
-    --radius-lg: 20px;
+        let currentOwner = document.getElementById("ownerWelcome") ? document.getElementById("ownerWelcome").innerText : "";
+        if(document.getElementById("confidentialPage") && document.getElementById("confidentialPage").style.display === "block" && currentOwner) {
+            let savedMode = sessionStorage.getItem('ownerMode') || 'finance';
+            if (savedMode === 'cost') { updateFinancialPage(currentOwner); } else { renderConfidentialCalendar(currentOwner); }
+        }
+    });
 }
 
-body {
-    font-family: "Noto Sans TC", "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, sans-serif;
-    margin: 0;
-    background-color: var(--bg-color);
-    color: var(--text-main);
-    text-align: center;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation; 
-    overscroll-behavior: none;
+function checkIncomingOrders() {
+    if(!incomingOrders) return;
+    const tables = Object.keys(incomingOrders);
+    if (tables.length > 0) {
+        let table = tables[0];
+        let orderData = incomingOrders[table];
+        showIncomingOrderModal(table, orderData);
+    } else {
+        closeIncomingOrderModal();
+    }
 }
 
-button {
-    cursor: pointer;
-    font-family: inherit;
-    user-select: none;
-    border: none;
-    outline: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+function saveAllToCloud() {
+    db.ref('/').update({ 
+        historyOrders, tableTimers, tableCarts, tableStatuses, 
+        tableCustomers, tableSplitCounters, itemCosts, itemPrices, 
+        ownerPasswords: OWNER_PASSWORDS,
+        incomingOrders, tableBatchCounts,
+        inventory 
+    }).catch(err => console.error(err));
 }
 
-.btn-effect:active { transform: scale(0.96); opacity: 0.9; }
+function refreshData() { try { let localHist = JSON.parse(localStorage.getItem("orderHistory")); if (localHist && (!historyOrders || historyOrders.length === 0)) historyOrders = localHist; } catch(e) { } }
 
-/* 滾動條美化 */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-#toast-container {
-    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
-    background: rgba(43, 45, 66, 0.9); color: white; padding: 12px 30px;
-    border-radius: 50px; font-size: 15px; font-weight: 500; z-index: 20000;
-    opacity: 0; transition: all 0.3s ease; pointer-events: none; box-shadow: var(--shadow-lg);
+function checkLogin() {
+    try {
+        let input = document.getElementById("loginPass").value;
+        if (input === SYSTEM_PASSWORD) { sessionStorage.setItem("isLoggedIn", "true"); document.getElementById("loginError").style.display = "none"; showApp(); } 
+        else { document.getElementById("loginError").style.display = "block"; document.getElementById("loginPass").value = ""; }
+    } catch (e) { alert("登入錯誤: " + e.message); }
 }
 
-/* Modal 預設隱藏 (修正誤顯示問題) */
-.modal { 
-    display: none; 
-    position: fixed; 
-    left: 0; 
-    top: 0; 
-    width: 100%; 
-    height: 100%; 
-    background-color: rgba(15, 23, 42, 0.6); 
-    backdrop-filter: blur(4px); 
-    justify-content: center; 
-    align-items: center; 
-    z-index: 10000; 
+function updateItemData(name, type, value) { 
+    let val = parseInt(value); if(isNaN(val)) val = 0; 
+    if (type === 'cost') itemCosts[name] = val; else if (type === 'price') itemPrices[name] = val; 
+    saveAllToCloud(); 
 }
 
-
-/* ========== 2. 登入畫面 & 全域排版 ========== */
-#login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%); display: flex; justify-content: center; align-items: center; z-index: 9999; }
-.login-box { background: rgba(255, 255, 255, 0.95); padding: 50px 40px; border-radius: var(--radius-lg); width: 320px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); text-align: center; }
-.login-box h1 { margin-bottom: 10px; color: var(--primary-color); font-size: 28px; }
-.login-box p { color: var(--text-sub); margin-bottom: 30px; }
-.login-box input { width: 100%; padding: 15px; margin-bottom: 20px; border: 2px solid #eef2f6; border-radius: var(--radius-md); font-size: 18px; text-align: center; box-sizing: border-box; transition: border-color 0.3s; }
-.login-box button { width: 100%; padding: 15px; font-size: 18px; background: var(--primary-color); color: white; border-radius: var(--radius-md); font-weight: bold; box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3); }
-
-#app-container { padding-bottom: 40px; }
-.title { font-size: 28px; font-weight: 800; margin-bottom: 25px; color: var(--text-main); text-align: left; border-left: 5px solid var(--primary-color); padding-left: 15px; }
-
-/* Home & Header - **強制網格佈局** */
-#home { 
-    display: grid !important; 
-    grid-template-columns: repeat(3, 1fr) !important; 
-    gap: 20px; 
-    padding: 30px; 
-    max-width: 1000px; 
-    margin: 0 auto; 
-}
-.menu-btn { background: var(--card-bg); border-radius: var(--radius-lg); padding: 25px 15px; font-size: 17px; font-weight: 600; color: var(--text-main); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 110px; gap: 10px; transition: all 0.3s ease; border: 1px solid transparent; }
-.menu-btn:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); border-color: var(--primary-color); color: var(--primary-color); }
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: var(--card-bg); padding: 15px 20px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
-.back { background: #edf2f7; color: var(--text-main); padding: 10px 20px; border-radius: 50px; font-size: 15px; font-weight: bold; }
-#systemTime { font-size: 15px; font-weight: 600; color: var(--text-sub); background: #f8f9fa; padding: 8px 16px; border-radius: 50px; }
-
-/* ========== 3. 桌位管理介面 (Table Select) - 大改動樣式 ========== */
-
-.table-grid-custom { 
-    display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 20px; 
-}
-.table-container { 
-    position: relative;
-    background: linear-gradient(145deg, #ffffff, #f0f0f0); 
-    padding: 15px 10px; 
-    border-radius: var(--radius-lg); 
-    box-shadow: var(--shadow-md);
-    min-height: 150px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    border: 3px solid transparent;
-    transition: all 0.2s;
+function toggleStockStatus(name, isAvailable) {
+    if (!inventory) inventory = {};
+    inventory[name] = isAvailable;
+    saveAllToCloud();
 }
 
-.table-container b.table-name { 
-    font-size: 22px; 
-    font-weight: 800;
-    margin-bottom: 10px;
-    color: var(--text-main);
-    z-index: 2;
+function addToCart(name, price) { cart.push({ name, price, isNew: true, isTreat: false }); renderCart(); }
+function toggleTreat(index) { cart[index].isTreat = !cart[index].isTreat; renderCart(); }
+function removeItem(index) { cart.splice(index, 1); renderCart(); }
+
+function saveOrderManual() { 
+    try { 
+        if (cart.length === 0) { showToast("購物車是空的，訂單未成立。"); saveAndExit(); return; } 
+        if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {}; 
+        
+        if (!tableTimers[selectedTable] || !tableCustomers[selectedTable].orderId) { 
+            tableTimers[selectedTable] = Date.now(); 
+            tableSplitCounters[selectedTable] = 1; 
+            let currentBizDate = getBusinessDate(new Date());
+            let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate).length;
+            tableCustomers[selectedTable].orderId = todayCount + 1; 
+        } 
+        
+        let itemsToSave = cart.map(item => {
+             let newItem = {...item};
+             delete newItem.isNew;
+             return newItem;
+        });
+
+        tableCarts[selectedTable] = itemsToSave; 
+        tableStatuses[selectedTable] = 'yellow'; 
+        tableCustomers[selectedTable].name = document.getElementById("custName").value; 
+        tableCustomers[selectedTable].phone = document.getElementById("custPhone").value; 
+        
+        saveAllToCloud(); 
+        
+        printReceipt({ seq: tableCustomers[selectedTable].orderId, table: selectedTable, time: new Date().toLocaleString('zh-TW', { hour12: false }), items: cart, original: 0, total: 0 }, true); 
+        
+        showToast(`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`); openTableSelect(); 
+    } catch (e) { alert("出單發生錯誤: " + e.message); } 
 }
 
-.order-list-container {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 5px 0;
+function saveAndExit() {
+    try {
+        if (!Array.isArray(cart)) cart = [];
+        let hasUnsentItems = cart.some(item => item.isNew === true);
+        if (hasUnsentItems) { if (!confirm("⚠️ 購物車內有未送出的商品，確定要離開嗎？\n(離開後，這些未送出的商品將被清空)")) return; }
+        cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; tempCustomItem = null; openTableSelect();
+    } catch (e) { console.error("返回錯誤:", e); openTableSelect(); }
 }
 
-/* 新增訂單卡片樣式 */
-.order-card {
-    background: #e0e7ff; /* 訂單卡片底色 */
-    border-radius: 10px;
-    padding: 8px 12px;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    border-left: 5px solid var(--primary-color);
-    transition: all 0.2s;
-    user-select: none;
+function customerSubmitOrder() {
+    if (cart.length === 0) { alert("購物車是空的喔！"); return; }
+    
+    let currentBatch = tableBatchCounts[selectedTable] || 0;
+    let nextBatch = currentBatch + 1; 
+    let batchColorIdx = (nextBatch - 1) % 3;
+
+    let itemsToSend = cart.map(item => ({
+        ...item,
+        isNew: true,
+        batchIdx: batchColorIdx 
+    }));
+
+    let customerInfo = {
+        name: document.getElementById("custName").value || "",
+        phone: document.getElementById("custPhone").value || ""
+    };
+
+    db.ref(`incomingOrders/${selectedTable}`).set({
+        items: itemsToSend,
+        customer: customerInfo,
+        batchId: nextBatch, 
+        timestamp: Date.now()
+    }).then(() => {
+        alert("✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。");
+        
+        // 🔥 修改：將購物車內容移至 sentItems
+        let justSent = cart.map(item => ({ ...item, isSent: true }));
+        sentItems = [...sentItems, ...justSent];
+        sessionStorage.setItem("sentItems", JSON.stringify(sentItems));
+        
+        cart = []; 
+        renderCart(); 
+    }).catch(err => {
+        alert("傳送失敗，請通知服務人員：" + err.message);
+    });
 }
 
-.order-card:hover {
-    background: #c7d2fe;
-    transform: translateY(-2px);
+function confirmIncomingOrder() {
+    if (!currentIncomingTable) return;
+    
+    let pendingData = incomingOrders[currentIncomingTable];
+    if (!pendingData) return;
+
+    let items = pendingData.items || [];
+    let cust = pendingData.customer || {};
+    let batchId = pendingData.batchId;
+
+    tableBatchCounts[currentIncomingTable] = batchId;
+
+    let currentCart = tableCarts[currentIncomingTable] || [];
+    let newCart = currentCart.concat(items);
+    tableCarts[currentIncomingTable] = newCart;
+
+    tableStatuses[currentIncomingTable] = 'yellow';
+    if (!tableCustomers[currentIncomingTable]) tableCustomers[currentIncomingTable] = {};
+    if (cust.name) tableCustomers[currentIncomingTable].name = cust.name;
+    
+    if (!tableTimers[currentIncomingTable] || !tableCustomers[currentIncomingTable].orderId) {
+        tableTimers[currentIncomingTable] = Date.now();
+        tableSplitCounters[currentIncomingTable] = 1;
+        let currentBizDate = getBusinessDate(new Date());
+        let todayCount = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate).length;
+        tableCustomers[currentIncomingTable].orderId = todayCount + 1;
+    }
+
+    printReceipt({ 
+        seq: tableCustomers[currentIncomingTable].orderId, 
+        table: currentIncomingTable, 
+        time: new Date().toLocaleString('zh-TW', { hour12: false }), 
+        items: items, 
+        original: 0, total: 0 
+    }, true);
+
+    delete incomingOrders[currentIncomingTable];
+
+    saveAllToCloud();
+    closeIncomingOrderModal();
+    showToast(`✅ 已接收 ${currentIncomingTable} 的訂單`);
 }
 
-.order-card.dragging {
-    opacity: 0.5;
-    transform: scale(0.95);
+function rejectIncomingOrder() {
+    if (!currentIncomingTable) return;
+    if(!confirm("確定要忽略這筆訂單嗎？")) return;
+    delete incomingOrders[currentIncomingTable];
+    saveAllToCloud();
+    closeIncomingOrderModal();
 }
 
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--primary-color);
-    margin-bottom: 5px;
+function checkoutAll(manualFinal) { 
+    let payingTotal = (manualFinal !== undefined) ? manualFinal : discountedTotal; 
+    let time = new Date().toLocaleString('zh-TW', { hour12: false }); 
+    let originalTotal = currentOriginalTotal; 
+    let info = tableCustomers[selectedTable] || { name:"", phone:"", orderId: "?" }; 
+    let currentBizDate = getBusinessDate(new Date());
+    let todayOrders = historyOrders.filter(o => getBusinessDate(getDateFromOrder(o)) === currentBizDate);
+    if(!info.orderId || info.orderId === "?" || info.orderId === "T") { info.orderId = todayOrders.length + 1; } 
+
+    if (originalTotal > 0 || payingTotal > 0) { 
+        let splitNum = tableSplitCounters[selectedTable]; let displaySeq = info.orderId; let displaySeat = selectedTable; 
+        if(splitNum && splitNum > 1) { displaySeq = `${info.orderId}-${splitNum}`; displaySeat = `${selectedTable} (拆單)`; } 
+        let processedItems = cart.map(item => { if (item.isTreat) { return { ...item, price: 0, name: item.name + " (招待)" }; } return item; }); 
+        let newOrder = { seat: displaySeat, formattedSeq: displaySeq, time: time, timestamp: Date.now(), items: processedItems, total: payingTotal, originalTotal: originalTotal, customerName: info.name, customerPhone: info.phone, isClosed: false }; 
+        if(!Array.isArray(historyOrders)) historyOrders = []; 
+        historyOrders.push(newOrder); localStorage.setItem("orderHistory", JSON.stringify(historyOrders)); 
+    } 
+    delete tableCarts[selectedTable]; delete tableTimers[selectedTable]; delete tableStatuses[selectedTable]; delete tableCustomers[selectedTable]; delete tableSplitCounters[selectedTable]; 
+    delete tableBatchCounts[selectedTable];
+    
+    // 清除該桌的 sentItems
+    sentItems = [];
+    sessionStorage.removeItem("sentItems");
+
+    saveAllToCloud(); cart = []; currentDiscount = { type: 'none', value: 0 }; isServiceFeeEnabled = false; 
+    alert(`💰 結帳完成！實收 $${payingTotal} \n(如需明細，請至「今日訂單」補印)`); openTableSelect(); 
 }
 
-.card-body {
-    text-align: left;
-    font-size: 14px;
-}
-.card-body .card-info {
-    display: flex;
-    justify-content: space-between;
-    font-weight: 500;
-}
-.card-body b {
-    color: var(--danger-color);
-}
-.new-badge {
-    background: var(--danger-color);
-    color: white;
-    font-size: 10px;
-    padding: 2px 5px;
-    border-radius: 3px;
-    display: inline-block;
-    margin-top: 5px;
-    font-weight: bold;
+function calcFinalPay() { let allowance = parseInt(document.getElementById("payAllowance").value) || 0; finalTotal = discountedTotal - allowance; if(finalTotal < 0) finalTotal = 0; document.getElementById("payFinal").value = finalTotal; }
+function calcSplitTotal() { let baseTotal = tempRightList.reduce((a, b) => a + b.price, 0); let disc = parseFloat(document.getElementById("splitDisc").value); let allow = parseInt(document.getElementById("splitAllow").value); let finalSplit = baseTotal; if (!isNaN(disc) && disc > 0 && disc <= 100) { finalSplit = Math.round(baseTotal * (disc / 100)); } if (!isNaN(allow) && allow > 0) { finalSplit = finalSplit - allow; } if(finalSplit < 0) finalSplit = 0; document.getElementById("payTotal").innerText = "$" + finalSplit; return finalSplit; }
+
+function fixAllOrderIds() {
+    if (!confirm("⚠️ 確定要執行「一鍵重整」嗎？\n\n1. 將所有歷史訂單依照日期重新編號 (#1, #2...)\n2. 修正目前桌上未結帳訂單的錯誤單號")) return;
+    historyOrders.sort((a, b) => new Date(a.time) - new Date(b.time));
+    let dateCounters = {};
+    historyOrders.forEach(order => {
+        let d = new Date(order.time); if (d.getHours() < 5) d.setDate(d.getDate() - 1);
+        let dateKey = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+        if (!dateCounters[dateKey]) dateCounters[dateKey] = 0; dateCounters[dateKey]++;
+        order.formattedSeq = dateCounters[dateKey]; order.seq = dateCounters[dateKey];
+    });
+    let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1);
+    let todayKey = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
+    let currentMaxSeq = dateCounters[todayKey] || 0;
+    for (let table in tableCustomers) {
+        if (tableCustomers[table] && tableStatuses[table] === 'yellow') {
+            currentMaxSeq++; tableCustomers[table].orderId = currentMaxSeq;
+        }
+    }
+    saveAllToCloud(); alert("✅ 修復完成！\n歷史訂單已重整，目前桌位單號已校正。\n網頁將自動重新整理。"); location.reload(); 
 }
 
-/* 新增訂單按鈕 */
-.add-order-btn {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    width: 30px;
-    height: 30px;
-    background: var(--success-color);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    line-height: 1;
-    z-index: 10;
+function initHistoryDate() { let now = new Date(); if (now.getHours() < 5) now.setDate(now.getDate() - 1); historyViewDate = new Date(now); }
+function getOrdersByDate(targetDate) {
+    let start = new Date(targetDate); start.setHours(5, 0, 0, 0); 
+    let end = new Date(start); end.setDate(end.getDate() + 1); 
+    return historyOrders.filter(order => { let t = getDateFromOrder(order); return t >= start && t < end; });
 }
 
-/* 暫存區樣式 */
-.standby-zone {
-    grid-column: 1 / -1;
-    background: var(--card-bg);
-    border: 2px dashed #ff9a9e;
-    border-radius: var(--radius-lg);
-    padding: 20px;
-    margin-bottom: 20px;
-}
-.standby-zone .zone-title {
-    color: var(--danger-color);
-    font-size: 18px;
-    margin-bottom: 15px;
-}
+setInterval(updateSystemTime, 1000);
+function updateSystemTime() { document.getElementById("systemTime").innerText = "🕒 " + new Date().toLocaleString('zh-TW', { hour12: false }); }
 
-/* 狀態顏色繼承 */
-.table-container.status-yellow { border-color: var(--warning-color); }
-.table-container.status-red { border-color: var(--danger-color); }
+/* ========== 🔥 顯示邏輯修改 (包含已下單區塊) ========== */
+function renderCart() { 
+    const cartList = document.getElementById("cart-list"); 
+    const totalText = document.getElementById("total"); 
+    cartList.innerHTML = ""; 
+    currentOriginalTotal = 0; 
+    
+    const svcBtn = document.getElementById("svcBtn");
+    if(svcBtn) {
+        if(isServiceFeeEnabled) { svcBtn.classList.add("active"); svcBtn.innerHTML = "✅ 收 10% 服務費"; } 
+        else { svcBtn.classList.remove("active"); svcBtn.innerHTML = "◻️ 收 10% 服務費"; }
+    }
 
+    // 🔥 顯示邏輯：合併「已送出」與「目前購物車」
+    let displayItems = [];
 
-/* 其他頁面樣式（保持不變或已優化） */
+    // 1. 先加入已送出的商品 (若有的話)
+    if (sentItems.length > 0) {
+        sentItems.forEach(item => {
+            displayItems.push({ ...item, isSent: true, count: 1 });
+        });
+    }
 
-/* ========== 3. 點餐頁面 (OrderPage) ========== */
-.order-header { background: var(--card-bg); padding: 15px 25px; border-radius: var(--radius-lg); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
-.customer-input-box { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
-.customer-input-box input { width: 100%; padding: 15px; font-size: 16px; border: 2px solid #eef2f6; border-radius: var(--radius-md); }
-#menuGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
-.categoryBtn { background: var(--card-bg); border-radius: var(--radius-md); padding: 20px 10px; font-size: 16px; font-weight: bold; color: var(--text-main); box-shadow: var(--shadow-sm); }
-.item { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid #f1f5f9; background: var(--card-bg); }
-.item b { color: var(--primary-color); margin-left: 8px; }
-.item button { background: #ecfdf5; color: #059669; padding: 8px 20px; border-radius: 50px; font-size: 15px; font-weight: bold; }
-.item.sold-out { opacity: 0.6; filter: grayscale(100%); pointer-events: none; position: relative; background: #f8f9fa; }
-.item.sold-out::after { content: "售罄"; position: absolute; right: 80px; background: #ef476f; color: white; padding: 2px 8px; font-size: 12px; border-radius: 4px; font-weight: bold; }
-.sub-cat-title { grid-column: 1 / -1; text-align: left; font-size: 18px; font-weight: 700; color: var(--primary-color); background: #e0e7ff; padding: 12px 20px; border-radius: 8px; margin: 20px 0 10px 0; }
-.accordion-header { width: 100%; background: white; color: var(--text-main); padding: 18px 25px; border-radius: var(--radius-md); margin-top: 12px; font-size: 17px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; grid-column: 1 / -1; box-shadow: var(--shadow-sm); }
-.accordion-content { display: none; grid-column: 1 / -1; }
-.accordion-content.show { display: block; }
+    // 2. 再加入目前購物車
+    let currentCartItems = isCartSimpleMode ? getMergedItems(cart) : cart.map(item => ({ ...item, count: 1 }));
+    displayItems = [...displayItems, ...currentCartItems];
 
-/* Shopping Cart */
-#cart-container { background: var(--card-bg); border-radius: var(--radius-lg); padding: 25px; margin-top: 25px; box-shadow: var(--shadow-md); }
-#cart-list { max-height: 350px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #f1f5f9; border-radius: var(--radius-md); }
-.cart-item-row { display: grid; grid-template-columns: 2fr 1fr auto auto; align-items: center; gap: 10px; padding: 15px; border-bottom: 1px solid #f1f5f9; background: white; }
-.cart-item-price { font-size: 16px; font-weight: bold; color: var(--primary-color); text-align: right;}
-.treat-btn { background: #e0f2fe; color: #0284c7; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; }
-.del-btn { background: #fee2e2; color: #dc2626; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; }
-.summary-controls { display: flex; gap: 12px; margin-bottom: 15px; }
-.control-btn { background: white; border: 1px solid #e2e8f0; color: var(--text-sub); padding: 10px; border-radius: 8px; font-weight: bold; flex: 1; }
-.control-btn.active { background: #e0e7ff; color: var(--primary-color); border-color: var(--primary-color); }
-.total-display p { margin: 0; font-size: 26px; font-weight: 800; color: var(--accent-color); text-align: right; }
-.action-buttons-compact { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-top: 20px; }
-.action-btn { padding: 15px 5px; font-size: 16px; font-weight: bold; color: white; border-radius: var(--radius-md); }
-.save-btn { background: var(--warning-color); color: #744210; }
-.checkout-btn { background: var(--primary-color); }
-.batch-blue { border-left: 5px solid #007bff !important; background-color: #e0f2fe !important; }
-.batch-red { border-left: 5px solid #ef476f !important; background-color: #fee2e2 !important; }
-.batch-green { border-left: 5px solid #06d6a0 !important; background-color: #d1fae5 !important; }
-.cart-item-row.sent-item { background: #f8f9fa; border-left: 5px solid #adb5bd; }
+    if (displayItems.length === 0) {
+        cartList.innerHTML = `<div style="text-align:center; color:#ccc; padding:20px;">購物車空空的</div>`;
+    }
 
-/* ========== 4. 今日訂單 (History) ========== */
-.history-header-row { display: grid !important; grid-template-columns: 0.6fr 1fr 2fr 1fr 1fr auto !important; background: #334155; color: white; padding: 15px; border-radius: 12px 12px 0 0; font-weight: bold; font-size: 15px; }
-.history-row { display: grid !important; grid-template-columns: 0.6fr 1fr 2fr 1fr 1fr auto !important; background: white; padding: 18px 15px; border-bottom: 1px solid #f1f5f9; align-items: center; font-size: 15px; transition: background 0.2s; }
-.history-row:hover { background: #f8fafc; }
-.hist-actions button { background: #e2e8f0; color: #475569; padding: 5px 8px; border-radius: 6px; font-size: 12px; }
-.end-business-btn { background: #fee2e2; color: #ef476f; padding: 12px 20px; border-radius: 50px; font-weight: bold; font-size: 16px; margin-top: 20px; width: 100%; }
+    displayItems.forEach((c, i) => { 
+        let count = c.count || 1;
+        let itemTotal = (c.isTreat ? 0 : c.price) * count;
+        
+        // 只有「未送出」的才計入目前應付金額 (避免客人以為重複算錢)
+        if (!c.isSent) {
+            currentOriginalTotal += itemTotal;
+        }
 
-/* ========== 5. 報表 & 統計 & 權限頁面 ========== */
-.segment-control-container { position: relative; display: flex; background: #e2e8f0; border-radius: 50px; padding: 4px; width: 320px; margin: 0 auto 30px; }
-.segment-option { flex: 1; text-align: center; padding: 8px 0; font-weight: bold; color: #64748b; z-index: 2; }
-.segment-highlighter { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(33.33% - 5px); background: white; border-radius: 50px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); z-index: 1; transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); }
-.report-dashboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
-.stat-card { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 20px -5px rgba(0,0,0,0.1); color: white; position: relative; overflow: hidden; text-align: left; }
+        let treatClass = c.isTreat ? "treat-btn active btn-effect" : "treat-btn btn-effect";
+        let treatText = c.isTreat ? "已招待" : "🎁 招待";
+        let priceHtml = "";
+        let nameHtml = "";
+        let rowClass = "cart-item-row";
 
-.finance-layout { display: flex; gap: 25px; align-items: flex-start; }
-.calendar-container-left { flex: 2; background: white; padding: 20px; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
-.finance-summary-sidebar { flex: 1; display: flex; flex-direction: column; gap: 15px; }
-.finance-controls button.active { background: white; color: var(--primary-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        // 已下單樣式
+        if (c.isSent) {
+            nameHtml = `<div class="cart-item-name" style="color:#adb5bd;">${c.name} <small>(已下單)</small></div>`;
+            priceHtml = `<span style="color:#adb5bd;">$${itemTotal}</span>`;
+            rowClass += " sent-item"; 
+        } else {
+            // 一般樣式
+            if (typeof c.batchIdx !== 'undefined') {
+                if (c.batchIdx === 0) rowClass += " batch-blue";
+                else if (c.batchIdx === 1) rowClass += " batch-red";
+                else if (c.batchIdx === 2) rowClass += " batch-green";
+            }
 
-/* 熱銷統計列表樣式 (即時 & 月報) */
-.stats-body { display: flex; flex-wrap: wrap; gap: 20px; }
-.stats-column { flex: 1; min-width: 300px; background: white; border-radius: var(--radius-md); padding: 0; border: 1px solid #e2e8f0; overflow: hidden; }
-.stats-column h3 { margin: 0; padding: 15px; text-align: center; }
-.stats-header-row { display: flex; justify-content: space-between; padding: 10px 20px; background: #f8fafc; font-weight: bold; color: var(--text-sub); border-bottom: 1px solid #eee; text-align: center; }
-.stats-item-row { display: flex; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid #f1f5f9; font-size: 15px; }
-.stats-count { font-weight: bold; background: #edf2f7; padding: 2px 10px; border-radius: 20px; font-size: 13px; color: #333; }
-.top-stat-item:nth-child(2) { color: #d33; font-weight: bold; background: #fff5f5; } /* Top 1 */
-.top-stat-item:nth-child(3) { color: #007bff; font-weight: bold; } /* Top 2 */
-.top-stat-item:nth-child(4) { color: #059669; font-weight: bold; } /* Top 3 */
+            if (isCartSimpleMode && count > 1) {
+                nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
+                if(c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${itemTotal}`; }
+            } else {
+                nameHtml = `<div class="cart-item-name">${c.name}</div>`;
+                if (c.isTreat) { priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`; } else { priceHtml = `$${c.price}`; }
+            }
+        }
 
+        let actionButtons = "";
+        // 已下單的沒有刪除鈕
+        if (c.isSent) {
+             actionButtons = `<small style="color:#ccc;">已傳送</small>`;
+        } else {
+             // 這裡的 index 需要修正，因為 displayItems 包含了 sentItems
+             // 我們需要找到這個 item 在原本 cart 陣列的 index
+             // 簡單做法：displayItems 後半段就是 cart，所以 index 減去 sentItems 長度
+             let realCartIndex = i - sentItems.length;
+             
+             actionButtons = !isCartSimpleMode ? `<button class="${treatClass}" onclick="toggleTreat(${realCartIndex})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${realCartIndex})">刪除</button>` : `<small style="color:#888;">(切換檢視操作)</small>`;
+        }
+        
+        cartList.innerHTML += `<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`; 
+    }); 
 
-/* 🔥 成本輸入頁面美化 */
-#costInputSection {
-    background: var(--card-bg);
-    border-radius: var(--radius-lg);
-    padding: 25px;
-    box-shadow: var(--shadow-md);
-}
-#costEditTitle {
-    font-size: 24px;
-    color: var(--primary-color);
-    border-bottom: 3px solid var(--primary-color);
-    padding-bottom: 10px;
-    margin-bottom: 20px;
-    text-align: left;
-}
-.cost-header-row {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr;
-    gap: 10px;
-    background: #334155;
-    color: white;
-    padding: 12px 15px;
-    border-radius: 8px 8px 0 0;
-    font-weight: bold;
-    font-size: 15px;
-    text-align: center;
-}
-.cost-header-row span:nth-child(1) { text-align: left; }
-.cost-category-header {
-    grid-column: 1 / -1;
-    text-align: left;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent-color);
-    background: #fef2f4;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin: 15px 0 5px 0;
-}
-.cost-editor-row {
-    display: grid;
-    grid-template-columns: 2fr 2fr;
-    align-items: center;
-    padding: 12px 15px;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 15px;
-    text-align: left;
-}
-.cost-item-name {
-    font-weight: 500;
-}
-.cost-input-group {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-}
-.cost-input-group input {
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    text-align: center;
-    font-size: 15px;
-}
-.cost-input-price { color: var(--primary-color); }
-.cost-input-cost { color: var(--danger-color); }
+    discountedTotal = currentOriginalTotal; 
+    if (currentDiscount.type === 'percent') { discountedTotal = Math.round(currentOriginalTotal * (currentDiscount.value / 100)); } 
+    else if (currentDiscount.type === 'amount') { discountedTotal = currentOriginalTotal - currentDiscount.value; if(discountedTotal < 0) discountedTotal = 0; }
 
-/* RWD */
-@media (max-width: 900px) {
-    #home { grid-template-columns: repeat(3, 1fr) !important; }
-    .table-grid-custom { grid-template-columns: repeat(3, 1fr); }
-    #menuGrid { grid-template-columns: repeat(3, 1fr); } 
-    .report-dashboard { grid-template-columns: 1fr; }
-    .finance-layout { flex-direction: column; }
-    .finance-summary-sidebar { flex-direction: row; overflow-x: auto; padding-bottom: 5px; }
-    .summary-card { min-width: 260px; }
-}
-@media (max-width: 600px) {
-    #home { grid-template-columns: repeat(2, 1fr) !important; }
-    .table-grid-custom { grid-template-columns: repeat(2, 1fr); }
-    #tableSelectGrid { grid-template-columns: repeat(3, 1fr); }
-    #menuGrid { grid-template-columns: repeat(2, 1fr); }
-    .finance-summary-sidebar { flex-direction: column; }
-    .action-buttons-compact { grid-template-columns: 1fr 1fr; }
-    .cost-header-row { grid-template-columns: 1fr 1fr 1fr; }
-    .cost-editor-row { grid-template-columns: 1fr 2fr; }
-    .cost-input-group { grid-template-columns: 1fr 1fr; }
-}
+    let serviceFee = 0;
+    if (isServiceFeeEnabled) { serviceFee = Math.round(currentOriginalTotal * 0.1); discountedTotal += serviceFee; }
 
-/* 列印專用樣式 */
-@media print {
-    body * { visibility: hidden; }
-    #receipt-print-area, #receipt-print-area * { visibility: visible; }
-    #receipt-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: white; z-index: 99999; }
-    .modal, #app-container, #login-screen { display: none !important; }
+    let finalHtml = `總金額：`;
+    if(currentDiscount.type !== 'none' || isServiceFeeEnabled) { finalHtml += `<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> `; }
+    finalHtml += `<span style="color:#ef476f;">$${discountedTotal}</span>`;
+
+    let noteText = [];
+    if (currentDiscount.type === 'percent') noteText.push(`折扣 ${currentDiscount.value}%`);
+    if (currentDiscount.type === 'amount') noteText.push(`折讓 -${currentDiscount.value}`);
+    if (isServiceFeeEnabled) noteText.push(`含服務費 +$${serviceFee}`);
+    
+    if(noteText.length > 0) { finalHtml += ` <small style="color:#555;">(${noteText.join(", ")})</small>`; }
+    totalText.innerHTML = finalHtml;
 }
