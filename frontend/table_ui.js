@@ -1,5 +1,5 @@
-/* table_ui.js - 桌位與訂單卡片渲染及拖曳邏輯 (v13) */
-console.log("Table UI JS v13 Loaded - 桌位互動已載入");
+/* table_ui.js - 桌位與訂單卡片渲染及拖曳邏輯 (v15) */
+console.log("Table UI JS v15 Loaded - 桌位互動已載入");
 
 let draggedOrderId = null;
 
