@@ -3,14 +3,13 @@ console.log("Order Logic JS v13 Loaded - 訂單管理核心已載入");
 
 let currentTableId = null;
 let currentOrderId = null; // 當前正在編輯的訂單 ID
-let lastOrderNum = 0; // 最新訂單號，用於生成新 ID
 
 // -------------------------------------------------------------
 // I. 訂單生命週期操作
 // -------------------------------------------------------------
 
 /**
- * 根據 ID 載入指定訂單至購物車，並切換到訂餐頁面
+ * 根據 ID 載入指定訂單至購物車，並切換到訂餐頁面 (由 table_ui 呼叫)
  * @param {string} orderId - 訂單的唯一 ID
  * @param {string} tableId - 訂單所在的桌號
  */
@@ -26,7 +25,7 @@ function openOrderPage(orderId, tableId) {
     
     // 1. 設置全域狀態
     selectedOrderId = orderId;
-    // 合併 sentItems 和 unsentItems 到購物車，以供編輯
+    // 將 sentItems 和 unsentItems 合併到購物車，以供編輯
     cart = (order.sentItems || []).concat(order.unsentItems || []); 
     
     // 2. 渲染訂餐頁面
@@ -52,7 +51,7 @@ function openOrderPage(orderId, tableId) {
 }
 
 /**
- * 創建一張新的空白訂單 (用於外帶或空桌開單)
+ * 創建一張新的空白訂單 (用於外帶或空桌開單) (由 index.html 呼叫)
  * @param {string} seat - 桌號 (或 '外帶', '暫存')
  */
 function createNewOrder(seat = '暫存') {
@@ -177,6 +176,7 @@ function saveOrderDiscount(orderId, discount, svc) {
     }
 }
 
+
 // -------------------------------------------------------------
 // II. 結帳與歸檔
 // -------------------------------------------------------------
@@ -232,6 +232,7 @@ function checkoutOrder(orderId, finalAmount) {
     alert(`💰 結帳完成！訂單 #${orderId.replace('T', '')} 實收 $${finalAmount}`); 
     openTableSelect();
 }
+
 
 // -------------------------------------------------------------
 // III. 拖曳操作 (供 table_ui.js 呼叫)
