@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>POS 點餐系統</title>
-    <link rel="stylesheet" href="style.css?v=11">     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="style.css?v=13">     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body ontouchstart="">
@@ -40,11 +40,11 @@
 
             <div class="menu-btn" onclick="openOwnerLogin('cost')">
                 <span style="font-size: 32px;">🤫</span>
-                <span>機密 (輸入成本)</span>
+                <span>成本輸入</span>
             </div>
             <div class="menu-btn" onclick="openOwnerLogin('finance')">
                 <span style="font-size: 32px;">🔐</span>
-                <span>權限 (財務/詳單)</span>
+                <span>財務/詳單</span>
             </div>
             <div class="menu-btn" onclick="openSettingsPage()">
                 <span style="font-size: 32px;">🛠️</span>
@@ -53,7 +53,7 @@
 
             <div class="menu-btn" onclick="openProductPage()">
                 <span style="font-size: 32px;">📦</span>
-                <span>商品上架(庫存)</span>
+                <span>商品庫存</span>
             </div>
             <div class="menu-btn" onclick="openItemStatsModal()">
                 <span style="font-size: 32px;">📈</span>
@@ -62,19 +62,6 @@
             <div class="menu-btn" onclick="openPage('pastHistoryPage')">
                 <span style="font-size: 32px;">🔍</span>
                 <span>商品搜尋</span>
-            </div>
-
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
-                <span>(預留功能)</span>
-            </div>
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
-                <span>(預留功能)</span>
-            </div>
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
-                <span>(預留功能)</span>
             </div>
         </div>
 
@@ -140,7 +127,7 @@
             </div>
         </div>
 
-        <div id="historyPage" style="display:none;">
+        <div id="historyPage">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">📋 今日訂單列表</div>
             <div class="history-header-row">
@@ -174,7 +161,7 @@
             </div>
         </div>
 
-        <div id="reportPage" style="display:none;">
+        <div id="reportPage">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">📊 營業報表</div>
             
@@ -220,7 +207,7 @@
             <div style="margin-top:20px; color:#888; font-size:14px;">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
         </div>
 
-        <div id="confidentialPage" style="display:none;">
+        <div id="confidentialPage">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">🤫 <span id="ownerWelcome"></span> <span id="confidentialTitle"></span></div>
             <div id="financeDashboard" class="finance-container" style="display:none;"></div>
@@ -286,7 +273,7 @@
             </div>
         </div>
 
-        <div id="settingsPage" style="display:none;">
+        <div id="settingsPage">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">🛠 系統設定</div>
             
@@ -381,5 +368,8 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="data.js?v=11"></script>     <script src="logic.js?v=11"></script>     <script src="ui.js?v=11"></script> </body>
+    <script src="data.js?v=13"></script>
+    <script src="logic.js?v=13"></script>
+    <script src="ui.js?v=13"></script>
+</body>
 </html>
