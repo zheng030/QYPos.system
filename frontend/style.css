@@ -1,4 +1,4 @@
-/* style.css - 完整版 (優化美觀與易用性 V12) */
+/* style.css - 完整版 (優化美觀與易用性 V13) */
 
 /* ========== 1. 全域設定 (現代化風格) ========== */
 :root {
@@ -76,13 +76,13 @@ button {
 .back:hover { background: #dee2e6; }
 #systemTime { font-size: 15px; font-weight: 600; color: var(--text-sub); background: #f8f9fa; padding: 8px 16px; border-radius: 50px; border: 1px solid #e9ecef; }
 
-/* 首頁 3欄 grid */
+/* 首頁 3x3 GRID 佈局 */
 #home { 
     display: grid; 
     grid-template-columns: repeat(3, 1fr); 
     gap: 25px; 
     padding: 30px; 
-    max-width: 1200px; /* 增加最大寬度 */
+    max-width: 960px; /* 調整最大寬度以適應 3x3 */
     margin: 0 auto; 
 }
 
@@ -110,30 +110,31 @@ button {
 /* 修正：將頁面容器預設 display: none，避免攤開 */
 #orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage, #pastHistoryPage, #productPage { display: none; padding: 0 20px; max-width: 1200px; margin: 0 auto; }
 
-/* ========== 4. 座位選擇 (4x4) ========== */
+/* ========== 4. 座位選擇 (3x5 佈局) ========== */
 .title { font-size: 32px; font-weight: 800; margin-bottom: 30px; color: var(--text-main); text-align: left; border-left: 6px solid var(--primary-color); padding-left: 20px; }
 #tableSelectGrid { 
+    /* 調整為 5 欄適應更多桌號 */
     display: grid; 
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 25px; 
+    grid-template-columns: repeat(5, 1fr); 
+    gap: 20px; 
 }
 .tableBtn { 
     background: var(--card-bg);
-    padding: 35px 10px; border-radius: var(--radius-lg); 
+    padding: 30px 10px; border-radius: var(--radius-md); /* 座位按鈕圓角小一點 */
     display: flex; flex-direction: column; justify-content: center; align-items: center; 
-    box-shadow: var(--shadow-md);
-    font-size: 22px; color: var(--text-main); border: 3px solid transparent; position: relative; overflow: hidden; 
+    box-shadow: var(--shadow-sm); /* 座位按鈕陰影小一點 */
+    font-size: 18px; color: var(--text-main); border: 3px solid transparent; position: relative; overflow: hidden; 
     transition: all 0.3s ease;
 }
-.tableBtn b { font-size: 26px; z-index: 2; }
-.tableBtn:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.tableBtn b { font-size: 22px; z-index: 2; }
+.tableBtn:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
 
 .status-red { background: #fde2e6; border-color: var(--danger-color); color: var(--danger-color); box-shadow: 0 4px 10px rgba(239, 71, 111, 0.2); }
 .status-yellow { background: #fff8e1; border-color: var(--warning-color); color: #d97706; box-shadow: 0 4px 10px rgba(255, 209, 102, 0.3); }
 .status-white { background: var(--card-bg); color: var(--text-sub); border: 2px dashed #e9ecef; }
 .status-white:hover { border-color: var(--primary-color); }
 
-/* ========== 5. 點餐與菜單 (含售完樣式) ========== */
+/* ========== 5. 點餐與菜單 (優化分隔線) ========== */
 .order-header { background: var(--card-bg); padding: 20px 30px; border-radius: var(--radius-lg); display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; box-shadow: var(--shadow-md); border: 1px solid #e9ecef; }
 .title-group { text-align: right; }
 #seatLabel { color: var(--primary-color); font-size: 26px; margin-left: 10px;}
@@ -175,7 +176,7 @@ button {
 .back-to-cat { width: 100%; background: #e2e8f0; color: #475569; font-weight: bold; padding: 15px; border-radius: var(--radius-md); margin-bottom: 25px; font-size: 17px; border: none; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--shadow-sm); }
 .back-to-cat:hover { background: #cbd5e1; }
 
-/* ========== 6. 購物車優化 (修正已下單樣式) ========== */
+/* ========== 6. 購物車優化 (優化分隔線) ========== */
 #cart-container { 
     background: var(--card-bg); 
     border-radius: var(--radius-lg); 
@@ -224,14 +225,14 @@ button {
 /* ========== 7. 營業報表 (Dashboard) ========== */
 .segment-control-wrapper { display: flex; justify-content: center; margin-bottom: 30px; }
 .segment-control-container { position: relative; display: flex; background: #e9ecef; border-radius: 50px; padding: 6px; width: 340px; }
-.segment-option { flex: 1; text-align: center; padding: 10px 0; font-weight: bold; color: #6c757d; cursor: pointer; z-index: 2; transition: color 0.3s; font-size: 15px; }
+.segment-option { flex: 1; text-align: center; padding: 10px 0; font-weight: bold; color: #6c757d; cursor: pointer; z-index: 2; font-size: 15px; }
 .segment-option.active { color: var(--primary-color); }
 .segment-highlighter { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc(33.33% - 8px); background: white; border-radius: 50px; box-shadow: var(--shadow-sm); transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); z-index: 1; }
 .report-dashboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-bottom: 30px; }
 .stat-card { background: white; border-radius: var(--radius-lg); padding: 30px; box-shadow: var(--shadow-md); color: white; position: relative; overflow: hidden; text-align: left; display: flex; flex-direction: column; justify-content: space-between; min-height: 160px; }
 .total-gradient { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); }
-.bar-gradient { background: linear-gradient(135deg, #00b894 0%, #00cec9 100%); } /* 調整為更清爽的顏色 */
-.bbq-gradient { background: linear-gradient(135deg, #ff7675 0%, #fd79a8 99%); color: #495057 !important; } /* 調整為更溫暖的顏色 */
+.bar-gradient { background: linear-gradient(135deg, #00b894 0%, #00cec9 100%); } 
+.bbq-gradient { background: linear-gradient(135deg, #ff7675 0%, #fd79a8 99%); color: #495057 !important; } 
 .bbq-gradient h3, .bbq-gradient small { color: #495057 !important; }
 .bbq-gradient p { color: #d63384 !important; }
 .stat-card h3 { margin: 0; font-size: 18px; opacity: 0.9; font-weight: 500; letter-spacing: 0.5px; z-index: 2; }
@@ -304,7 +305,7 @@ button {
 .stats-item-row:nth-child(4) { color: #059669; font-weight: bold; }
 .stats-count { font-weight: bold; background: #e9ecef; padding: 4px 12px; border-radius: 20px; font-size: 14px; color: #333; }
 
-/* ========== 10. Modal 通用 (修正：預設隱藏) ========== */
+/* ========== 10. Modal 通用 (預設隱藏) ========== */
 .modal { 
     display: none; /* 預設隱藏所有 Modal */
     position: fixed; left: 0; top: 0; width: 100%; height: 100%; 
@@ -378,6 +379,7 @@ button {
 /* ========== RWD 優化 ========== */
 @media (max-width: 1024px) {
     #home { grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    #tableSelectGrid { grid-template-columns: repeat(4, 1fr); gap: 15px; } /* 平板上4欄 */
     .finance-layout { flex-direction: column; gap: 20px; }
     .finance-summary-sidebar { flex-direction: row; overflow-x: auto; padding-bottom: 5px; }
     .summary-card { min-width: 280px; }
@@ -386,9 +388,9 @@ button {
 }
 @media (max-width: 768px) {
     #home { grid-template-columns: repeat(2, 1fr); padding: 20px; }
-    #tableSelectGrid { grid-template-columns: repeat(3, 1fr); gap: 15px; } 
-    .tableBtn { padding: 25px 10px; font-size: 18px; }
-    .tableBtn b { font-size: 22px; }
+    #tableSelectGrid { grid-template-columns: repeat(3, 1fr); gap: 15px; } /* 手機上3欄 */
+    .tableBtn { padding: 20px 10px; font-size: 16px; }
+    .tableBtn b { font-size: 20px; }
     #menuGrid { grid-template-columns: repeat(2, 1fr); gap: 15px; }
     .customer-input-box { grid-template-columns: 1fr; gap: 15px; }
     .action-buttons-compact { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -430,10 +432,10 @@ body.customer-mode .del-btn { background: transparent; color: #999; border: 1px 
     .modal, #app-container, #login-screen { display: none !important; }
     
     .receipt-section { 
-        width: 80mm; /* 模擬熱感紙寬度 */
+        width: 80mm; 
         margin: 0 auto; 
         padding: 5mm; 
-        font-family: monospace; /* 單據字體 */
+        font-family: monospace; 
         font-size: 11pt;
     }
     .store-name { text-align: center; font-size: 16pt; margin: 5mm 0; }
@@ -441,7 +443,7 @@ body.customer-mode .del-btn { background: transparent; color: #999; border: 1px 
     .dashed-line { border: none; border-top: 1px dashed #333; margin: 3mm 0; }
     .receipt-items { margin: 3mm 0; }
     .receipt-item { display: flex; justify-content: space-between; line-height: 1.5; }
-    .receipt-item.kitchen-item { font-size: 14pt; font-weight: bold; } /* 廚房單字體加大 */
+    .receipt-item.kitchen-item { font-size: 14pt; font-weight: bold; } 
     .receipt-footer .row { display: flex; justify-content: space-between; font-weight: bold; font-size: 12pt; margin-top: 2mm; }
     .receipt-footer .total { font-size: 14pt; color: black; }
 }
