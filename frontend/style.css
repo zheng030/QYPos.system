@@ -112,6 +112,13 @@ button {
 .customer-input-box input { width: 100%; padding: 15px; font-size: 16px; border: 2px solid #eef2f6; border-radius: var(--radius-md); background: var(--card-bg); outline: none; transition: border-color 0.2s; }
 .customer-input-box input:focus { border-color: var(--primary-color); }
 
+/* 單選按鈕群組：文字與圓點同一行顯示 */
+.radio-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.radio-box { display: inline-flex; align-items: center; gap: 8px; margin: 4px 8px 4px 0; }
+.radio-box input[type="radio"] { margin: 0; }
+.radio-btn { display: inline-flex; align-items: center; justify-content: center; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; white-space: nowrap; }
+.radio-box input[type="radio"]:checked + .radio-btn { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15); }
+
 #menuGrid { 
     display: grid; 
     grid-template-columns: repeat(4, 1fr); 
@@ -262,7 +269,7 @@ input:checked + .slider { background-color: #2196F3; }
 input:checked + .slider:before { transform: translateX(24px); }
 
 /* ========== RWD ========== */
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
     #home { grid-template-columns: repeat(3, 1fr); }
     #tableSelectGrid { grid-template-columns: repeat(4, 1fr); } /* 保持4x4 */
     #menuGrid { grid-template-columns: repeat(3, 1fr); } /* 平板 3欄 */
@@ -272,10 +279,19 @@ input:checked + .slider:before { transform: translateX(24px); }
     .finance-summary-sidebar { flex-direction: row; overflow-x: auto; padding-bottom: 5px; }
     .summary-card { min-width: 260px; }
 }
-@media (max-width: 600px) {
+@media (max-width: 750px) {
     #home { grid-template-columns: repeat(2, 1fr); }
     #tableSelectGrid { grid-template-columns: repeat(3, 1fr); } /* 手機改3欄 */
     #menuGrid { grid-template-columns: repeat(2, 1fr); } /* 手機 2欄 */
+    .finance-summary-sidebar { flex-direction: column; }
+    .summary-card { width: 100%; }
+    .action-buttons-compact { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 550px) {
+    #home { grid-template-columns: repeat(2, 1fr); }
+    #tableSelectGrid { grid-template-columns: repeat(2, 1fr); } /* 手機改2欄 */
+    #menuGrid { grid-template-columns: repeat(1, 1fr); } /* 手機 1欄 */
     .finance-summary-sidebar { flex-direction: column; }
     .summary-card { width: 100%; }
     .action-buttons-compact { grid-template-columns: 1fr 1fr; }
