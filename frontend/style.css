@@ -1,4 +1,4 @@
-/* style.css - 完整版 (優化美觀與易用性 V13) */
+/* style.css - 完整版 (優化美觀與易用性 V14 - 修正 Home/Table 排版) */
 
 /* ========== 1. 全域設定 (現代化風格) ========== */
 :root {
@@ -76,21 +76,21 @@ button {
 .back:hover { background: #dee2e6; }
 #systemTime { font-size: 15px; font-weight: 600; color: var(--text-sub); background: #f8f9fa; padding: 8px 16px; border-radius: 50px; border: 1px solid #e9ecef; }
 
-/* 首頁 3x3 GRID 佈局 */
+/* 主頁面 3x3 GRID 佈局 */
 #home { 
     display: grid; 
     grid-template-columns: repeat(3, 1fr); 
     gap: 25px; 
     padding: 30px; 
-    max-width: 960px; /* 調整最大寬度以適應 3x3 */
+    max-width: 960px; /* 寬度限制讓按鈕更集中 */
     margin: 0 auto; 
 }
 
 .menu-btn { 
     background: var(--card-bg); 
-    border-radius: var(--radius-lg); 
-    padding: 30px 15px; 
-    font-size: 18px; 
+    border-radius: var(--radius-md); /* 調整為中等圓角 */
+    padding: 25px 15px; 
+    font-size: 17px; 
     font-weight: 700; 
     color: var(--text-main); 
     box-shadow: var(--shadow-md); 
@@ -98,31 +98,37 @@ button {
     flex-direction: column; 
     align-items: center; 
     justify-content: center; 
-    min-height: 140px; /* 增加高度 */
-    gap: 12px; 
+    min-height: 120px; /* 調整高度 */
+    gap: 10px; 
     transition: all 0.3s ease; 
     border: 2px solid transparent; 
     position: relative;
 }
 .menu-btn:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--primary-color); color: var(--primary-color); }
-.menu-btn span:first-child { font-size: 40px !important; }
+.menu-btn span:first-child { font-size: 36px !important; }
 
-/* 修正：將頁面容器預設 display: none，避免攤開 */
-#orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage, #pastHistoryPage, #productPage { display: none; padding: 0 20px; max-width: 1200px; margin: 0 auto; }
+/* 修正：頁面容器預設隱藏 (必須) */
+#orderPage, #historyPage, #tableSelect, #reportPage, #confidentialPage, #settingsPage, #pastHistoryPage, #productPage { 
+    display: none; 
+    padding: 0 20px; 
+    max-width: 1200px; 
+    margin: 0 auto; 
+}
 
-/* ========== 4. 座位選擇 (3x5 佈局) ========== */
+/* ========== 4. 座位選擇 (桌號調整) ========== */
 .title { font-size: 32px; font-weight: 800; margin-bottom: 30px; color: var(--text-main); text-align: left; border-left: 6px solid var(--primary-color); padding-left: 20px; }
 #tableSelectGrid { 
-    /* 調整為 5 欄適應更多桌號 */
+    /* 調整為 5 欄適應吧檯和桌號 */
     display: grid; 
     grid-template-columns: repeat(5, 1fr); 
     gap: 20px; 
 }
 .tableBtn { 
     background: var(--card-bg);
-    padding: 30px 10px; border-radius: var(--radius-md); /* 座位按鈕圓角小一點 */
+    padding: 30px 10px; 
+    border-radius: var(--radius-md);
     display: flex; flex-direction: column; justify-content: center; align-items: center; 
-    box-shadow: var(--shadow-sm); /* 座位按鈕陰影小一點 */
+    box-shadow: var(--shadow-sm); 
     font-size: 18px; color: var(--text-main); border: 3px solid transparent; position: relative; overflow: hidden; 
     transition: all 0.3s ease;
 }
@@ -134,7 +140,7 @@ button {
 .status-white { background: var(--card-bg); color: var(--text-sub); border: 2px dashed #e9ecef; }
 .status-white:hover { border-color: var(--primary-color); }
 
-/* ========== 5. 點餐與菜單 (優化分隔線) ========== */
+/* ========== 5. 點餐與菜單 ========== */
 .order-header { background: var(--card-bg); padding: 20px 30px; border-radius: var(--radius-lg); display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; box-shadow: var(--shadow-md); border: 1px solid #e9ecef; }
 .title-group { text-align: right; }
 #seatLabel { color: var(--primary-color); font-size: 26px; margin-left: 10px;}
@@ -176,7 +182,7 @@ button {
 .back-to-cat { width: 100%; background: #e2e8f0; color: #475569; font-weight: bold; padding: 15px; border-radius: var(--radius-md); margin-bottom: 25px; font-size: 17px; border: none; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: var(--shadow-sm); }
 .back-to-cat:hover { background: #cbd5e1; }
 
-/* ========== 6. 購物車優化 (優化分隔線) ========== */
+/* ========== 6. 購物車優化 ========== */
 #cart-container { 
     background: var(--card-bg); 
     border-radius: var(--radius-lg); 
