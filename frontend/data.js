@@ -3,7 +3,7 @@
 const firebaseConfig = {
   apiKey: "AIzaSyBY3ILlBr5N8a8PxMv3IDSScmNZzvtXXVw",
   authDomain: "pos-system-database.firebaseapp.com",
-  databaseURL: "https://pos-system-database-default-rtdb.firebaseio.com",
+  databaseURL: "[https://pos-system-database-default-rtdb.firebaseio.com](https://pos-system-database-default-rtdb.firebaseio.com)",
   projectId: "pos-system-database",
   storageBucket: "pos-system-database.firebasestorage.app",
   messagingSenderId: "302159719042",
