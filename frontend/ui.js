@@ -1,6 +1,6 @@
 /* ui.js - 介面渲染與事件處理 (v15) */
 
-console.log("UI JS v15 Loaded - 介面程式已載入",);
+console.log("UI JS v15 Loaded - 介面程式已載入");
 
 function showApp() {
 	document.getElementById("login-screen").style.display = "none";
@@ -1062,6 +1062,11 @@ function showHistory() {
 	} catch (e) {
 		console.error("showHistory 錯誤", e);
 	}
+}
+
+function toggleHistoryView() {
+	isHistorySimpleMode = !isHistorySimpleMode;
+	showHistory();
 }
 
 function generateReport(type) {

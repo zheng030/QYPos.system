@@ -384,6 +384,8 @@ if (typeof window !== "undefined") {
 	window.hasAvailableVariants = hasAvailableVariants;
 	window.toggleOptionStock = toggleOptionStock;
 	window.toggleParentWithOptions = toggleParentWithOptions;
+	window.toggleHistoryView = toggleHistoryView;
+	window.closeBusiness = closeBusiness;
 }
 
 function addToCart(name, price) {
@@ -476,6 +478,20 @@ function saveAndExit() {
 		console.error("返回錯誤:", e);
 		openTableSelect();
 	}
+}
+
+function toggleHistoryView() {
+	isHistorySimpleMode = !isHistorySimpleMode;
+	showHistory();
+}
+
+function closeBusiness() {
+	if (!confirm("確定要結束營業並清空今日資料嗎？")) return;
+	localStorage.removeItem("orderHistory");
+	historyOrders = [];
+	saveAllToCloud();
+	showToast("已結束營業，資料已清空");
+	goHome();
 }
 
 function customerSubmitOrder() {
