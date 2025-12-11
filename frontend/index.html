@@ -384,45 +384,71 @@
             </div>
         </div>
         <div id="checkoutModal" class="modal">
-            <div class="modal-content" style="max-width:900px;">
+            <div class="modal-content split-modal">
                 <div class="modal-header">
-                    <h2>✂ 拆單結帳</h2>
+                    <div class="pill-badge">✂</div>
+                    <h2>拆單結帳</h2>
+                    <p class="subtext">點擊左側品項移至右側，完成本次結帳</p>
                 </div>
                 <div class="modal-body">
-                    <p style="color:#666; margin-bottom: 15px;">點擊左邊品項移至右邊進行結帳</p>
                     <div class="split-checkout-container">
-                        <div class="checkout-box left-box">
-                            <h3>📦 未結帳品項</h3>
-                            <div id="unpaidList" class="checkout-list"></div>
+                        <div class="checkout-box">
+                            <div class="box-header">
+                                <div class="icon-chip">📦</div>
+                                <div>
+                                    <div class="box-title">未結帳品項</div>
+                                    <small>點擊即可移動到右側</small>
+                                </div>
+                            </div>
+                            <div id="unpaidList" class="checkout-list modern-list"></div>
                         </div>
-                        <div class="split-arrow">➡</div>
-                        <div class="checkout-box right-box">
-                            <h3>💳 本次結帳</h3>
-                            <div id="payingList" class="checkout-list"></div>
-                            <div class="split-options"><input type="number" id="splitDisc" placeholder="% 折扣"
-                                    oninput="calcSplitTotal()" class="split-input"><input type="number" id="splitAllow"
-                                    placeholder="$ 折讓" oninput="calcSplitTotal()" class="split-input"></div>
-                            <div class="checkout-total">總計: <span id="payTotal">$0</span></div>
+                        <div class="split-arrow">⇄</div>
+                        <div class="checkout-box emphasis">
+                            <div class="box-header">
+                                <div class="icon-chip accent">💳</div>
+                                <div>
+                                    <div class="box-title">本次結帳</div>
+                                    <small>已選品項會顯示於此</small>
+                                </div>
+                            </div>
+                            <div id="payingList" class="checkout-list modern-list"></div>
+                            <div class="split-options">
+                                <label class="field">
+                                    <span>% 折扣</span>
+                                    <input type="number" id="splitDisc" placeholder="輸入折扣" oninput="calcSplitTotal()">
+                                </label>
+                                <label class="field">
+                                    <span>$ 折讓</span>
+                                    <input type="number" id="splitAllow" placeholder="輸入折讓" oninput="calcSplitTotal()">
+                                </label>
+                            </div>
+                            <div class="checkout-total">
+                                <div class="total-label">應收</div>
+                                <div class="total-amount" id="payTotal">$0</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-actions"><button onclick="closeCheckoutModal()"
-                        class="btn-effect cancel">取消</button><button onclick="confirmPayment()"
-                        class="btn-effect confirm-success">✅ 確認結帳</button></div>
+                <div class="modal-actions stacked">
+                    <button onclick="closeCheckoutModal()" class="btn-effect cancel ghost">取消</button>
+                    <button onclick="confirmPayment()" class="btn-effect confirm-success wide">✅ 確認結帳</button>
+                </div>
             </div>
         </div>
         <div id="reprintSelectionModal" class="modal">
-            <div class="modal-content" style="max-width:400px;">
+            <div class="modal-content reprint-modal">
                 <div class="modal-header">
-                    <h2>🖨 選擇補單項目</h2>
+                    <div class="pill-badge purple">🖨</div>
+                    <h2>補單列印</h2>
+                    <p class="subtext">勾選要列印的品項，可一鍵全選</p>
                 </div>
-                <div class="modal-body" style="max-height:400px; overflow-y:auto;">
-                    <p style="color:#666; font-size:14px; margin-bottom:10px;">請勾選要列印的項目：</p>
-                    <div id="reprintList"></div>
+                <div class="modal-body reprint-body">
+                    <div id="reprintList" class="reprint-list"></div>
                 </div>
-                <div class="modal-actions"><button onclick="closeReprintModal()"
-                        class="btn-effect cancel">取消</button><button onclick="confirmReprintSelection()"
-                        class="btn-effect confirm-success">✅ 確認列印</button></div>
+                <div class="modal-actions stacked">
+                    <button onclick="closeReprintModal()" class="btn-effect cancel ghost">取消</button>
+                    <button onclick="confirmReprintSelection()" class="btn-effect confirm-primary wide">🖨 確認列印</button>
+                </div>
             </div>
         </div>
 

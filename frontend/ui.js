@@ -740,13 +740,25 @@ function renderCheckoutLists() {
 		leftHTML = "<div class='empty-hint'>已無剩餘項目</div>";
 	else
 		tempLeftList.forEach((item, index) => {
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
+			let price = item.isTreat ? 0 : item.price;
+			let priceHtml = item.isTreat
+				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
+				: `$${price}`;
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${
+				item.isTreat ? " (招待)" : ""
+			}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
 		rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
 	else
 		tempRightList.forEach((item, index) => {
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
+			let price = item.isTreat ? 0 : item.price;
+			let priceHtml = item.isTreat
+				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
+				: `$${price}`;
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${
+				item.isTreat ? " (招待)" : ""
+			}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
 	document.getElementById("payingList").innerHTML = rightHTML;
@@ -914,12 +926,26 @@ function openReprintModal() {
 	}
 	const list = document.getElementById("reprintList");
 	list.innerHTML = "";
-	cart.forEach((item, index) => {
-		list.innerHTML += `<label class="checkout-item" style="justify-content: flex-start; gap: 10px;"><input type="checkbox" class="reprint-checkbox" id="reprint-item-${index}" checked><span>${item.name}</span></label>`;
+
+	// 依當前視圖決定是否合併品項
+	let reprintItems =
+		isCartSimpleMode && typeof getMergedItems === "function"
+			? getMergedItems(cart)
+			: cart.map((item) => ({ ...item, count: item.count || 1 }));
+
+	window.reprintItemsForModal = reprintItems;
+
+	list.innerHTML = `<label class="checkout-item reprint-select-all" style="justify-content: flex-start; gap: 10px;"><input type="checkbox" id="selectAllReprint" checked onchange="toggleAllReprint(this)"><span>全選 / 取消全選</span></label><hr style="margin: 5px 0;">`;
+
+	reprintItems.forEach((item, index) => {
+		let price = item.isTreat ? 0 : item.price;
+		let countText = item.count && item.count > 1 ? ` x${item.count}` : "";
+		let priceText =
+			price === 0
+				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
+				: `$${price}`;
+		list.innerHTML += `<label class="checkout-item" style="justify-content: space-between; gap: 10px;"><div style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="reprint-checkbox" id="reprint-item-${index}" checked><span>${item.name}${item.isTreat ? " (招待)" : ""}${countText}</span></div><span style="color:#475569;">${priceText}</span></label>`;
 	});
-	list.innerHTML =
-		`<label class="checkout-item" style="background:#f0f7ff; border-color:#007bff; font-weight:bold;"><input type="checkbox" id="selectAllReprint" checked onchange="toggleAllReprint(this)"><span>全選 / 取消全選</span></label><hr style="margin: 5px 0;">` +
-		list.innerHTML;
 	reprintSelectionModal.style.display = "flex";
 }
 function toggleAllReprint(source) {
@@ -934,7 +960,8 @@ function closeReprintModal() {
 function confirmReprintSelection() {
 	try {
 		let selectedItems = [];
-		cart.forEach((item, index) => {
+		let sourceItems = window.reprintItemsForModal || cart;
+		sourceItems.forEach((item, index) => {
 			let cb = document.getElementById(`reprint-item-${index}`);
 			if (cb && cb.checked) selectedItems.push(item);
 		});

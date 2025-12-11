@@ -689,7 +689,10 @@ function calcFinalPay() {
 	document.getElementById("payFinal").value = finalTotal;
 }
 function calcSplitTotal() {
-	let baseTotal = tempRightList.reduce((a, b) => a + b.price, 0);
+	let baseTotal = tempRightList.reduce(
+		(a, b) => a + (b.isTreat ? 0 : b.price),
+		0,
+	);
 	let disc = parseFloat(document.getElementById("splitDisc").value);
 	let allow = parseInt(document.getElementById("splitAllow").value);
 	let finalSplit = baseTotal;
@@ -1184,13 +1187,25 @@ function renderCheckoutLists() {
 		leftHTML = "<div class='empty-hint'>已無剩餘項目</div>";
 	else
 		tempLeftList.forEach((item, index) => {
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
+			let price = item.isTreat ? 0 : item.price;
+			let priceHtml = item.isTreat
+				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
+				: `$${price}`;
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${
+				item.isTreat ? " (招待)" : ""
+			}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
 		rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
 	else
 		tempRightList.forEach((item, index) => {
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}</span><span>$${item.price}</span></div>`;
+			let price = item.isTreat ? 0 : item.price;
+			let priceHtml = item.isTreat
+				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
+				: `$${price}`;
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${
+				item.isTreat ? " (招待)" : ""
+			}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
 	document.getElementById("payingList").innerHTML = rightHTML;
