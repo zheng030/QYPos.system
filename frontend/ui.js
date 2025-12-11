@@ -1,5 +1,6 @@
-/* ui.js - 介面渲染與事件處理 (v15: 終極完整版 - 包含所有彈窗功能) */
-console.log("UI JS v15 Loaded - 介面程式已載入");
+/* ui.js - 介面渲染與事件處理 (v15) */
+
+console.log("UI JS v15 Loaded - 介面程式已載入",);
 
 function showApp() {
 	document.getElementById("login-screen").style.display = "none";
@@ -238,7 +239,8 @@ function openItems(category) {
 		let nameHtml = `<span>${item.name} <b>$${item.price}</b></span>`;
 		let itemClass = isFlat ? "item list-mode" : "item shot-item";
 
-		let isSoldOut = inventory[item.name] === false;
+		let isSoldOut =
+			inventory[item.name] === false || !hasAvailableVariants(item.name);
 		if (isSoldOut) itemClass += " sold-out";
 
 		if (item.name === "隱藏啤酒") {
@@ -497,11 +499,27 @@ function openFoodModal(name, price, type) {
 	tempCustomItem = { name, price, type };
 	document.getElementById("foodTitle").innerText = name;
 	let meatOptions = document.getElementById("meatOptions");
-	let html = "";
-	if (type === "friedRice")
-		html = `<label class="radio-box"><input type="radio" name="meat" value="牛" onclick="tempCustomItem.price=${price}" checked><div class="radio-btn btn-effect">牛 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="豬" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">豬 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="雞" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">雞 ($${price})</div></label><label class="radio-box"><input type="radio" name="meat" value="蝦仁" onclick="tempCustomItem.price=${price}"><div class="radio-btn btn-effect">蝦仁 ($${price})</div></label>`;
-	else
-		html = `<label class="radio-box"><input type="radio" name="meat" value="牛" checked><div class="radio-btn btn-effect">牛</div></label><label class="radio-box"><input type="radio" name="meat" value="豬"><div class="radio-btn btn-effect">豬</div></label><label class="radio-box"><input type="radio" name="meat" value="雞"><div class="radio-btn btn-effect">雞</div></label>`;
+	let variants =
+		typeof FOOD_OPTION_VARIANTS !== "undefined" && FOOD_OPTION_VARIANTS[name]
+			? FOOD_OPTION_VARIANTS[name]
+			: type === "friedRice"
+				? ["牛", "豬", "雞", "蝦仁"]
+				: ["牛", "豬", "雞"];
+	let available =
+		typeof getAvailableVariants === "function"
+			? getAvailableVariants(name)
+			: null;
+	if (available) variants = available;
+	if (variants.length === 0) {
+		alert("此品項的子選項已全部下架，無法選擇");
+		return;
+	}
+	let html = variants
+		.map(
+			(opt, idx) =>
+				`<label class="radio-box"><input type="radio" name="meat" value="${opt}" onclick="tempCustomItem.price=${price}" ${idx === 0 ? "checked" : ""}><div class="radio-btn btn-effect">${opt}${type === "friedRice" ? ` ($${price})` : ""}</div></label>`,
+		)
+		.join("");
 	meatOptions.innerHTML = html;
 	foodOptionModal.style.display = "flex";
 }
@@ -1365,7 +1383,10 @@ function renderProductManagement() {
 		}
 
 		items.forEach((item) => {
-			let isAvailable = inventory[item.name] !== false;
+			let isSpecial = FOOD_OPTION_VARIANTS && FOOD_OPTION_VARIANTS[item.name];
+			let isAvailable = isSpecial
+				? hasAvailableVariants(item.name)
+				: inventory[item.name] !== false;
 			let checked = isAvailable ? "checked" : "";
 			let statusText = isAvailable
 				? `<span style="color:#06d6a0; font-weight:bold;">有貨</span>`
@@ -1377,12 +1398,36 @@ function renderProductManagement() {
                     <div style="display:flex; align-items:center; gap:10px;">
                         ${statusText}
                         <label class="toggle-switch">
-                            <input type="checkbox" ${checked} onchange="toggleStockStatus('${item.name}', this.checked)">
+                            <input type="checkbox" ${checked} onchange="${isSpecial ? `toggleParentWithOptions('${item.name}', this.checked)` : `toggleStockStatus('${item.name}', this.checked)`}">
                             <span class="slider"></span>
                         </label>
                     </div>
                 </div>
             `;
+
+			if (isSpecial) {
+				let variants = FOOD_OPTION_VARIANTS[item.name];
+				variants.forEach((opt) => {
+					let optKey = `${item.name}::${opt}`;
+					let optAvail = inventory[optKey] !== false;
+					let optChecked = optAvail ? "checked" : "";
+					let optStatus = optAvail
+						? `<span style="color:#06d6a0; font-weight:bold;">顯示</span>`
+						: `<span style="color:#ef476f; font-weight:bold;">隱藏</span>`;
+					itemsHtml += `
+                        <div class="product-mgmt-row" style="padding-left:20px; list-style: none;">
+                            <li style="font-size:14px; color:#555; list-style: disc;">${opt}</li>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                ${optStatus}
+                                <label class="toggle-switch">
+                                    <input type="checkbox" ${optChecked} onchange="toggleOptionStock('${item.name}', '${opt}', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    `;
+				});
+			}
 		});
 
 		container.innerHTML += catHeader + itemsHtml + `</div>`;
