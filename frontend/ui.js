@@ -744,9 +744,8 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${
-				item.isTreat ? " (招待)" : ""
-			}</span><span>${priceHtml}</span></div>`;
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+				}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
 		rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
@@ -756,9 +755,8 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${
-				item.isTreat ? " (招待)" : ""
-			}</span><span>${priceHtml}</span></div>`;
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+				}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
 	document.getElementById("payingList").innerHTML = rightHTML;
@@ -1644,6 +1642,11 @@ function changeOwnerMonth(offset) {
 	let owner = document.getElementById("ownerWelcome").innerText;
 	renderConfidentialCalendar(owner);
 	document.getElementById("ownerOrderListSection").style.display = "none";
+	const customBtn = document.getElementById("finBtnCustom");
+	if (customBtn) {
+		customBtn.style.display = "none";
+		customBtn.dataset.date = "";
+	}
 }
 
 function renderConfidentialCalendar(ownerName) {
@@ -1776,6 +1779,15 @@ function renderConfidentialCalendar(ownerName) {
 			cell.style.backgroundColor = "#e0e7ff";
 			cell.onclick = () => {
 				showOwnerDetailedOrders(year, month, d);
+				let customBtn = document.getElementById("finBtnCustom");
+				if (customBtn) {
+					let mm = String(month + 1).padStart(2, "0");
+					let dd = String(d).padStart(2, "0");
+					customBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`;
+					customBtn.dataset.date = `${year}-${mm}-${dd}`;
+					customBtn.style.display = "inline-block";
+					updateFinanceStats("custom", new Date(year, month, d, 5, 0, 0, 0));
+				}
 			};
 		}
 		cell.innerHTML = htmlContent;
@@ -1793,12 +1805,19 @@ function updateFinanceStats(range) {
 		document.getElementById("finBtnWeek").classList.add("active");
 	if (range === "month")
 		document.getElementById("finBtnMonth").classList.add("active");
+	if (range === "custom") {
+		let btn = document.getElementById("finBtnCustom");
+		if (btn) {
+			btn.classList.add("active");
+		}
+	}
 
 	let now = new Date();
 	if (now.getHours() < 5) now.setDate(now.getDate() - 1);
 	let start = new Date(now);
 	let end = null;
 	let titleText = "";
+	let customDate = null;
 
 	if (range === "day") {
 		start.setHours(5, 0, 0, 0);
@@ -1816,6 +1835,19 @@ function updateFinanceStats(range) {
 		start.setHours(5, 0, 0, 0);
 		end = new Date();
 		titleText = "🏠 全店總計 (本月)";
+	} else if (range === "custom") {
+		let btn = document.getElementById("finBtnCustom");
+		let dateStr = btn && btn.dataset.date ? btn.dataset.date : "";
+		if (dateStr) {
+			let [y, m, d] = dateStr.split("-").map((n) => parseInt(n, 10));
+			customDate = new Date(y, m - 1, d);
+		}
+		if (!customDate) customDate = new Date();
+		customDate.setHours(5, 0, 0, 0);
+		start = new Date(customDate);
+		end = new Date(customDate);
+		end.setDate(end.getDate() + 1);
+		titleText = `🏠 全店總計 (${dateStr || "自選日"})`;
 	}
 
 	let stats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 };
