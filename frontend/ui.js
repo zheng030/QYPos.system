@@ -744,8 +744,9 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
-				}</span><span>${priceHtml}</span></div>`;
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${
+				item.isTreat ? " (招待)" : ""
+			}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
 		rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
@@ -755,8 +756,9 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
-				}</span><span>${priceHtml}</span></div>`;
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${
+				item.isTreat ? " (招待)" : ""
+			}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
 	document.getElementById("payingList").innerHTML = rightHTML;
@@ -1336,7 +1338,7 @@ function reprintOrder(index) {
 				original: orig,
 				total: target.total || 0,
 			},
-			true,
+			false,
 		);
 	} catch (e) {
 		alert("列印失敗：" + e.message);
