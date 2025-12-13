@@ -1115,12 +1115,15 @@ button {
 
 .split-modal .modal-body {
 	padding-top: 0;
+	max-height: 70vh;
+	overflow: hidden;
 }
 .split-checkout-container {
 	display: grid;
 	grid-template-columns: 1fr auto 1fr;
 	gap: 16px;
 	align-items: start;
+	max-height: 60vh;
 }
 .checkout-box {
 	background: #f8fafc;
@@ -1129,6 +1132,9 @@ button {
 	padding: 16px;
 	min-height: 240px;
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+	max-height: 55vh;
+	display: flex;
+	flex-direction: column;
 }
 .checkout-box.emphasis {
 	background: #fff;
@@ -1164,6 +1170,8 @@ button {
 	padding: 10px;
 	min-height: 150px;
 	background: white;
+	overflow-y: auto;
+	flex: 1;
 }
 .checkout-list.modern-list .checkout-item {
 	background: #f8fafc;
