@@ -49,6 +49,26 @@ let historyViewDate = new Date();
 let isCartSimpleMode = false;
 let isHistorySimpleMode = false;
 
+function getTodayMaxBaseSeq() {
+	let currentBizDate = getBusinessDate(new Date());
+	let maxSeq = 0;
+	if (Array.isArray(historyOrders)) {
+		historyOrders.forEach((o) => {
+			if (!o) return;
+			if (getBusinessDate(getDateFromOrder(o)) !== currentBizDate) return;
+			let base = 0;
+			if (o.formattedSeq) {
+				let parts = String(o.formattedSeq).split("-");
+				base = parseInt(parts[0], 10) || 0;
+			} else if (o.seq) {
+				base = parseInt(o.seq, 10) || 0;
+			}
+			if (base > maxSeq) maxSeq = base;
+		});
+	}
+	return maxSeq;
+}
+
 /* ========== 輔助函式 ========== */
 
 function getMergedItems(items) {
@@ -1225,10 +1245,96 @@ function closeCheckoutModal() {
 	checkoutModal.style.display = "none";
 }
 function confirmPayment() {
+	if (!Array.isArray(tempRightList) || tempRightList.length === 0) {
+		alert("請先將品項移至右側再結帳");
+		return;
+	}
+
+	// 計算本次應收
 	let finalSplit = calcSplitTotal();
 	if (!confirm(`確認收款 $${finalSplit} 嗎？`)) return;
-	checkoutAll(finalSplit);
+
+	// 確保單號存在
+	let info = tableCustomers[selectedTable] || {
+		name: "",
+		phone: "",
+		orderId: "?",
+	};
+	// 若已有 orderId，保持不變；僅當缺失時才依今日序號生成
+	if (!info.orderId || info.orderId === "?" || info.orderId === "T") {
+		// 以今日已存在的最大基礎單號為準（忽略拆單計數），避免被拆單次數推高
+		let maxSeq = getTodayMaxBaseSeq();
+		info.orderId = maxSeq + 1;
+		// 回寫，讓後續拆單沿用同一基礎單號
+		if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {};
+		tableCustomers[selectedTable].orderId = info.orderId;
+	}
+
+	// 拆單序號處理
+	let splitNum = tableSplitCounters[selectedTable] || 1;
+	let displaySeq = `${info.orderId}-${splitNum}`;
+	let displaySeat = `${selectedTable} (拆單)`;
+
+	// 本次結帳品項：處理招待
+	let processedItems = tempRightList.map((item) => {
+		if (item.isTreat) {
+			return { ...item, price: 0, name: `${item.name} (招待)` };
+		}
+		return item;
+	});
+
+	// 計算原價（不含折扣/折讓）
+	let originalSplitTotal = tempRightList.reduce(
+		(sum, item) => sum + (item.isTreat ? 0 : item.price),
+		0,
+	);
+
+	// 寫入歷史訂單
+	let timeStr = new Date().toLocaleString("zh-TW", { hour12: false });
+	let newOrder = {
+		seat: displaySeat,
+		formattedSeq: displaySeq,
+		time: timeStr,
+		timestamp: Date.now(),
+		items: processedItems,
+		total: finalSplit,
+		originalTotal: originalSplitTotal,
+		customerName: info.name || "",
+		customerPhone: info.phone || "",
+		isClosed: false,
+	};
+	if (!Array.isArray(historyOrders)) historyOrders = [];
+	historyOrders.push(newOrder);
+	localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
+
+	// 更新桌上剩餘品項
+	tempLeftList = Array.isArray(tempLeftList) ? tempLeftList : [];
+	cart = [...tempLeftList];
+	tableCarts[selectedTable] = cart;
+
+	// 增加拆單次數，供下次拆單使用
+	tableSplitCounters[selectedTable] = splitNum + 1;
+
+	// 若已全數結清，清桌
+	if (cart.length === 0) {
+		delete tableCarts[selectedTable];
+		delete tableTimers[selectedTable];
+		delete tableStatuses[selectedTable];
+		delete tableCustomers[selectedTable];
+		delete tableSplitCounters[selectedTable];
+		delete tableBatchCounts[selectedTable];
+
+		// 清除 sentItems
+		sentItems = [];
+		sessionStorage.removeItem("sentItems");
+	}
+
+	saveAllToCloud();
+	renderCart();
 	closeCheckoutModal();
+	showToast(
+		`✅ 已結帳 $${finalSplit}${cart.length === 0 ? "，此桌已清空" : ""}`,
+	);
 }
 function updateDiscPreview() {
 	let val = parseFloat(document.getElementById("discInput").value);
