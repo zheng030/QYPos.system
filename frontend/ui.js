@@ -1664,7 +1664,13 @@ function renderConfidentialCalendar(ownerName) {
 		`${year}年 ${month + 1}月`;
 	dailyFinancialData = {};
 	let dailyCounts = {};
-	let monthStats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 };
+	let monthStats = {
+		barRev: 0,
+		barCost: 0,
+		bbqRev: 0,
+		bbqCost: 0,
+		totalRev: 0,
+	};
 
 	if (Array.isArray(historyOrders)) {
 		historyOrders.forEach((order) => {
@@ -1684,24 +1690,12 @@ function renderConfidentialCalendar(ownerName) {
 				if (!dailyCounts[dayKey]) dailyCounts[dayKey] = 0;
 				dailyCounts[dayKey]++;
 
-				if (order.items && Array.isArray(order.items)) {
-					order.items.forEach((item) => {
-						let costPerItem = getCostByItemName(item.name);
-						let rawName = item.name.replace(" (招待)", "").trim();
-						let type = getItemCategoryType(rawName);
-						if (type === "bar") {
-							dailyFinancialData[dateStr].barRev += item.price || 0;
-							dailyFinancialData[dateStr].barCost += costPerItem;
-							monthStats.barRev += item.price || 0;
-							monthStats.barCost += costPerItem;
-						} else {
-							dailyFinancialData[dateStr].bbqRev += item.price || 0;
-							dailyFinancialData[dateStr].bbqCost += costPerItem;
-							monthStats.bbqRev += item.price || 0;
-							monthStats.bbqCost += costPerItem;
-						}
-					});
-				}
+				// 以訂單總額為主，避免折扣與明細不一致
+				let orderTotal = order.total || 0;
+				dailyFinancialData[dateStr].barRev += orderTotal;
+				dailyFinancialData[dateStr].bbqRev += 0;
+				monthStats.barRev += orderTotal;
+				monthStats.totalRev += orderTotal;
 			}
 		});
 	}
@@ -1718,7 +1712,8 @@ function renderConfidentialCalendar(ownerName) {
 
 	let totalRev = monthStats.barRev + monthStats.bbqRev;
 	let totalCost = monthStats.barCost + monthStats.bbqCost;
-	document.getElementById("monthTotalRev").innerText = `$${totalRev}`;
+	document.getElementById("monthTotalRev").innerText =
+		`$${monthStats.totalRev || totalRev}`;
 	document.getElementById("monthTotalCost").innerText = `-$${totalCost}`;
 	document.getElementById("monthTotalProfit").innerText =
 		`$${totalRev - totalCost}`;
@@ -1798,6 +1793,7 @@ function renderConfidentialCalendar(ownerName) {
 }
 
 function updateFinanceStats(range) {
+	const DAY_MS = 24 * 60 * 60 * 1000;
 	document
 		.querySelectorAll(".finance-controls button")
 		.forEach((b) => b.classList.remove("active"));
@@ -1820,23 +1816,33 @@ function updateFinanceStats(range) {
 	let end = null;
 	let titleText = "";
 	let customDate = null;
+	let bizStart = null;
+	let bizEnd = null;
 
 	if (range === "day") {
 		start.setHours(5, 0, 0, 0);
 		end = new Date(start);
 		end.setDate(end.getDate() + 1);
 		titleText = "🏠 全店總計 (今日)";
+		bizStart = getBusinessDate(start);
+		bizEnd = bizStart + DAY_MS;
 	} else if (range === "week") {
 		let day = start.getDay() || 7;
-		start.setHours(-24 * (day - 1));
+		start.setDate(start.getDate() - (day - 1));
 		start.setHours(5, 0, 0, 0);
-		end = new Date();
+		end = new Date(start);
+		end.setDate(end.getDate() + 7);
 		titleText = "🏠 全店總計 (本周)";
+		bizStart = getBusinessDate(start);
+		bizEnd = bizStart + 7 * DAY_MS;
 	} else if (range === "month") {
 		start.setDate(1);
 		start.setHours(5, 0, 0, 0);
-		end = new Date();
+		end = new Date(start);
+		end.setMonth(end.getMonth() + 1);
 		titleText = "🏠 全店總計 (本月)";
+		bizStart = getBusinessDate(start);
+		bizEnd = getBusinessDate(end);
 	} else if (range === "custom") {
 		let btn = document.getElementById("finBtnCustom");
 		let dateStr = btn && btn.dataset.date ? btn.dataset.date : "";
@@ -1850,54 +1856,76 @@ function updateFinanceStats(range) {
 		end = new Date(customDate);
 		end.setDate(end.getDate() + 1);
 		titleText = `🏠 全店總計 (${dateStr || "自選日"})`;
+		bizStart = getBusinessDate(start);
+		bizEnd = bizStart + DAY_MS;
 	}
 
-	let stats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 };
+	let stats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0, totalRev: 0 };
 
 	if (Array.isArray(historyOrders)) {
 		historyOrders.forEach((order) => {
 			if (!order) return;
 			let t = getDateFromOrder(order);
-			if (t.getHours() < 5) t.setDate(t.getDate() - 1);
+			let biz = getBusinessDate(t);
 
-			if (t >= start && (!end || t < end)) {
-				if (order.items && Array.isArray(order.items)) {
-					order.items.forEach((item) => {
-						let cost = getCostByItemName(item.name);
-						let name = item.name.replace(" (招待)", "").trim();
-						let type = getItemCategoryType(name);
+			if (
+				bizStart !== null &&
+				bizEnd !== null &&
+				biz >= bizStart &&
+				biz < bizEnd
+			) {
+				let items = Array.isArray(order.items) ? order.items : [];
+				let total = order.total || 0;
+				let priceSum = items.reduce(
+					(sum, it) => sum + (it.price ? it.price : 0),
+					0,
+				);
+				let factor = priceSum > 0 ? total / priceSum : 0;
+				stats.totalRev += total;
 
-						if (type === "bar") {
-							stats.barRev += item.price || 0;
-							stats.barCost += cost;
-						} else {
-							stats.bbqRev += item.price || 0;
-							stats.bbqCost += cost;
-						}
-					});
-				}
+				items.forEach((item) => {
+					let cost = getCostByItemName(item.name);
+					let name = item.name.replace(" (招待)", "").trim();
+					let type = getItemCategoryType(name);
+					let itemPrice = item.price ? item.price : 0;
+					let revenueShare = priceSum > 0 ? itemPrice * factor : itemPrice;
+
+					if (type === "bar") {
+						stats.barRev += revenueShare;
+						stats.barCost += cost;
+					} else {
+						stats.bbqRev += revenueShare;
+						stats.bbqCost += cost;
+					}
+				});
 			}
 		});
 	}
 
 	document.getElementById("financeTitle").innerText = titleText;
 
-	document.getElementById("monthBarRev").innerText = `$${stats.barRev}`;
-	document.getElementById("monthBarCost").innerText = `-$${stats.barCost}`;
+	document.getElementById("monthBarRev").innerText =
+		`$${Math.round(stats.barRev)}`;
+	document.getElementById("monthBarCost").innerText =
+		`-$${Math.round(stats.barCost)}`;
 	document.getElementById("monthBarProfit").innerText =
-		`$${stats.barRev - stats.barCost}`;
+		`$${Math.round(stats.barRev - stats.barCost)}`;
 
-	document.getElementById("monthBbqRev").innerText = `$${stats.bbqRev}`;
-	document.getElementById("monthBbqCost").innerText = `-$${stats.bbqCost}`;
+	document.getElementById("monthBbqRev").innerText =
+		`$${Math.round(stats.bbqRev)}`;
+	document.getElementById("monthBbqCost").innerText =
+		`-$${Math.round(stats.bbqCost)}`;
 	document.getElementById("monthBbqProfit").innerText =
-		`$${stats.bbqRev - stats.bbqCost}`;
+		`$${Math.round(stats.bbqRev - stats.bbqCost)}`;
 
 	let totalRev = stats.barRev + stats.bbqRev;
 	let totalCost = stats.barCost + stats.bbqCost;
-	document.getElementById("monthTotalRev").innerText = `$${totalRev}`;
-	document.getElementById("monthTotalCost").innerText = `-$${totalCost}`;
+	document.getElementById("monthTotalRev").innerText =
+		`$${Math.round(stats.totalRev || totalRev)}`;
+	document.getElementById("monthTotalCost").innerText =
+		`-$${Math.round(totalCost)}`;
 	document.getElementById("monthTotalProfit").innerText =
-		`$${totalRev - totalCost}`;
+		`$${Math.round((stats.totalRev || totalRev) - totalCost)}`;
 }
 
 function showOwnerDetailedOrders(year, month, day) {
