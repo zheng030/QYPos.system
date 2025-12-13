@@ -1224,6 +1224,12 @@ function removeFromPay(index) {
 function closeCheckoutModal() {
 	checkoutModal.style.display = "none";
 }
+function confirmPayment() {
+	let finalSplit = calcSplitTotal();
+	if (!confirm(`確認收款 $${finalSplit} 嗎？`)) return;
+	checkoutAll(finalSplit);
+	closeCheckoutModal();
+}
 function updateDiscPreview() {
 	let val = parseFloat(document.getElementById("discInput").value);
 	if (isNaN(val) || val <= 0 || val > 100) {
