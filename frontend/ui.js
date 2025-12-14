@@ -1994,6 +1994,47 @@ function showToast(message) {
 function closeSummaryModal() {
 	summaryModal.style.display = "none";
 }
+
+function openChangePasswordModal(ownerName) {
+	document.getElementById("pwdOwnerName").innerText = ownerName;
+	document.getElementById("oldPwd").value = "";
+	document.getElementById("newPwd").value = "";
+	document.getElementById("confirmPwd").value = "";
+	changePasswordModal.style.display = "flex";
+}
+
+function closeChangePasswordModal() {
+	changePasswordModal.style.display = "none";
+}
+
+function confirmChangePassword() {
+	let ownerName = document.getElementById("pwdOwnerName").innerText;
+	let oldPwd = document.getElementById("oldPwd").value;
+	let newPwd = document.getElementById("newPwd").value;
+	let confirmPwd = document.getElementById("confirmPwd").value;
+
+	if (!OWNER_PASSWORDS || OWNER_PASSWORDS[ownerName] === undefined) {
+		alert("找不到該帳號");
+		return;
+	}
+	if (oldPwd !== OWNER_PASSWORDS[ownerName]) {
+		alert("舊密碼錯誤");
+		return;
+	}
+	if (!newPwd) {
+		alert("請輸入新密碼");
+		return;
+	}
+	if (newPwd !== confirmPwd) {
+		alert("兩次新密碼不一致");
+		return;
+	}
+
+	OWNER_PASSWORDS[ownerName] = newPwd;
+	saveAllToCloud();
+	alert("✅ 密碼已更新");
+	closeChangePasswordModal();
+}
 window.toggleDetail = function (id) {
 	let el = document.getElementById(id);
 	if (el.style.display === "none") {
