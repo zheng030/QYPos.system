@@ -1690,12 +1690,40 @@ function renderConfidentialCalendar(ownerName) {
 				if (!dailyCounts[dayKey]) dailyCounts[dayKey] = 0;
 				dailyCounts[dayKey]++;
 
-				// 以訂單總額為主，避免折扣與明細不一致
-				let orderTotal = order.total || 0;
-				dailyFinancialData[dateStr].barRev += orderTotal;
-				dailyFinancialData[dateStr].bbqRev += 0;
-				monthStats.barRev += orderTotal;
-				monthStats.totalRev += orderTotal;
+				// 依明細加總並用最後一筆調整差額（僅加減，避免浮點誤差）
+				let items = Array.isArray(order.items) ? order.items : [];
+				let total = order.total || 0;
+				let revenues = [];
+				let priceSum = 0;
+				items.forEach((item) => {
+					let itemPrice = item.price ? item.price : 0;
+					revenues.push(itemPrice);
+					priceSum += itemPrice;
+				});
+				if (revenues.length > 0) {
+					let diff = priceSum - total;
+					let lastIdx = revenues.length - 1;
+					revenues[lastIdx] = revenues[lastIdx] - diff;
+				}
+
+				items.forEach((item, idx) => {
+					let costPerItem = getCostByItemName(item.name);
+					let rawName = item.name.replace(" (招待)", "").trim();
+					let type = getItemCategoryType(rawName);
+					let revenueShare = revenues[idx] || 0;
+					if (type === "bar") {
+						dailyFinancialData[dateStr].barRev += revenueShare;
+						dailyFinancialData[dateStr].barCost += costPerItem;
+						monthStats.barRev += revenueShare;
+						monthStats.barCost += costPerItem;
+					} else {
+						dailyFinancialData[dateStr].bbqRev += revenueShare;
+						dailyFinancialData[dateStr].bbqCost += costPerItem;
+						monthStats.bbqRev += revenueShare;
+						monthStats.bbqCost += costPerItem;
+					}
+				});
+				monthStats.totalRev += total;
 			}
 		});
 	}
@@ -1876,19 +1904,25 @@ function updateFinanceStats(range) {
 			) {
 				let items = Array.isArray(order.items) ? order.items : [];
 				let total = order.total || 0;
-				let priceSum = items.reduce(
-					(sum, it) => sum + (it.price ? it.price : 0),
-					0,
-				);
-				let factor = priceSum > 0 ? total / priceSum : 0;
+				let revenues = [];
+				let priceSum = 0;
+				items.forEach((it) => {
+					let p = it.price ? it.price : 0;
+					revenues.push(p);
+					priceSum += p;
+				});
+				if (revenues.length > 0) {
+					let diff = priceSum - total;
+					let lastIdx = revenues.length - 1;
+					revenues[lastIdx] = revenues[lastIdx] - diff;
+				}
 				stats.totalRev += total;
 
-				items.forEach((item) => {
+				items.forEach((item, idx) => {
 					let cost = getCostByItemName(item.name);
 					let name = item.name.replace(" (招待)", "").trim();
 					let type = getItemCategoryType(name);
-					let itemPrice = item.price ? item.price : 0;
-					let revenueShare = priceSum > 0 ? itemPrice * factor : itemPrice;
+					let revenueShare = revenues[idx] || 0;
 
 					if (type === "bar") {
 						stats.barRev += revenueShare;
