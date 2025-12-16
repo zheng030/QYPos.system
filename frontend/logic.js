@@ -16,11 +16,6 @@ let tableSplitCounters = {};
 let itemCosts = {};
 let itemPrices = {};
 let inventory = {};
-const FOOD_OPTION_VARIANTS = {
-	炒飯: ["牛", "豬", "雞", "蝦仁"],
-	日式炒烏龍麵: ["牛", "豬", "雞"],
-	親子丼: ["牛", "豬", "雞"],
-};
 
 let ownerPasswords = { 景偉: "0001", 小飛: "0002", 威志: "0003" };
 let incomingOrders = {};
@@ -185,6 +180,49 @@ function getCostByItemName(itemName) {
 	return 0;
 }
 
+function getItemSalesStats(startTime, endTime) {
+	let stats = {};
+	if (!historyOrders || historyOrders.length === 0) return { bar: [], bbq: [] };
+
+	historyOrders.forEach((order) => {
+		if (!order || !order.items) return;
+		const orderTime = getDateFromOrder(order);
+		if (orderTime >= startTime && orderTime < endTime) {
+			order.items.forEach((item) => {
+				let name = item.name
+					.split(" <")[0]
+					.replace(/\s*\(招待\)$/, "")
+					.trim()
+					.replace(/\s*[\(（].*?[\)）]$/, "")
+					.trim();
+				const count = item.count || 1;
+				if (name) {
+					if (!stats[name]) stats[name] = 0;
+					stats[name] += count;
+				}
+			});
+		}
+	});
+
+	let barList = [];
+	let bbqList = [];
+
+	for (const [name, count] of Object.entries(stats)) {
+		if (inventory[name] === false) continue;
+		const itemType = getItemCategoryType(name);
+		if (itemType === "bar") {
+			barList.push({ name, count });
+		} else if (itemType === "bbq") {
+			bbqList.push({ name, count });
+		}
+	}
+
+	barList.sort((a, b) => b.count - a.count);
+	bbqList.sort((a, b) => b.count - a.count);
+
+	return { bar: barList, bbq: bbqList };
+}
+
 /* ========== 資料庫監聽與初始化 ========== */
 
 function initRealtimeData() {
@@ -328,7 +366,7 @@ function refreshData() {
 		let localHist = JSON.parse(localStorage.getItem("orderHistory"));
 		if (localHist && (!historyOrders || historyOrders.length === 0))
 			historyOrders = localHist;
-	} catch (e) {}
+	} catch (e) { }
 }
 
 function checkLogin() {
@@ -358,18 +396,47 @@ function updateItemData(name, type, value) {
 function toggleStockStatus(name, isAvailable) {
 	if (!inventory) inventory = {};
 	inventory[name] = isAvailable;
+
+	// UI Update
+	let el = document.getElementById(`status-main-${name}`);
+	if (el) {
+		el.innerText = isAvailable ? "有貨" : "售完";
+		el.style.color = isAvailable ? "#06d6a0" : "#ef476f";
+	}
+
 	saveAllToCloud();
 }
 
 function toggleOptionStock(name, option, isAvailable) {
 	if (!inventory) inventory = {};
 	inventory[`${name}::${option}`] = isAvailable;
+
+	// UI Update (Self)
+	let optEl = document.getElementById(`status-opt-${name}::${option}`);
+	if (optEl) {
+		optEl.innerText = isAvailable ? "顯示" : "隱藏";
+		optEl.style.color = isAvailable ? "#06d6a0" : "#ef476f";
+	}
+
 	// 若全關，主品項也視為下架；若開啟其中一個，主品項恢復上架
 	if (FOOD_OPTION_VARIANTS[name]) {
 		let hasAny = FOOD_OPTION_VARIANTS[name].some(
 			(opt) => inventory[`${name}::${opt}`] !== false,
 		);
 		inventory[name] = hasAny;
+
+		// UI Update (Parent)
+		let parentEl = document.getElementById(`status-main-${name}`);
+		if (parentEl) {
+			parentEl.innerText = hasAny ? "有貨" : "售完";
+			parentEl.style.color = hasAny ? "#06d6a0" : "#ef476f";
+			// Update parent checkbox
+			let label = parentEl.nextElementSibling;
+			if (label) {
+				let cb = label.querySelector("input");
+				if (cb) cb.checked = hasAny;
+			}
+		}
 	}
 	saveAllToCloud();
 }
@@ -377,9 +444,30 @@ function toggleOptionStock(name, option, isAvailable) {
 function toggleParentWithOptions(name, isAvailable) {
 	if (!inventory) inventory = {};
 	inventory[name] = isAvailable;
+
+	// UI Update (Self)
+	let parentEl = document.getElementById(`status-main-${name}`);
+	if (parentEl) {
+		parentEl.innerText = isAvailable ? "有貨" : "售完";
+		parentEl.style.color = isAvailable ? "#06d6a0" : "#ef476f";
+	}
+
 	if (FOOD_OPTION_VARIANTS[name]) {
 		FOOD_OPTION_VARIANTS[name].forEach((opt) => {
 			inventory[`${name}::${opt}`] = isAvailable;
+
+			// UI Update (Children)
+			let optEl = document.getElementById(`status-opt-${name}::${opt}`);
+			if (optEl) {
+				optEl.innerText = isAvailable ? "顯示" : "隱藏";
+				optEl.style.color = isAvailable ? "#06d6a0" : "#ef476f";
+				// Update child checkbox
+				let label = optEl.nextElementSibling;
+				if (label) {
+					let cb = label.querySelector("input");
+					if (cb) cb.checked = isAvailable;
+				}
+			}
 		});
 	}
 	saveAllToCloud();
@@ -972,9 +1060,7 @@ function openFoodModal(name, price, type) {
 	tempCustomItem = { name, price, type };
 	document.getElementById("foodTitle").innerText = name;
 	let meatOptions = document.getElementById("meatOptions");
-	let variants =
-		FOOD_OPTION_VARIANTS[name] ||
-		(type === "friedRice" ? ["牛", "豬", "雞", "蝦仁"] : ["牛", "豬", "雞"]);
+	let variants = FOOD_OPTION_VARIANTS[name] || [];
 	let available = getAvailableVariants(name);
 	if (available) variants = available;
 	if (variants.length === 0) {
@@ -1211,9 +1297,8 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${
-				item.isTreat ? " (招待)" : ""
-			}</span><span>${priceHtml}</span></div>`;
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+				}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
 		rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
@@ -1223,9 +1308,8 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${
-				item.isTreat ? " (招待)" : ""
-			}</span><span>${priceHtml}</span></div>`;
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+				}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
 	document.getElementById("payingList").innerHTML = rightHTML;

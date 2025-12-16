@@ -13,8 +13,7 @@
 
 <body ontouchstart="">
 
-    <div id="receipt-print-area"
-        style="position: absolute; top: -9999px; left: -9999px; width: 0; height: 0; overflow: hidden;"></div>
+    <div id="receipt-print-area" class="print-area-hidden"></div>
 
     <div id="toast-container"></div>
 
@@ -24,7 +23,7 @@
             <p>請輸入員工密碼</p>
             <input type="password" id="loginPass" placeholder="密碼" onkeydown="if(event.keyCode==13) checkLogin()">
             <button onclick="checkLogin()" class="btn-effect">進入系統</button>
-            <p id="loginError" style="color:#ef476f; display:none; margin-top:10px;">❌ 密碼錯誤</p>
+            <p id="loginError" class="login-error-msg">❌ 密碼錯誤</p>
         </div>
     </div>
 
@@ -32,54 +31,54 @@
 
         <div id="home">
             <div class="menu-btn" onclick="openTableSelect()">
-                <span style="font-size: 32px;">🛒</span>
+                <span class="menu-icon">🛒</span>
                 <span>點餐系統</span>
             </div>
             <div class="menu-btn" onclick="openPage('historyPage')">
-                <span style="font-size: 32px;">📋</span>
+                <span class="menu-icon">📋</span>
                 <span>今日訂單</span>
             </div>
             <div class="menu-btn" onclick="openPage('reportPage')">
-                <span style="font-size: 32px;">📊</span>
+                <span class="menu-icon">📊</span>
                 <span>營業報表</span>
             </div>
 
             <div class="menu-btn" onclick="openOwnerLogin('cost')">
-                <span style="font-size: 32px;">🤫</span>
+                <span class="menu-icon">🤫</span>
                 <span>機密 (輸入成本)</span>
             </div>
             <div class="menu-btn" onclick="openOwnerLogin('finance')">
-                <span style="font-size: 32px;">🔐</span>
+                <span class="menu-icon">🔐</span>
                 <span>權限 (財務/詳單)</span>
             </div>
             <div class="menu-btn" onclick="openSettingsPage()">
-                <span style="font-size: 32px;">🛠️</span>
+                <span class="menu-icon">🛠️</span>
                 <span>系統設定</span>
             </div>
 
             <div class="menu-btn" onclick="openProductPage()">
-                <span style="font-size: 32px;">📦</span>
+                <span class="menu-icon">📦</span>
                 <span>商品上架(庫存)</span>
             </div>
-            <div class="menu-btn" onclick="openItemStatsModal()">
-                <span style="font-size: 32px;">📈</span>
+            <div class="menu-btn" onclick="openItemStatsPage()">
+                <span class="menu-icon">📈</span>
                 <span>歷史銷量</span>
             </div>
             <div class="menu-btn">
-                <span style="font-size: 32px;">🔍</span>
+                <span class="menu-icon">🔍</span>
                 <span>商品搜尋</span>
             </div>
 
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
+            <div class="menu-btn menu-btn-disabled">
+                <span class="menu-icon">✨</span>
                 <span>(預留功能)</span>
             </div>
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
+            <div class="menu-btn menu-btn-disabled">
+                <span class="menu-icon">✨</span>
                 <span>(預留功能)</span>
             </div>
-            <div class="menu-btn" style="opacity:0.5; cursor:default;">
-                <span style="font-size: 32px;">✨</span>
+            <div class="menu-btn menu-btn-disabled">
+                <span class="menu-icon">✨</span>
                 <span>(預留功能)</span>
             </div>
         </div>
@@ -87,8 +86,7 @@
         <div id="tableSelect">
             <div class="header-row">
                 <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
-                <button class="btn-effect" onclick="toggleQrMode()"
-                    style="background: #6610f2; color: white; padding: 10px 20px; border-radius: 50px; font-weight: bold; font-size: 15px; box-shadow: 0 4px 10px rgba(102,16,242,0.3);">
+                <button class="btn-effect qr-code-btn" onclick="toggleQrMode()">
                     📲 顯示 QR Code
                 </button>
                 <div id="systemTime">載入中...</div>
@@ -101,8 +99,7 @@
             <div class="order-header">
                 <button class="back btn-effect" onclick="saveAndExit()">⬅ 取消 / 返回</button>
                 <div class="title-group">
-                    <span class="title" style="border:none; padding:0; margin:0;">🛒 點餐中 <span
-                            id="seatLabel"></span></span>
+                    <span class="title title-compact">🛒 點餐中 <span id="seatLabel"></span></span>
                     <div id="seatTimer"></div>
                 </div>
             </div>
@@ -115,10 +112,9 @@
             <div id="menuGrid"></div>
 
             <div id="cart-container">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin:0; font-size: 20px; color: #2b2d42;">🧾 訂單明細</h2>
-                    <button onclick="toggleCartView()" class="btn-effect"
-                        style="background:#e2e8f0; color:#475569; border-radius:20px; padding:6px 15px; font-size:14px; font-weight:bold;">
+                <div class="cart-header-row">
+                    <h2 class="cart-header-title">🧾 訂單明細</h2>
+                    <button onclick="toggleCartView()" class="btn-effect view-toggle-btn-small">
                         👁️ 切換視圖
                     </button>
                 </div>
@@ -163,13 +159,10 @@
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">📜 歷史銷售統計 (月報)</div>
             <div class="calendar-wrapper" style="margin-bottom: 20px;">
-                <div class="calendar-header"
-                    style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px;">
-                    <button onclick="changeStatsMonth(-1)" class="btn-effect"
-                        style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">◀</button>
-                    <h2 id="statsMonthTitle" style="margin:0;"></h2>
-                    <button onclick="changeStatsMonth(1)" class="btn-effect"
-                        style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">▶</button>
+                <div class="calendar-header d-flex justify-between items-center" style="padding: 0 20px;">
+                    <button onclick="changeStatsMonth(-1)" class="btn-effect nav-circle-btn">◀</button>
+                    <h2 id="statsMonthTitle" class="m-0"></h2>
+                    <button onclick="changeStatsMonth(1)" class="btn-effect nav-circle-btn">▶</button>
                 </div>
             </div>
             <div class="stats-body">
@@ -231,7 +224,7 @@
                 </div>
                 <div id="calendarGrid" class="calendar-grid"></div>
             </div>
-            <div style="margin-top:20px; color:#888; font-size:14px;">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
+            <div class="stats-note">* 統計時間以「營業日」計算 (凌晨5點前算前一日)</div>
         </div>
 
         <div id="confidentialPage">
@@ -239,13 +232,10 @@
             <div class="title">🤫 <span id="ownerWelcome"></span> <span id="confidentialTitle"></span></div>
             <div id="financeDashboard" class="finance-container" style="display:none;"></div>
             <div id="financeCalendarSection" style="display:none;">
-                <div class="calendar-header"
-                    style="display: flex; justify-content: space-between; align-items: center; padding: 0 10px; margin-bottom: 15px;">
-                    <button onclick="changeOwnerMonth(-1)" class="btn-effect"
-                        style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">◀</button>
-                    <h2 id="finCalendarTitle" style="margin:0; font-size:22px;"></h2>
-                    <button onclick="changeOwnerMonth(1)" class="btn-effect"
-                        style="background:#e9ecef; border-radius:50%; width:40px; height:40px; font-weight:bold;">▶</button>
+                <div class="calendar-header d-flex justify-between items-center mb-15" style="padding: 0 10px;">
+                    <button onclick="changeOwnerMonth(-1)" class="btn-effect nav-circle-btn">◀</button>
+                    <h2 id="finCalendarTitle" class="m-0 text-22"></h2>
+                    <button onclick="changeOwnerMonth(1)" class="btn-effect nav-circle-btn">▶</button>
                 </div>
                 <div class="finance-layout">
                     <div class="calendar-container-left">
@@ -293,10 +283,8 @@
                     </div>
                 </div>
                 <div id="ownerOrderListSection" style="margin-top:20px; display:none;">
-                    <h3 id="ownerSelectedDateTitle"
-                        style="border-bottom: 2px solid #007bff; padding-bottom: 10px; color:#007bff;"></h3>
-                    <div class="history-header-row"
-                        style="grid-template-columns: 0.5fr 0.8fr 2fr 0.8fr 0.8fr auto !important;">
+                    <h3 id="ownerSelectedDateTitle" class="owner-title-blue"></h3>
+                    <div class="history-header-row owner-grid-header">
                         <span>#</span><span>桌號</span><span>內容</span><span>時間</span><span>金額</span><span>操作</span>
                     </div>
                     <div id="ownerOrderBox"></div>
@@ -306,8 +294,8 @@
                 <h3 id="costEditTitle">📝 成本輸入</h3>
                 <div class="cost-header-row">
                     <span>品項名稱</span>
-                    <span style="text-align:right;">售價 (改)</span>
-                    <span style="text-align:right;">成本 (改)</span>
+                    <span class="cost-header-text">售價 (改)</span>
+                    <span class="cost-header-text">成本 (改)</span>
                 </div>
                 <div id="costEditorList"></div>
             </div>
@@ -322,25 +310,23 @@
                     <h3>🔑 修改管理員密碼</h3>
                 </div>
                 <div class="owner-buttons">
-                    <button onclick="openChangePasswordModal('景偉')" class="btn-effect owner-btn"
-                        style="background:#e0f2fe; color:#007bff;">👨‍💼 修改 景偉 密碼</button>
-                    <button onclick="openChangePasswordModal('小飛')" class="btn-effect owner-btn"
-                        style="background:#fce7f3; color:#ec4899;">🍸 修改 小飛 密碼</button>
-                    <button onclick="openChangePasswordModal('威志')" class="btn-effect owner-btn"
-                        style="background:#ffedd5; color:#f97316;">🍖 修改 威志 密碼</button>
+                    <button onclick="openChangePasswordModal('景偉')" class="btn-effect owner-btn btn-owner-blue">👨‍💼 修改
+                        景偉 密碼</button>
+                    <button onclick="openChangePasswordModal('小飛')" class="btn-effect owner-btn btn-owner-pink">🍸 修改 小飛
+                        密碼</button>
+                    <button onclick="openChangePasswordModal('威志')" class="btn-effect owner-btn btn-owner-orange">🍖 修改
+                        威志 密碼</button>
                 </div>
             </div>
 
             <div class="settings-card danger-zone">
-                <div class="settings-header" style="border-bottom-color: #fecaca;">
-                    <h3 style="color:#dc2626;">⚠️ 危險操作區</h3>
+                <div class="settings-header danger-header">
+                    <h3 class="danger-title">⚠️ 危險操作區</h3>
                 </div>
-                <div style="padding: 20px;">
-                    <button onclick="fixAllOrderIds()" class="btn-effect"
-                        style="width:100%; padding:15px; font-size:16px; background:#0ea5e9; color:white; border-radius:10px; font-weight:bold; margin-bottom:15px;">🔄
+                <div class="p-20">
+                    <button onclick="fixAllOrderIds()" class="btn-effect danger-btn-blue">🔄
                         一鍵重整歷史單號</button>
-                    <button onclick="clearAllData()" class="btn-effect"
-                        style="width:100%; padding:15px; font-size:16px; background:#dc2626; color:white; border-radius:10px; font-weight:bold;">🗑️
+                    <button onclick="clearAllData()" class="btn-effect danger-btn-red">🗑️
                         一鍵清空所有訂單</button>
                 </div>
             </div>
@@ -349,8 +335,8 @@
         <div id="productPage" style="display:none;">
             <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
             <div class="title">📦 商品庫存管理 (上架/下架)</div>
-            <div style="background:white; padding:20px; border-radius:15px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-                <p style="color:#666; margin-bottom:20px;">點擊類別展開，切換開關可設定商品狀態。關閉後前台與客人端將顯示售完。</p>
+            <div class="product-mgmt-box">
+                <p class="product-mgmt-desc">點擊類別展開，切換開關可設定商品狀態。關閉後前台與客人端將顯示售完。</p>
                 <div id="productManagementList"></div>
             </div>
         </div>
@@ -359,9 +345,9 @@
             <div class="modal-content">
                 <h2>📅 本日營業結算</h2>
                 <div class="summary-item"><span>📦 總訂單數</span><span id="sumCount">0 單</span></div>
-                <div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" style="color:#ef476f;">$0</span></div>
+                <div class="summary-item"><span>💰 營業總額</span><span id="sumTotal" class="text-danger">$0</span></div>
                 <hr>
-                <p style="color:#666; font-size:14px;">確認後將完成日結，資料會自動寫入報表。</p>
+                <p class="text-muted text-14">確認後將完成日結，資料會自動寫入報表。</p>
                 <div class="modal-actions"><button onclick="closeSummaryModal()"
                         class="btn-effect cancel">取消</button><button onclick="confirmClearData()"
                         class="btn-effect confirm-success">✅ 確認日結</button></div>
@@ -371,14 +357,13 @@
             <div class="modal-content">
                 <h2>💰 結帳確認</h2>
                 <div class="payment-info">
-                    <div class="pay-row"><span>應收金額 <small id="payDiscLabel" style="color:#888;"></small>：</span><span
-                            id="payOriginal" style="font-weight:bold;">$0</span></div>
+                    <div class="pay-row"><span>應收金額 <small id="payDiscLabel" class="pay-row-label"></small>：</span><span
+                            id="payOriginal" class="font-bold">$0</span></div>
                     <div class="pay-row"><span>$ 折讓/抹零：</span><input type="number" id="payAllowance" value=""
-                            oninput="calcFinalPay()" placeholder="輸入金額" style="color:#ef476f;"
-                            class="modal-input big-input"></div>
+                            oninput="calcFinalPay()" placeholder="輸入金額" class="modal-input big-input text-danger"></div>
                     <hr>
                     <div class="pay-row large"><span>實收金額：</span><input type="number" id="payFinal"
-                            style="color:#ef476f; font-weight:bold;" class="modal-input big-input"></div>
+                            class="modal-input big-input text-danger font-bold"></div>
                 </div>
                 <div class="modal-actions"><button onclick="closePaymentModal()"
                         class="btn-effect cancel">取消</button><button onclick="confirmCheckout()"
@@ -455,39 +440,37 @@
         </div>
 
         <div id="ownerLoginModal" class="modal">
-            <div class="modal-content" style="padding: 40px; border-radius: 20px;">
-                <div class="modal-header" style="border:none; padding-bottom: 10px;">
-                    <h2 style="font-size: 28px; color: #333;">🔐 請選擇身分</h2>
-                    <p style="color:#888; font-size:14px; margin-top:5px;">請點擊您的帳號並輸入密碼</p>
+            <div class="modal-content modal-content-owner">
+                <div class="modal-header border-none pb-10">
+                    <h2 class="text-28 text-dark">🔐 請選擇身分</h2>
+                    <p class="text-muted text-14 mt-5">請點擊您的帳號並輸入密碼</p>
                 </div>
-                <div class="modal-body" style="padding-top: 20px;">
-                    <div class="owner-buttons" style="display:flex; flex-direction:column; gap:15px;">
-                        <button onclick="checkOwner('景偉')" class="btn-effect owner-btn"
-                            style="padding:15px; font-size:18px; border-radius:12px; background:#e0f2fe; color:#007bff; display:flex; align-items:center; justify-content:center; gap:10px;">
-                            <span style="font-size:24px;">👨‍💼</span> 景偉 (總管)
+                <div class="modal-body pt-20">
+                    <div class="owner-buttons d-flex flex-column gap-15">
+                        <button onclick="checkOwner('景偉')" class="btn-effect owner-btn owner-login-btn btn-owner-blue">
+                            <span class="text-24">👨‍💼</span> 景偉 (總管)
                         </button>
-                        <button onclick="checkOwner('小飛')" class="btn-effect owner-btn"
-                            style="padding:15px; font-size:18px; border-radius:12px; background:#fce7f3; color:#ec4899; display:flex; align-items:center; justify-content:center; gap:10px;">
-                            <span style="font-size:24px;">🍸</span> 小飛 (酒吧)
+                        <button onclick="checkOwner('小飛')" class="btn-effect owner-btn owner-login-btn btn-owner-pink">
+                            <span class="text-24">🍸</span> 小飛 (酒吧)
                         </button>
-                        <button onclick="checkOwner('威志')" class="btn-effect owner-btn"
-                            style="padding:15px; font-size:18px; border-radius:12px; background:#ffedd5; color:#f97316; display:flex; align-items:center; justify-content:center; gap:10px;">
-                            <span style="font-size:24px;">🍖</span> 威志 (燒烤)
+                        <button onclick="checkOwner('威志')"
+                            class="btn-effect owner-btn owner-login-btn btn-owner-orange">
+                            <span class="text-24">🍖</span> 威志 (燒烤)
                         </button>
                     </div>
                 </div>
-                <button onclick="closeOwnerModal()" class="btn-effect"
-                    style="margin-top:20px; background:transparent; color:#999; width:100%;">取消</button>
+                <button onclick="closeOwnerModal()" class="btn-effect mt-20 wide btn-ghost-universal">取消</button>
             </div>
         </div>
 
         <div id="changePasswordModal" class="modal">
             <div class="modal-content">
                 <h2>🔑 修改密碼 - <span id="pwdOwnerName"></span></h2>
-                <div style="margin-top:15px;"><input type="password" id="oldPwd" placeholder="輸入舊密碼"
-                        class="pwd-input modal-input"><input type="password" id="newPwd" placeholder="輸入新密碼"
-                        class="pwd-input modal-input"><input type="password" id="confirmPwd" placeholder="再次確認新密碼"
-                        class="pwd-input modal-input"></div>
+                <div class="pwd-input-container">
+                    <input type="password" id="oldPwd" placeholder="輸入舊密碼" class="pwd-input modal-input">
+                    <input type="password" id="newPwd" placeholder="輸入新密碼" class="pwd-input modal-input">
+                    <input type="password" id="confirmPwd" placeholder="再次確認新密碼" class="pwd-input modal-input">
+                </div>
                 <div class="modal-actions"><button onclick="closeChangePasswordModal()"
                         class="btn-effect cancel">取消</button><button onclick="confirmChangePassword()"
                         class="btn-effect confirm-primary">✅ 確認修改</button></div>
@@ -498,15 +481,13 @@
                 <div class="modal-header">
                     <h2>% 折扣設定</h2>
                 </div>
-                <div class="modal-body" style="text-align: center; padding: 30px 0;">
-                    <div
-                        style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 15px;">
-                        <input type="number" id="discInput" placeholder="輸入折扣額度" class="modal-input big-input"
-                            style="width: 200px; text-align:center;" oninput="updateDiscPreview()"> <span
-                            style="font-size: 24px; font-weight: bold; color: #555;">%</span>
+                <div class="modal-body text-center p-30-0">
+                    <div class="d-flex justify-center items-center gap-10 mb-15">
+                        <input type="number" id="discInput" placeholder="輸入折扣額度"
+                            class="modal-input big-input w-200 text-center" oninput="updateDiscPreview()"> <span
+                            class="discount-percent">%</span>
                     </div>
-                    <p id="discPreviewText"
-                        style="color: #06d6a0; font-weight: bold; font-size: 18px; min-height: 27px;"></p>
+                    <p id="discPreviewText" class="discount-preview"></p>
                 </div>
                 <div class="modal-actions"><button onclick="closeDiscountModal()"
                         class="btn-effect cancel">取消</button><button onclick="confirmDiscount()"
@@ -518,11 +499,11 @@
                 <div class="modal-header">
                     <h2>$ 金額折讓</h2>
                 </div>
-                <div class="modal-body" style="text-align:center; padding:30px 0;">
-                    <p style="font-size:18px; color:#555; margin-bottom:15px;">選擇折讓金額</p>
-                    <div style="display:flex; justify-content:center; align-items:center; gap:10px;"><span
-                            style="font-size:24px; color:#ef476f;">- $</span><input type="number" id="allowInput"
-                            placeholder="輸入金額" class="modal-input big-input" style="width:160px; text-align:center;">
+                <div class="modal-body text-center p-30-0">
+                    <p class="text-18 text-muted mb-15">選擇折讓金額</p>
+                    <div class="d-flex justify-center items-center gap-10"><span class="allowance-symbol">-
+                            $</span><input type="number" id="allowInput" placeholder="輸入金額"
+                            class="modal-input big-input w-160 text-center">
                     </div>
                 </div>
                 <div class="modal-actions"><button onclick="closeAllowanceModal()"
@@ -562,39 +543,44 @@
                         style="background:#6c757d; color:white;">關閉</button></div>
             </div>
         </div>
-        <div id="itemStatsModal" class="modal">
-            <div class="modal-content" style="max-width: 900px; height: 80vh; display: flex; flex-direction: column;">
-                <div class="modal-header">
-                    <h2>📈 商品銷售統計</h2>
+        <div id="itemStatsPage" style="display:none;">
+            <button class="back btn-effect" onclick="goHome()">⬅ 返回主畫面</button>
+            <div class="title">📈 商品銷售統計</div>
+
+            <div class="segment-control-wrapper" style="flex-direction: column; align-items: center;">
+                <div class="segment-control-container" style="width: 420px;">
+                    <div class="segment-highlighter" id="statsHighlighter"></div>
+                    <div class="segment-option active" onclick="renderItemStats('day')" id="statBtnDay">今日</div>
+                    <div class="segment-option" onclick="renderItemStats('week')" id="statBtnWeek">本周</div>
+                    <div class="segment-option" onclick="renderItemStats('month')" id="statBtnMonth">當月</div>
+                    <div class="segment-option" onclick="renderItemStats('custom')" id="statBtnCustom">特定日期</div>
                 </div>
-                <div class="report-controls" style="margin-top: 15px;"><button onclick="renderItemStats('day')"
-                        id="statBtnDay" class="btn-effect active">今日</button><button onclick="renderItemStats('week')"
-                        id="statBtnWeek" class="btn-effect">本周</button><button onclick="renderItemStats('month')"
-                        id="statBtnMonth" class="btn-effect">當月</button></div>
-                <div class="stats-body" style="flex: 1; overflow-y: auto; display: flex; gap: 20px; padding: 10px;">
-                    <div class="stats-column">
-                        <h3
-                            style="background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; padding: 10px; border-radius: 8px; margin-top:0;">
-                            🍺 酒吧部</h3>
-                        <div class="stats-header-row"><span>品項</span><span>數量</span></div>
-                        <div id="statsListBar"></div>
-                    </div>
-                    <div class="stats-column">
-                        <h3
-                            style="background: linear-gradient(135deg, #ff9a9e, #fecfef); color: #333; padding: 10px; border-radius: 8px; margin-top:0;">
-                            🍖 燒烤部</h3>
-                        <div class="stats-header-row"><span>品項</span><span>數量</span></div>
-                        <div id="statsListBbq"></div>
-                    </div>
+
+                <div id="customStatsDateRange" class="segment-control-container"
+                    style="display:none; width: auto; margin-top: 15px; padding: 8px 20px; animation: fadeIn 0.3s ease; align-items: center;">
+                    <input type="date" id="statsStartDate" onchange="renderItemStats('custom')"
+                        style="border:none; background:transparent; font-size:15px; color:#475569; font-weight:bold; font-family:inherit;">
+                    <span style="margin: 0 10px; color: #a1a9b3;">～</span>
+                    <input type="date" id="statsEndDate" onchange="renderItemStats('custom')"
+                        style="border:none; background:transparent; font-size:15px; color:#475569; font-weight:bold; font-family:inherit;">
                 </div>
-                <div class="modal-actions"><button onclick="closeItemStatsModal()" class="btn-effect"
-                        style="background:#6c757d; color:white;">關閉</button></div>
+            </div>
+
+            <div class="stats-page-grid">
+                <div class="stats-card-container">
+                    <div class="stats-card-header bar">🍺 酒吧部</div>
+                    <div id="statsListBar" class="stats-list-content"></div>
+                </div>
+                <div class="stats-card-container">
+                    <div class="stats-card-header bbq">🍖 燒烤部</div>
+                    <div id="statsListBbq" class="stats-list-content"></div>
+                </div>
             </div>
         </div>
         <div id="customModal" class="modal">
-            <div class="modal-content" style="text-align:left;">
+            <div class="modal-content text-left">
                 <div class="modal-header">
-                    <h2 style="text-align:center; margin:0;">🍹 <span id="customTitle">隱藏特調</span>客製化</h2>
+                    <h2 class="custom-title-wrapper">🍹 <span id="customTitle">隱藏特調</span>客製化</h2>
                 </div>
                 <div class="modal-body">
                     <div class="custom-section">
@@ -623,17 +609,16 @@
                     </div>
                     <div id="modalAlcoholSection" class="custom-section">
                         <div class="custom-label">3. 濃度調整 (<span id="alcoholVal">0</span>%)</div><input type="range"
-                            id="alcoholRange" min="0" max="100" step="10" value="0" style="width:100%; margin: 15px 0;"
+                            id="alcoholRange" min="0" max="100" step="10" value="0" class="w-100 my-15"
                             oninput="document.getElementById('alcoholVal').innerText=this.value">
-                        <div
-                            style="display:flex;justify-content:space-between;font-size:12px;color:#888; margin-bottom:10px;">
+                        <div class="flex-between font-12 color-gray mb-10">
                             <span>正常</span><span>加重</span><span>雙倍</span>
                         </div><button id="extraShotBtn" onclick="toggleExtraShot()" class="extra-shot-btn btn-effect">🍺
                             濃度升級 (+$40)</button>
                     </div>
                     <div id="modalNoteSection" class="custom-section" style="display:none;">
                         <div class="custom-label">3. 備註 (選填)</div><textarea id="customNote" rows="2"
-                            placeholder="例如：少冰、不要裝飾..." class="modal-input" style="width:100%;"></textarea>
+                            placeholder="例如：少冰、不要裝飾..." class="modal-input w-100"></textarea>
                     </div>
                 </div>
                 <div class="modal-actions"><button onclick="closeCustomModal()"
@@ -642,11 +627,11 @@
             </div>
         </div>
         <div id="drinkModal" class="modal">
-            <div class="modal-content" style="text-align:left;">
+            <div class="modal-content text-left">
                 <div class="modal-header">
-                    <h2 style="text-align:center; margin:0;">🥤 <span id="drinkTitle">飲料</span>選項</h2>
+                    <h2 class="custom-title-wrapper">🥤 <span id="drinkTitle">飲料</span>選項</h2>
                 </div>
-                <div class="modal-body" style="padding-top: 20px;">
+                <div class="modal-body pt-20">
                     <div id="simpleTempSection" class="custom-section" style="display:none;">
                         <div class="custom-label">溫度選擇</div>
                         <div class="radio-group"><label class="radio-box"><input type="radio" name="simpleTemp"
@@ -691,11 +676,11 @@
             </div>
         </div>
         <div id="foodOptionModal" class="modal">
-            <div class="modal-content" style="text-align:left;">
+            <div class="modal-content text-left">
                 <div class="modal-header">
-                    <h2 style="text-align:center; margin:0;">🍛 <span id="foodTitle">餐點</span>配料</h2>
+                    <h2 class="custom-title-wrapper">🍛 <span id="foodTitle">餐點</span>配料</h2>
                 </div>
-                <div class="modal-body" style="padding-top: 20px;">
+                <div class="modal-body pt-20">
                     <div class="custom-section">
                         <div class="custom-label">請選擇配料：</div>
                         <div class="radio-group nowrap" id="meatOptions"></div>
@@ -708,37 +693,35 @@
         </div>
 
         <div id="qrCodeModal" class="modal">
-            <div class="modal-content" style="text-align: center;">
+            <div class="modal-content text-center">
                 <div class="modal-header">
                     <h2>📲 客人點餐 QR Code</h2>
                 </div>
-                <div style="padding: 20px; display: flex; flex-direction: column; align-items: center;">
-                    <h3 id="qrTableTitle" style="color: #4361ee; margin-bottom: 10px;"></h3>
-                    <div id="qrcode" style="margin: 10px auto;"></div>
-                    <p style="color: #666; font-size: 14px; margin-top: 15px;">請掃描此條碼即可開始點餐</p>
+                <div class="d-flex flex-column items-center p-20">
+                    <h3 id="qrTableTitle" class="text-primary mb-10"></h3>
+                    <div id="qrcode" class="my-10"></div>
+                    <p class="text-muted text-14 mt-15">請掃描此條碼即可開始點餐</p>
                 </div>
-                <div class="modal-actions"><button onclick="closeQrModal()" class="btn-effect"
-                        style="background:#6c757d; color:white;">關閉</button></div>
+                <div class="modal-actions"><button onclick="closeQrModal()"
+                        class="btn-effect bg-gray text-white">關閉</button></div>
             </div>
         </div>
 
         <div id="incomingOrderModal" class="modal">
-            <div class="modal-content" style="border-top: 5px solid #ff006e;">
+            <div class="modal-content incoming-order-content">
                 <div class="modal-header">
-                    <h2 style="color:#ff006e;">🔔 新的顧客訂單！</h2>
+                    <h2 class="text-danger">🔔 新的顧客訂單！</h2>
                 </div>
-                <div class="modal-body" style="text-align: center;">
-                    <h3 id="incomingTableTitle" style="font-size: 24px; margin: 10px 0;"></h3>
-                    <p style="color:#666;">顧客剛剛送出了以下餐點：</p>
-                    <div id="incomingList"
-                        style="background:#fff0f3; padding:15px; border-radius:10px; text-align:left; max-height:200px; overflow-y:auto; margin-bottom:20px;">
+                <div class="modal-body text-center">
+                    <h3 id="incomingTableTitle" class="text-24 mt-10 mb-10"></h3>
+                    <p class="text-muted">顧客剛剛送出了以下餐點：</p>
+                    <div id="incomingList" class="incoming-list">
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button onclick="rejectIncomingOrder()" class="btn-effect" style="background:#f1f5f9; color:#666;">❌
+                    <button onclick="rejectIncomingOrder()" class="btn-effect bg-light-gray">❌
                         忽略/拒絕</button>
-                    <button onclick="confirmIncomingOrder()" class="btn-effect"
-                        style="background:#ff006e; color:white; font-size:18px;">✅ 確認接單</button>
+                    <button onclick="confirmIncomingOrder()" class="btn-effect bg-danger-btn">✅ 確認接單</button>
                 </div>
             </div>
         </div>

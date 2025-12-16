@@ -1,9 +1,9 @@
 /* flavor-plugin.js - 口味選項 Plugin (辣度/檸檬汁) */
-/* 
+/*
  * 此 Plugin 為顧客點餐介面新增口味選項功能
  * - 辣度：不辣、小辣、中辣、大辣 (預設：不辣)
  * - 檸檬汁：要、不要 (預設：要)
- * 
+ *
  * 設計原則：
  * 1. 最小化修改原始檔案 (僅 index.html 加入 2 行引用)
  * 2. 選項以 global 方式顯示在「品項」與「🧾 訂單明細」中間
@@ -55,7 +55,7 @@
                 </div>
                 <div class="flavor-options" id="spice-options">
                     ${FLAVOR_CONFIG.spice.options.map(opt =>
-            `<button type="button" class="flavor-btn ${opt === currentFlavor.spice ? 'selected spice-selected' : ''}" 
+            `<button type="button" class="flavor-btn ${opt === currentFlavor.spice ? 'selected spice-selected' : ''}"
                                  data-type="spice" data-value="${opt}">${opt}</button>`
         ).join('')}
                 </div>
@@ -67,7 +67,7 @@
                 </div>
                 <div class="flavor-options" id="lemon-options">
                     ${FLAVOR_CONFIG.lemon.options.map(opt =>
-            `<button type="button" class="flavor-btn ${opt === currentFlavor.lemon ? 'selected lemon-selected' : ''}" 
+            `<button type="button" class="flavor-btn ${opt === currentFlavor.lemon ? 'selected lemon-selected' : ''}"
                                  data-type="lemon" data-value="${opt}">${opt === '要' ? '要檸檬' : '不要檸檬'}</button>`
         ).join('')}
                 </div>
@@ -112,7 +112,7 @@
         if (!container) return;
 
         const shouldShow = currentCategory && FLAVOR_CONFIG.applicableCategories.includes(currentCategory);
-        
+
         if (shouldShow) {
             container.classList.add('active');
         } else {
@@ -281,7 +281,7 @@
         window.buildCategories = function () {
             // 回到分類列表，清除當前類別
             currentCategory = null;
-            
+
             // 先執行原本邏輯
             const result = originalBuildCategories.call(this);
 
@@ -312,7 +312,7 @@
         window.openItems = function (category) {
             // 記錄當前類別
             currentCategory = category;
-            
+
             // 先執行原本邏輯
             const result = originalOpenItems.call(this, category);
 

@@ -24,6 +24,12 @@ const tables = [
 
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
 
+const FOOD_OPTION_VARIANTS = {
+    炒飯: ["牛", "豬", "雞", "蝦仁"],
+    日式炒烏龍麵: ["牛", "豬", "雞"],
+    親子丼: ["牛", "豬", "雞"],
+};
+
 const menuData = {
     "調酒": {
         "$250 調酒": [{ name: "高球", price: 250 }, { name: "琴通寧", price: 250 }, { name: "螺絲起子", price: 250 }, { name: "藍色珊瑚礁", price: 250 }, { name: "龍舌蘭日出", price: 250 }],
@@ -46,11 +52,11 @@ const menuData = {
         "Popular": [{ name: "米血", price: 25 }, { name: "豆乾", price: 25 }, { name: "小肉豆", price: 25 }, { name: "甜不辣", price: 25 }, { name: "鑫鑫腸", price: 25 }, { name: "糯米腸", price: 25 }, { name: "百頁豆腐", price: 25 }, { name: "豆包", price: 30 }, { name: "肥腸", price: 30 }, { name: "鱈魚丸", price: 30 }, { name: "豬捲蔥", price: 40 }, { name: "豬捲金針菇", price: 40 }, { name: "牛肉串", price: 45 }, { name: "孜然羊肉串", price: 50 }, { name: "香蔥雞腿肉串", price: 55 }, { name: "四季豆", price: 45 }, { name: "青椒", price: 45 }, { name: "香菇", price: 45 }, { name: "杏包菇", price: 45 }, { name: "櫛瓜", price: 45 }],
         "Chicken": [{ name: "雞脖子", price: 25 }, { name: "雞胗", price: 30 }, { name: "雞心", price: 30 }, { name: "雞翅", price: 30 }, { name: "雞屁股", price: 30 }, { name: "雞皮", price: 35 }, { name: "雞腿捲", price: 45 }, { name: "雞胸肉", price: 40 }, { name: "雞軟骨", price: 65 }, { name: "雞腿", price: 80 }, { name: "大熱狗", price: 35 }, { name: "鹹麻吉", price: 35 }, { name: "花生麻吉", price: 35 }],
         "花生糯米腸組合": [{ name: "A 糯米腸+香腸", price: 80 }, { name: "B 糯米腸+鹹豬肉", price: 100 }, { name: "C 糯米腸+香腸+鹹豬肉", price: 150 }],
-        "隱藏限定": [{ name: "碳烤豆腐", price: 40 }, { name: "牛蒡甜不辣", price: 40 }, { name: "沙爹豬", price: 45 }, { name: "洋蔥牛五花", price: 55 }, { name: "香蔥牛五花", price: 55 }, { name: "碳烤雞排", price: 90 }, { name: "麝香牛五花", price: 95 },  { name: "帶骨牛小排", price: 280 }]
+        "隱藏限定": [{ name: "碳烤豆腐", price: 40 }, { name: "牛蒡甜不辣", price: 40 }, { name: "沙爹豬", price: 45 }, { name: "洋蔥牛五花", price: 55 }, { name: "香蔥牛五花", price: 55 }, { name: "碳烤雞排", price: 90 }, { name: "麝香牛五花", price: 95 }, { name: "帶骨牛小排", price: 280 }]
     },
 
-    "主餐": [{ name: "炒飯", price: 90 },{ name: "日式炒烏龍麵", price: 150 }, { name: "親子丼", price: 160 }, { name: "酒蒸蛤蠣", price: 180 }, { name: "唐揚咖哩", price: 220 }, { name: "龍膽石斑魚湯", price: 280 }],
-    "炸物": [{ name: "嫩炸豆腐", price: 80 }, { name: "脆薯", price: 100 }, { name: "雞塊", price: 100 }, { name: "鑫鑫腸", price: 100 }, { name: "雞米花", price: 100 }, { name: "洋蔥圈", price: 100 },  { name: "香酥雞胸", price: 120 },{ name: "酥炸魷魚", price: 200 }, { name: "炸物拼盤", price: 400 }],
+    "主餐": [{ name: "炒飯", price: 90 }, { name: "日式炒烏龍麵", price: 150 }, { name: "親子丼", price: 160 }, { name: "酒蒸蛤蠣", price: 180 }, { name: "唐揚咖哩", price: 220 }, { name: "龍膽石斑魚湯", price: 280 }],
+    "炸物": [{ name: "嫩炸豆腐", price: 80 }, { name: "脆薯", price: 100 }, { name: "雞塊", price: 100 }, { name: "鑫鑫腸", price: 100 }, { name: "雞米花", price: 100 }, { name: "洋蔥圈", price: 100 }, { name: "香酥雞胸", price: 120 }, { name: "酥炸魷魚", price: 200 }, { name: "炸物拼盤", price: 400 }],
     "厚片": [{ name: "花生厚片", price: 80 }, { name: "奶酥厚片", price: 80 }, { name: "蒜香厚片", price: 80 }, { name: "巧克力厚片", price: 80 }, { name: "巧克力棉花糖厚片", price: 80 }],
     "甜點": [{ name: "起司蛋糕", price: 120 }],
     "其他": [{ name: "服務費", price: 100 }, { name: "清潔費", price: 300 }, { name: "碎碎平安", price: 500 }]

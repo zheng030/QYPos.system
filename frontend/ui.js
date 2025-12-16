@@ -20,6 +20,7 @@ function hideAll() {
 		"settingsPage",
 		"pastHistoryPage",
 		"productPage",
+		"itemStatsPage",
 	].forEach((id) => {
 		let el = document.getElementById(id);
 		if (el) el.style.display = "none";
@@ -499,12 +500,7 @@ function openFoodModal(name, price, type) {
 	tempCustomItem = { name, price, type };
 	document.getElementById("foodTitle").innerText = name;
 	let meatOptions = document.getElementById("meatOptions");
-	let variants =
-		typeof FOOD_OPTION_VARIANTS !== "undefined" && FOOD_OPTION_VARIANTS[name]
-			? FOOD_OPTION_VARIANTS[name]
-			: type === "friedRice"
-				? ["牛", "豬", "雞", "蝦仁"]
-				: ["牛", "豬", "雞"];
+	let variants = FOOD_OPTION_VARIANTS[name] || [];
 	let available =
 		typeof getAvailableVariants === "function"
 			? getAvailableVariants(name)
@@ -744,9 +740,8 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${
-				item.isTreat ? " (招待)" : ""
-			}</span><span>${priceHtml}</span></div>`;
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+				}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
 		rightHTML = "<div class='empty-hint'>點擊左側加入</div>";
@@ -756,9 +751,8 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${
-				item.isTreat ? " (招待)" : ""
-			}</span><span>${priceHtml}</span></div>`;
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+				}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
 	document.getElementById("payingList").innerHTML = rightHTML;
@@ -1084,7 +1078,7 @@ function showHistory() {
 			let amountDisplay = `$${o.total}`;
 			if (o.originalTotal && o.originalTotal !== o.total)
 				amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${o.originalTotal}</span> <br> <span style="color:#ef476f;">$${o.total}</span>`;
-			historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')" style="cursor:pointer;"><span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:${displayStyle};"><div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;"><button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`;
+			historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')"><span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:${displayStyle};"><div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;"><button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`;
 		});
 	} catch (e) {
 		console.error("showHistory 錯誤", e);
@@ -1248,6 +1242,163 @@ function renderCalendar() {
 	} catch (e) {
 		console.error("renderCalendar 錯誤", e);
 	}
+}
+
+/* ========== 商品銷售統計 (歷史銷量) ========== */
+function openItemStatsPage() {
+	openPage("itemStatsPage");
+	const activeBtn = document.getElementById("statBtnDay");
+	if (activeBtn) renderItemStats("day", activeBtn);
+}
+
+function renderItemStats(range, button) {
+	const btns = document.querySelectorAll(
+		"#itemStatsPage .segment-option",
+	);
+	btns.forEach((btn) => btn.classList.remove("active"));
+
+	let activeBtn = button;
+	if (!activeBtn) {
+		if (range === "day") activeBtn = document.getElementById("statBtnDay");
+		if (range === "week") activeBtn = document.getElementById("statBtnWeek");
+		if (range === "month") activeBtn = document.getElementById("statBtnMonth");
+		if (range === "custom") activeBtn = document.getElementById("statBtnCustom");
+	}
+
+	const customRangeDiv = document.getElementById("customStatsDateRange");
+	if (range === "custom") {
+		if (customRangeDiv) customRangeDiv.style.display = "flex";
+	} else {
+		if (customRangeDiv) customRangeDiv.style.display = "none";
+	}
+
+	if (activeBtn) {
+		activeBtn.classList.add("active");
+		// Highlighter Logic
+		const highlighter = document.getElementById("statsHighlighter");
+		if (highlighter) {
+			let index = 0;
+			if (range === "week") index = 1;
+			if (range === "month") index = 2;
+			if (range === "custom") index = 3;
+			highlighter.style.transform = `translateX(${index * 100}%)`;
+		}
+	}
+
+	let now = new Date();
+	if (now.getHours() < 5) now.setDate(now.getDate() - 1);
+	let start = new Date(now);
+	let end = null;
+
+	if (range === "day") {
+		start.setHours(5, 0, 0, 0);
+		end = new Date(start);
+		end.setDate(end.getDate() + 1);
+	} else if (range === "week") {
+		let day = start.getDay() || 7;
+		start.setDate(start.getDate() - (day - 1));
+		start.setHours(5, 0, 0, 0);
+		end = new Date(start);
+		end.setDate(end.getDate() + 7);
+	} else if (range === "month") {
+		start.setDate(1);
+		start.setHours(5, 0, 0, 0);
+		end = new Date(start);
+		end.setMonth(end.getMonth() + 1);
+		} else if (range === "custom") {
+			const sInput = document.getElementById("statsStartDate");
+			const eInput = document.getElementById("statsEndDate");
+			
+			const toLocalISO = (d) => {
+				const offset = d.getTimezoneOffset() * 60000;
+				return new Date(d.getTime() - offset).toISOString().split('T')[0];
+			};
+	
+			if(sInput && !sInput.value) {
+				let d = new Date();
+				d.setDate(1);
+				sInput.value = toLocalISO(d);
+			}
+			if(eInput && !eInput.value) {
+				let d = new Date();
+				d.setMonth(d.getMonth() + 1);
+				d.setDate(0);
+				eInput.value = toLocalISO(d);
+			}
+	
+			if (sInput && eInput && sInput.value && eInput.value) {
+				let sParts = sInput.value.split("-");
+				let eParts = eInput.value.split("-");
+				start = new Date(sParts[0], sParts[1]-1, sParts[2]);
+				start.setHours(5, 0, 0, 0);
+				
+				end = new Date(eParts[0], eParts[1]-1, eParts[2]);
+				end.setDate(end.getDate() + 1); // Inclusive
+				end.setHours(5, 0, 0, 0);
+			} else {
+				// Fallback (should not happen due to defaults above)
+				start.setHours(5, 0, 0, 0);
+				end = new Date(start);
+				end.setDate(end.getDate() + 1);
+			}
+		}
+	let counts = {};
+	let startBiz = getBusinessDate(start);
+	let endBiz = getBusinessDate(end);
+
+	if (Array.isArray(historyOrders)) {
+		historyOrders.forEach((order) => {
+			let t = getDateFromOrder(order);
+			let biz = getBusinessDate(t);
+			if (biz >= startBiz && biz < endBiz) {
+				if (Array.isArray(order.items)) {
+					order.items.forEach((item) => {
+						let name = item.name.trim();
+						let qty = item.count || 1;
+						if (!counts[name]) counts[name] = 0;
+						counts[name] += qty;
+					});
+				}
+			}
+		});
+	}
+
+	let sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+	let barList = [];
+	let bbqList = [];
+
+	sorted.forEach(([name, count]) => {
+		let type = getItemCategoryType(name);
+		if (type === "bar") barList.push({ name, count });
+		else bbqList.push({ name, count });
+	});
+
+	const renderList = (list, containerId) => {
+		const container = document.getElementById(containerId);
+		container.innerHTML = "";
+		if (list.length === 0) {
+			container.innerHTML =
+				"<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>";
+			return;
+		}
+		list.forEach((item, index) => {
+			let rankClass = "";
+			if (index === 0) rankClass = "top-1";
+			else if (index === 1) rankClass = "top-2";
+			else if (index === 2) rankClass = "top-3";
+
+			container.innerHTML += `
+                <div class="stats-row-item">
+                    <div class="rank-badge ${rankClass}">${index + 1}</div>
+                    <span class="stats-name">${item.name}</span>
+                    <span class="stats-val">${item.count}</span>
+                </div>
+            `;
+		});
+	};
+
+	renderList(barList, "statsListBar");
+	renderList(bbqList, "statsListBbq");
 }
 
 /* ========== 公開歷史統計 (只顯示銷量) ========== */
@@ -1421,8 +1572,8 @@ function renderProductManagement() {
 				: inventory[item.name] !== false;
 			let checked = isAvailable ? "checked" : "";
 			let statusText = isAvailable
-				? `<span style="color:#06d6a0; font-weight:bold;">有貨</span>`
-				: `<span style="color:#ef476f; font-weight:bold;">售完</span>`;
+				? `<span id="status-main-${item.name}" style="color:#06d6a0; font-weight:bold;">有貨</span>`
+				: `<span id="status-main-${item.name}" style="color:#ef476f; font-weight:bold;">售完</span>`;
 
 			itemsHtml += `
                 <div class="product-mgmt-row">
@@ -1444,8 +1595,8 @@ function renderProductManagement() {
 					let optAvail = inventory[optKey] !== false;
 					let optChecked = optAvail ? "checked" : "";
 					let optStatus = optAvail
-						? `<span style="color:#06d6a0; font-weight:bold;">顯示</span>`
-						: `<span style="color:#ef476f; font-weight:bold;">隱藏</span>`;
+						? `<span id="status-opt-${optKey}" style="color:#06d6a0; font-weight:bold;">顯示</span>`
+						: `<span id="status-opt-${optKey}" style="color:#ef476f; font-weight:bold;">隱藏</span>`;
 					itemsHtml += `
                         <div class="product-mgmt-row" style="padding-left:20px; list-style: none;">
                             <li style="font-size:14px; color:#555; list-style: disc;">${opt}</li>
@@ -1782,7 +1933,7 @@ function renderConfidentialCalendar(ownerName) {
 		let cell = document.createElement("div");
 		cell.className = "calendar-day";
 		if (d === today.getDate() && month === today.getMonth())
-			cell.classList.add("today");
+			cell.classList.add("active");
 		let dateStr = `${year}/${month + 1}/${d}`;
 		let stats = dailyFinancialData[dateStr] || {
 			barRev: 0,
@@ -1800,21 +1951,27 @@ function renderConfidentialCalendar(ownerName) {
 			htmlContent += `<div style="font-size:12px; color:#4361ee; font-weight:bold;">$${showRev}</div>`;
 			if (dailyCounts[d])
 				htmlContent += `<div style="font-size:10px; color:#8d99ae;">(${dailyCounts[d]}單)</div>`;
-			cell.style.cursor = "pointer";
 			cell.style.backgroundColor = "#e0e7ff";
-			cell.onclick = () => {
-				showOwnerDetailedOrders(year, month, d);
-				let customBtn = document.getElementById("finBtnCustom");
-				if (customBtn) {
-					let mm = String(month + 1).padStart(2, "0");
-					let dd = String(d).padStart(2, "0");
-					customBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`;
-					customBtn.dataset.date = `${year}-${mm}-${dd}`;
-					customBtn.style.display = "inline-block";
-					updateFinanceStats("custom", new Date(year, month, d, 5, 0, 0, 0));
-				}
-			};
 		}
+
+		cell.onclick = () => {
+			grid
+				.querySelectorAll(".calendar-day")
+				.forEach((c) => c.classList.remove("active"));
+			cell.classList.add("active");
+
+			showOwnerDetailedOrders(year, month, d);
+			let customBtn = document.getElementById("finBtnCustom");
+			if (customBtn) {
+				let mm = String(month + 1).padStart(2, "0");
+				let dd = String(d).padStart(2, "0");
+				customBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`;
+				customBtn.dataset.date = `${year}-${mm}-${dd}`;
+				customBtn.style.display = "inline-block";
+				updateFinanceStats("custom", new Date(year, month, d, 5, 0, 0, 0));
+			}
+		};
+
 		cell.innerHTML = htmlContent;
 		grid.appendChild(cell);
 	}
