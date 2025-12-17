@@ -517,10 +517,7 @@ function openFoodModal(name, price, type) {
 	document.getElementById("foodTitle").innerText = name;
 	let meatOptions = document.getElementById("meatOptions");
 	let variants = FOOD_OPTION_VARIANTS[name] || [];
-	let available =
-		typeof getAvailableVariants === "function"
-			? getAvailableVariants(name)
-			: null;
+	let available = getAvailableVariants(name);
 	if (available) variants = available;
 	if (variants.length === 0) {
 		alert("此品項的子選項已全部下架，無法選擇");
@@ -796,137 +793,6 @@ function updateDiscPreview() {
 	let discounted = Math.round(currentOriginalTotal * (val / 100));
 	document.getElementById("discPreviewText").innerText =
 		`原價 $${currentOriginalTotal} ➡ 折後 $${discounted}`;
-}
-
-async function printReceipt(data, isTicket = false) {
-	let kitchenCategories = ["燒烤", "主餐", "炸物", "厚片"];
-	let barItems = [];
-	let kitchenItems = [];
-	// 依送出時間/批次/索引排序，避免同批次被拆成多張
-	let itemsOrdered = Array.isArray(data.items)
-		? [...data.items]
-		: Object.values(data.items || {});
-	itemsOrdered.sort((a, b) => {
-		let ta = a.sentAt || 0;
-		let tb = b.sentAt || 0;
-		if (ta !== tb) return ta - tb;
-		let ba = a.batchId || 0;
-		let bb = b.batchId || 0;
-		if (ba !== bb) return ba - bb;
-		let ia = a.incomingIdx || 0;
-		let ib = b.incomingIdx || 0;
-		return ia - ib;
-	});
-
-	itemsOrdered.forEach((i) => {
-		let itemType =
-			typeof getItemCategoryType === "function"
-				? getItemCategoryType(i.name)
-				: "bar";
-		if (itemType === "bbq") {
-			kitchenItems.push(i);
-			return;
-		}
-		// 若分類函式回傳 bar，仍用 fallback 檢查
-		let itemCat = "";
-		for (const [cat, content] of Object.entries(menuData)) {
-			if (Array.isArray(content)) {
-				if (content.some((x) => i.name.includes(x.name))) itemCat = cat;
-			} else {
-				for (const subContent of Object.values(content)) {
-					if (subContent.some((x) => i.name.includes(x.name))) itemCat = cat;
-				}
-			}
-		}
-		if (kitchenCategories.includes(itemCat)) kitchenItems.push(i);
-		else barItems.push(i);
-	});
-	const printArea = document.getElementById("receipt-print-area");
-
-	// 🔥 修改：新增 style 標籤強制列印時靠左對齊，並移除 printArea 的內容
-	const styleOverride = `<style>
-        @media print {
-            .receipt-section { text-align: left !important; }
-            .receipt-items { text-align: left !important; }
-            .receipt-item span:first-child { text-align: left !important; }
-            .receipt-item span:last-child { text-align: right !important; }
-            /* 讓項目名稱靠左，數量靠右 */
-            .receipt-item.kitchen-item { display: flex; justify-content: space-between; }
-        }
-    </style>`;
-
-	const generateHtml = (title, items, isFullReceipt) => {
-		let itemsHtml = "";
-		items.forEach((i) => {
-			let displayName = i.name;
-			if (i.isTreat) displayName += " (招待)";
-			let priceStr = isFullReceipt ? (i.isTreat ? "$0" : `$${i.price}`) : "";
-
-			// 🔥 修正：讓 kitchen-item 具有 space-between 屬性，確保排版靠左
-			let itemClass = isFullReceipt
-				? "receipt-item"
-				: "receipt-item kitchen-item";
-
-			// 如果是工作單，只顯示名稱和數量
-			if (!isFullReceipt) {
-				// 為了排版正確，我們必須確保這裡的項目是未合併的單品項，但這裡的 data.items 已經是單品項
-				itemsHtml += `<div class="${itemClass}"><span>${displayName}</span><span>${i.count ? "x" + i.count : "x1"}</span></div>`;
-			} else {
-				itemsHtml += `<div class="${itemClass}"><span>${displayName}</span><span>${priceStr}</span></div>`;
-			}
-		});
-
-		let footerHtml = "";
-		if (isFullReceipt) {
-			footerHtml = `<div class="receipt-footer"><div class="row"><span>原價：</span><span>$${data.original}</span></div><div class="row"><span>總計：</span><span class="total">$${data.total}</span></div></div>`;
-		}
-
-		// 🔥 確保標題靠左
-		let headerAlign = isFullReceipt ? "center" : "left";
-
-		return `${styleOverride}<div class="receipt-section" style="text-align: ${headerAlign};"><div class="receipt-header"><h2 class="store-name" style="text-align: ${headerAlign};">${title}</h2><div class="receipt-info" style="text-align: ${headerAlign};"><p>單號：${data.seq}</p><p>桌號：${data.table}</p><p>時間：${data.time}</p></div></div><hr class="dashed-line"><div class="receipt-items">${itemsHtml}</div><hr class="dashed-line">${footerHtml}</div>`;
-	};
-
-	const performPrint = (htmlContent) => {
-		return new Promise((resolve) => {
-			// 每次列印前先清空，避免重複內容疊加
-			printArea.innerHTML = "";
-			printArea.innerHTML = htmlContent;
-
-			// 將 printArea 暫時移到可視範圍進行列印
-			printArea.style.position = "static";
-			printArea.style.width = "auto";
-			printArea.style.height = "auto";
-
-			setTimeout(() => {
-				window.print();
-
-				// 列印完畢後再隱藏
-				printArea.style.position = "absolute";
-				printArea.style.width = "0";
-				printArea.style.height = "0";
-
-				setTimeout(resolve, 500);
-			}, 500);
-		});
-	};
-
-	if (!isTicket) {
-		await performPrint(generateHtml("結帳收據", data.items, true));
-	} else {
-		let hasBar = barItems.length > 0;
-		let hasKitchen = kitchenItems.length > 0;
-
-		// 為了確保列印能夠分開，必須對 printArea 進行操作，並處理頁面樣式覆蓋
-		let printQueue = [];
-		if (hasBar) printQueue.push(generateHtml("吧檯工作單", barItems, false));
-		if (hasKitchen)
-			printQueue.push(generateHtml("廚房工作單", kitchenItems, false));
-
-		for (const content of printQueue) {
-			await performPrint(content);
-		}
-	}
 }
 
 function openReprintModal() {
@@ -2289,3 +2155,14 @@ window.addEventListener("DOMContentLoaded", () => {
 		}
 	}
 });
+
+
+if (typeof window !== "undefined") {
+	window.FOOD_OPTION_VARIANTS = FOOD_OPTION_VARIANTS;
+	window.getAvailableVariants = getAvailableVariants;
+	window.hasAvailableVariants = hasAvailableVariants;
+	window.toggleOptionStock = toggleOptionStock;
+	window.toggleParentWithOptions = toggleParentWithOptions;
+	window.toggleHistoryView = toggleHistoryView;
+	window.closeBusiness = closeBusiness;
+}
