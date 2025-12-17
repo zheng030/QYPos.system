@@ -534,6 +534,18 @@ button {
 	color: var(--primary-color);
 	text-align: right;
 }
+.batch-badge {
+	margin: 15px auto 5px auto;
+	font-size: 12px;
+	font-weight: 700;
+	color: #64748b;
+	background: #f8fafc;
+	display: table;
+	padding: 4px 12px;
+	border-radius: 50px;
+	border: 1px solid #e2e8f0;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
 .treat-btn {
 	background: #e0f2fe;
 	color: #0284c7;

@@ -333,13 +333,15 @@ function initRealtimeData() {
 function checkIncomingOrders() {
 	if (!incomingOrders) return;
 	const tables = Object.keys(incomingOrders);
-	if (tables.length > 0) {
-		let table = tables[0];
-		let orderData = incomingOrders[table];
-		showIncomingOrderModal(table, orderData);
-	} else {
-		closeIncomingOrderModal();
+	for (let t of tables) {
+		let q = incomingOrders[t];
+		let arr = Array.isArray(q) ? q : q ? Object.values(q) : [];
+		if (arr.length > 0) {
+			showIncomingOrderModal(t, arr[0]);
+			return;
+		}
 	}
+	closeIncomingOrderModal();
 }
 
 function saveAllToCloud() {
@@ -602,14 +604,25 @@ function closeBusiness() {
 	goHome();
 }
 
-function customerSubmitOrder() {
+async function customerSubmitOrder() {
 	if (cart.length === 0) {
 		alert("購物車是空的喔！");
 		return;
 	}
 
-	let currentBatch = tableBatchCounts[selectedTable] || 0;
-	let nextBatch = currentBatch + 1;
+	// 以 transaction 取得唯一批次，避免並發送單顏色重複
+	let nextBatch = 1;
+	try {
+		let txResult = await db
+			.ref(`tableBatchCounts/${selectedTable}`)
+			.transaction((curr) => (curr || 0) + 1);
+		if (!txResult.committed) throw new Error("批次編號更新失敗");
+		nextBatch = txResult.snapshot.val() || 1;
+		tableBatchCounts[selectedTable] = nextBatch;
+	} catch (err) {
+		alert("取得批次編號失敗，請稍後再試：" + err.message);
+		return;
+	}
 	let batchColorIdx = (nextBatch - 1) % 3;
 
 	let itemsToSend = cart.map((item, idx) => ({
@@ -624,13 +637,26 @@ function customerSubmitOrder() {
 		phone: document.getElementById("custPhone").value || "",
 	};
 
+	// 取最新 incoming queue 避免覆蓋
+	let latestSnap = await db
+		.ref(`incomingOrders/${selectedTable}`)
+		.once("value")
+		.catch(() => null);
+	let pendingList = [];
+	if (latestSnap && latestSnap.val()) {
+		let val = latestSnap.val();
+		if (Array.isArray(val)) pendingList = [...val];
+		else if (typeof val === "object") pendingList = Object.values(val);
+	}
+	pendingList.push({
+		items: itemsToSend,
+		customer: customerInfo,
+		batchId: nextBatch,
+		timestamp: Date.now(),
+	});
+
 	db.ref(`incomingOrders/${selectedTable}`)
-		.set({
-			items: itemsToSend,
-			customer: customerInfo,
-			batchId: nextBatch,
-			timestamp: Date.now(),
-		})
+		.set(pendingList)
 		.then(() => {
 			alert(
 				"✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。",
@@ -652,8 +678,20 @@ function customerSubmitOrder() {
 function confirmIncomingOrder() {
 	if (!currentIncomingTable) return;
 
-	let pendingData = incomingOrders[currentIncomingTable];
-	if (!pendingData) return;
+	let pendingRaw = incomingOrders[currentIncomingTable];
+	let pendingQueue = Array.isArray(pendingRaw)
+		? pendingRaw
+		: pendingRaw
+			? Object.values(pendingRaw)
+			: [];
+	if (!pendingQueue.length) {
+		delete incomingOrders[currentIncomingTable];
+		saveAllToCloud();
+		closeIncomingOrderModal();
+		checkIncomingOrders();
+		return;
+	}
+	let pendingData = pendingQueue.shift();
 
 	// 將顧客送出的同一批次訂單附上時間/批次，避免被拆成多次列印
 	let sentAt = pendingData.timestamp || Date.now();
@@ -677,6 +715,7 @@ function confirmIncomingOrder() {
 	let currentCart = tableCarts[currentIncomingTable] || [];
 	let newCart = currentCart.concat(items);
 	tableCarts[currentIncomingTable] = newCart;
+	cart = newCart;
 
 	tableStatuses[currentIncomingTable] = "yellow";
 	if (!tableCustomers[currentIncomingTable])
@@ -709,18 +748,32 @@ function confirmIncomingOrder() {
 	);
 
 	delete incomingOrders[currentIncomingTable];
+	if (pendingQueue.length > 0) {
+		incomingOrders[currentIncomingTable] = pendingQueue;
+	}
 
 	saveAllToCloud();
 	closeIncomingOrderModal();
 	showToast(`✅ 已接收 ${currentIncomingTable} 的訂單`);
+	checkIncomingOrders();
+	renderCart();
 }
 
 function rejectIncomingOrder() {
 	if (!currentIncomingTable) return;
 	if (!confirm("確定要忽略這筆訂單嗎？")) return;
-	delete incomingOrders[currentIncomingTable];
+	let pendingRaw = incomingOrders[currentIncomingTable];
+	let pendingQueue = Array.isArray(pendingRaw)
+		? pendingRaw
+		: pendingRaw
+			? Object.values(pendingRaw)
+			: [];
+	if (pendingQueue.length > 0) pendingQueue.shift();
+	if (pendingQueue.length === 0) delete incomingOrders[currentIncomingTable];
+	else incomingOrders[currentIncomingTable] = pendingQueue;
 	saveAllToCloud();
 	closeIncomingOrderModal();
+	checkIncomingOrders();
 }
 
 function checkoutAll(manualFinal) {
@@ -870,145 +923,6 @@ setInterval(updateSystemTime, 1000);
 function updateSystemTime() {
 	document.getElementById("systemTime").innerText =
 		"🕒 " + new Date().toLocaleString("zh-TW", { hour12: false });
-}
-
-/* ========== 🔥 顯示邏輯修改 (包含已下單區塊) ========== */
-function renderCart() {
-	const cartList = document.getElementById("cart-list");
-	const totalText = document.getElementById("total");
-	cartList.innerHTML = "";
-	currentOriginalTotal = 0;
-
-	const svcBtn = document.getElementById("svcBtn");
-	if (svcBtn) {
-		if (isServiceFeeEnabled) {
-			svcBtn.classList.add("active");
-			svcBtn.innerHTML = "✅ 收 10% 服務費";
-		} else {
-			svcBtn.classList.remove("active");
-			svcBtn.innerHTML = "◻️ 收 10% 服務費";
-		}
-	}
-
-	// 🔥 顯示邏輯：合併「已送出」與「目前購物車」
-	let displayItems = [];
-
-	// 1. 先加入已送出的商品 (若有的話)
-	if (sentItems.length > 0) {
-		sentItems.forEach((item) => {
-			displayItems.push({ ...item, isSent: true, count: 1 });
-		});
-	}
-
-	// 2. 再加入目前購物車
-	let currentCartItems = isCartSimpleMode
-		? getMergedItems(cart)
-		: cart.map((item) => ({ ...item, count: 1 }));
-	displayItems = [...displayItems, ...currentCartItems];
-
-	if (displayItems.length === 0) {
-		cartList.innerHTML = `<div style="text-align:center; color:#ccc; padding:20px;">購物車空空的</div>`;
-	}
-
-	displayItems.forEach((c, i) => {
-		let count = c.count || 1;
-		let itemTotal = (c.isTreat ? 0 : c.price) * count;
-
-		// 只有「未送出」的才計入目前應付金額 (避免客人以為重複算錢)
-		if (!c.isSent) {
-			currentOriginalTotal += itemTotal;
-		}
-
-		let treatClass = c.isTreat
-			? "treat-btn active btn-effect"
-			: "treat-btn btn-effect";
-		let treatText = c.isTreat ? "已招待" : "🎁 招待";
-		let priceHtml = "";
-		let nameHtml = "";
-		let rowClass = "cart-item-row";
-
-		// 已下單樣式
-		if (c.isSent) {
-			nameHtml = `<div class="cart-item-name" style="color:#adb5bd;">${c.name} <small>(已下單)</small></div>`;
-			priceHtml = `<span style="color:#adb5bd;">$${itemTotal}</span>`;
-			rowClass += " sent-item";
-		} else {
-			// 一般樣式
-			if (typeof c.batchIdx !== "undefined") {
-				if (c.batchIdx === 0) rowClass += " batch-blue";
-				else if (c.batchIdx === 1) rowClass += " batch-red";
-				else if (c.batchIdx === 2) rowClass += " batch-green";
-			}
-
-			if (isCartSimpleMode && count > 1) {
-				nameHtml = `<div class="cart-item-name">${c.name} <span style="color:#ef476f; font-weight:bold;">x${count}</span></div>`;
-				if (c.isTreat) {
-					priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price * count}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`;
-				} else {
-					priceHtml = `$${itemTotal}`;
-				}
-			} else {
-				nameHtml = `<div class="cart-item-name">${c.name}</div>`;
-				if (c.isTreat) {
-					priceHtml = `<span style='text-decoration:line-through; color:#999;'>$${c.price}</span> <span style='color:#06d6a0; font-weight:bold;'>$0</span>`;
-				} else {
-					priceHtml = `$${c.price}`;
-				}
-			}
-		}
-
-		let actionButtons = "";
-		// 已下單的沒有刪除鈕
-		if (c.isSent) {
-			actionButtons = `<small style="color:#ccc;">已傳送</small>`;
-		} else {
-			// 這裡的 index 需要修正，因為 displayItems 包含了 sentItems
-			// 我們需要找到這個 item 在原本 cart 陣列的 index
-			// 簡單做法：displayItems 後半段就是 cart，所以 index 減去 sentItems 長度
-			let realCartIndex =
-				i - (typeof sentItems !== "undefined" ? sentItems.length : 0);
-
-			actionButtons = !isCartSimpleMode
-				? `<button class="${treatClass}" onclick="toggleTreat(${realCartIndex})">${treatText}</button><button class="del-btn btn-effect" onclick="removeItem(${realCartIndex})">刪除</button>`
-				: `<small style="color:#888;">(切換檢視操作)</small>`;
-		}
-
-		cartList.innerHTML += `<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`;
-	});
-
-	discountedTotal = currentOriginalTotal;
-	if (currentDiscount.type === "percent") {
-		discountedTotal = Math.round(
-			currentOriginalTotal * (currentDiscount.value / 100),
-		);
-	} else if (currentDiscount.type === "amount") {
-		discountedTotal = currentOriginalTotal - currentDiscount.value;
-		if (discountedTotal < 0) discountedTotal = 0;
-	}
-
-	let serviceFee = 0;
-	if (isServiceFeeEnabled) {
-		serviceFee = Math.round(currentOriginalTotal * 0.1);
-		discountedTotal += serviceFee;
-	}
-
-	let finalHtml = `總金額：`;
-	if (currentDiscount.type !== "none" || isServiceFeeEnabled) {
-		finalHtml += `<span style="text-decoration:line-through; color:#999; font-size:16px;">$${currentOriginalTotal}</span> `;
-	}
-	finalHtml += `<span style="color:#ef476f;">$${discountedTotal}</span>`;
-
-	let noteText = [];
-	if (currentDiscount.type === "percent")
-		noteText.push(`折扣 ${currentDiscount.value}%`);
-	if (currentDiscount.type === "amount")
-		noteText.push(`折讓 -${currentDiscount.value}`);
-	if (isServiceFeeEnabled) noteText.push(`含服務費 +$${serviceFee}`);
-
-	if (noteText.length > 0) {
-		finalHtml += ` <small style="color:#555;">(${noteText.join(", ")})</small>`;
-	}
-	totalText.innerHTML = finalHtml;
 }
 
 function addInlineHiddenBeer() {

@@ -350,6 +350,7 @@ function renderCart() {
 		cartList.innerHTML = `<div style="text-align:center; color:#ccc; padding:20px;">購物車空空的</div>`;
 	}
 
+	let lastBatchShown = {};
 	displayItems.forEach((c, i) => {
 		let count = c.count || 1;
 		let itemTotal = (c.isTreat ? 0 : c.price) * count;
@@ -366,6 +367,21 @@ function renderCart() {
 		let priceHtml = "";
 		let nameHtml = "";
 		let rowClass = "cart-item-row";
+		let batchBadge = "";
+
+		if (
+			typeof c.batchId !== "undefined" &&
+			lastBatchShown[c.batchId] === undefined
+		) {
+			let minutesAgo = "";
+			if (c.sentAt) {
+				let diffMs = Date.now() - c.sentAt;
+				let mins = Math.max(0, Math.floor(diffMs / 60000));
+				minutesAgo = `${mins}`;
+			}
+			batchBadge = `<div class="batch-badge">顧客訂單#${c.batchId} - ${minutesAgo} 分鐘前</div>`;
+			lastBatchShown[c.batchId] = true;
+		}
 
 		// 已下單樣式
 		if (c.isSent) {
@@ -413,7 +429,7 @@ function renderCart() {
 				: `<small style="color:#888;">(切換檢視操作)</small>`;
 		}
 
-		cartList.innerHTML += `<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`;
+		cartList.innerHTML += `${batchBadge}<div class="${rowClass}">${nameHtml}<div class="cart-item-price">${priceHtml}</div><div style="display:flex; gap:5px; justify-content:flex-end;">${actionButtons}</div></div>`;
 	});
 
 	discountedTotal = currentOriginalTotal;
@@ -1252,9 +1268,7 @@ function openItemStatsPage() {
 }
 
 function renderItemStats(range, button) {
-	const btns = document.querySelectorAll(
-		"#itemStatsPage .segment-option",
-	);
+	const btns = document.querySelectorAll("#itemStatsPage .segment-option");
 	btns.forEach((btn) => btn.classList.remove("active"));
 
 	let activeBtn = button;
@@ -1262,7 +1276,8 @@ function renderItemStats(range, button) {
 		if (range === "day") activeBtn = document.getElementById("statBtnDay");
 		if (range === "week") activeBtn = document.getElementById("statBtnWeek");
 		if (range === "month") activeBtn = document.getElementById("statBtnMonth");
-		if (range === "custom") activeBtn = document.getElementById("statBtnCustom");
+		if (range === "custom")
+			activeBtn = document.getElementById("statBtnCustom");
 	}
 
 	const customRangeDiv = document.getElementById("customStatsDateRange");
@@ -1305,43 +1320,43 @@ function renderItemStats(range, button) {
 		start.setHours(5, 0, 0, 0);
 		end = new Date(start);
 		end.setMonth(end.getMonth() + 1);
-		} else if (range === "custom") {
-			const sInput = document.getElementById("statsStartDate");
-			const eInput = document.getElementById("statsEndDate");
-			
-			const toLocalISO = (d) => {
-				const offset = d.getTimezoneOffset() * 60000;
-				return new Date(d.getTime() - offset).toISOString().split('T')[0];
-			};
-	
-			if(sInput && !sInput.value) {
-				let d = new Date();
-				d.setDate(1);
-				sInput.value = toLocalISO(d);
-			}
-			if(eInput && !eInput.value) {
-				let d = new Date();
-				d.setMonth(d.getMonth() + 1);
-				d.setDate(0);
-				eInput.value = toLocalISO(d);
-			}
-	
-			if (sInput && eInput && sInput.value && eInput.value) {
-				let sParts = sInput.value.split("-");
-				let eParts = eInput.value.split("-");
-				start = new Date(sParts[0], sParts[1]-1, sParts[2]);
-				start.setHours(5, 0, 0, 0);
-				
-				end = new Date(eParts[0], eParts[1]-1, eParts[2]);
-				end.setDate(end.getDate() + 1); // Inclusive
-				end.setHours(5, 0, 0, 0);
-			} else {
-				// Fallback (should not happen due to defaults above)
-				start.setHours(5, 0, 0, 0);
-				end = new Date(start);
-				end.setDate(end.getDate() + 1);
-			}
+	} else if (range === "custom") {
+		const sInput = document.getElementById("statsStartDate");
+		const eInput = document.getElementById("statsEndDate");
+
+		const toLocalISO = (d) => {
+			const offset = d.getTimezoneOffset() * 60000;
+			return new Date(d.getTime() - offset).toISOString().split("T")[0];
+		};
+
+		if (sInput && !sInput.value) {
+			let d = new Date();
+			d.setDate(1);
+			sInput.value = toLocalISO(d);
 		}
+		if (eInput && !eInput.value) {
+			let d = new Date();
+			d.setMonth(d.getMonth() + 1);
+			d.setDate(0);
+			eInput.value = toLocalISO(d);
+		}
+
+		if (sInput && eInput && sInput.value && eInput.value) {
+			let sParts = sInput.value.split("-");
+			let eParts = eInput.value.split("-");
+			start = new Date(sParts[0], sParts[1] - 1, sParts[2]);
+			start.setHours(5, 0, 0, 0);
+
+			end = new Date(eParts[0], eParts[1] - 1, eParts[2]);
+			end.setDate(end.getDate() + 1); // Inclusive
+			end.setHours(5, 0, 0, 0);
+		} else {
+			// Fallback (should not happen due to defaults above)
+			start.setHours(5, 0, 0, 0);
+			end = new Date(start);
+			end.setDate(end.getDate() + 1);
+		}
+	}
 	let counts = {};
 	let startBiz = getBusinessDate(start);
 	let endBiz = getBusinessDate(end);
@@ -2252,26 +2267,22 @@ window.addEventListener("DOMContentLoaded", () => {
 		document.body.classList.add("customer-mode");
 		sessionStorage.setItem("isLoggedIn", "true");
 		showApp();
-		setTimeout(() => {
-			selectedTable = decodeURIComponent(tableParam);
-			hideAll();
-			document.getElementById("orderPage").style.display = "block";
-			document.getElementById("seatLabel").innerText =
-				"（" + selectedTable + "）";
-			const saveBtn = document.querySelector(".save-btn");
-			if (saveBtn) {
-				saveBtn.innerText = "🚀 送出廚房";
-				saveBtn.onclick = customerSubmitOrder;
-			}
-			document.getElementById("seatTimer").style.display = "none";
+		selectedTable = decodeURIComponent(tableParam);
+		hideAll();
+		document.getElementById("orderPage").style.display = "block";
+		document.getElementById("seatLabel").innerText =
+			"（" + selectedTable + "）";
+		const saveBtn = document.querySelector(".save-btn");
+		if (saveBtn) {
+			saveBtn.innerText = "🚀 送出廚房";
+			saveBtn.onclick = customerSubmitOrder;
+		}
+		document.getElementById("seatTimer").style.display = "none";
 
-			buildCategories();
+		buildCategories();
 
-			if (tableCarts[selectedTable]) {
-				cart = tableCarts[selectedTable];
-				renderCart();
-			}
-		}, 800);
+		cart = tableCarts[selectedTable] || [];
+		renderCart();
 	} else {
 		if (sessionStorage.getItem("isLoggedIn") === "true") {
 			showApp();
