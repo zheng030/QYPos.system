@@ -2,6 +2,8 @@
 
 console.log("UI JS v15 Loaded - 介面程式已載入");
 
+let revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
+
 function showApp() {
 	document.getElementById("login-screen").style.display = "none";
 	document.getElementById("app-container").style.display = "block";
@@ -1722,40 +1724,12 @@ function renderConfidentialCalendar(ownerName) {
 				if (!dailyCounts[dayKey]) dailyCounts[dayKey] = 0;
 				dailyCounts[dayKey]++;
 
-				// 依明細加總並用最後一筆調整差額（僅加減，避免浮點誤差）
-				let items = Array.isArray(order.items) ? order.items : [];
-				let total = order.total || 0;
-				let revenues = [];
-				let priceSum = 0;
-				items.forEach((item) => {
-					let itemPrice = item.price ? item.price : 0;
-					revenues.push(itemPrice);
-					priceSum += itemPrice;
-				});
-				if (revenues.length > 0) {
-					let diff = priceSum - total;
-					let lastIdx = revenues.length - 1;
-					revenues[lastIdx] = revenues[lastIdx] - diff;
-				}
-
-				items.forEach((item, idx) => {
-					let costPerItem = getCostByItemName(item.name);
-					let rawName = item.name.replace(" (招待)", "").trim();
-					let type = getItemCategoryType(rawName);
-					let revenueShare = revenues[idx] || 0;
-					if (type === "bar") {
-						dailyFinancialData[dateStr].barRev += revenueShare;
-						dailyFinancialData[dateStr].barCost += costPerItem;
-						monthStats.barRev += revenueShare;
-						monthStats.barCost += costPerItem;
-					} else {
-						dailyFinancialData[dateStr].bbqRev += revenueShare;
-						dailyFinancialData[dateStr].bbqCost += costPerItem;
-						monthStats.bbqRev += revenueShare;
-						monthStats.bbqCost += costPerItem;
-					}
-				});
-				monthStats.totalRev += total;
+				// 以訂單總額為主，避免折扣與明細不一致
+				let orderTotal = order.total || 0;
+				dailyFinancialData[dateStr].barRev += orderTotal;
+				dailyFinancialData[dateStr].bbqRev += 0;
+				monthStats.barRev += orderTotal;
+				monthStats.totalRev += orderTotal;
 			}
 		});
 	}
@@ -1856,6 +1830,7 @@ function renderConfidentialCalendar(ownerName) {
 		cell.innerHTML = htmlContent;
 		grid.appendChild(cell);
 	}
+	updateFinanceStats("month");
 }
 
 function updateFinanceStats(range) {
@@ -1926,7 +1901,17 @@ function updateFinanceStats(range) {
 		bizEnd = bizStart + DAY_MS;
 	}
 
-	let stats = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0, totalRev: 0 };
+let stats = {
+	barRev: 0,
+	barCost: 0,
+	bbqRev: 0,
+	bbqCost: 0,
+	unknownRev: 0,
+	unknownCost: 0,
+	extraRev: 0, // 整單折扣/折讓/服務費統一放這裡
+	totalRev: 0,
+};
+revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 
 	if (Array.isArray(historyOrders)) {
 		historyOrders.forEach((order) => {
@@ -1942,34 +1927,60 @@ function updateFinanceStats(range) {
 			) {
 				let items = Array.isArray(order.items) ? order.items : [];
 				let total = order.total || 0;
-				let revenues = [];
-				let priceSum = 0;
-				items.forEach((it) => {
-					let p = it.price ? it.price : 0;
-					revenues.push(p);
-					priceSum += p;
-				});
-				if (revenues.length > 0) {
-					let diff = priceSum - total;
-					let lastIdx = revenues.length - 1;
-					revenues[lastIdx] = revenues[lastIdx] - diff;
-				}
-				stats.totalRev += total;
+				let barSum = 0;
+				let bbqSum = 0;
+				let unknownSum = 0;
 
-				items.forEach((item, idx) => {
+				items.forEach((item) => {
 					let cost = getCostByItemName(item.name);
 					let name = item.name.replace(" (招待)", "").trim();
 					let type = getItemCategoryType(name);
-					let revenueShare = revenues[idx] || 0;
+					let itemPrice = item.price ? item.price : 0;
 
 					if (type === "bar") {
-						stats.barRev += revenueShare;
+						barSum += itemPrice;
 						stats.barCost += cost;
-					} else {
-						stats.bbqRev += revenueShare;
+						revenueDetails.bar.push({
+							name,
+							price: itemPrice,
+							cost,
+							time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+						});
+					} else if (type === "bbq") {
+						bbqSum += itemPrice;
 						stats.bbqCost += cost;
+						revenueDetails.bbq.push({
+							name,
+							price: itemPrice,
+							cost,
+							time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+						});
+					} else {
+						unknownSum += itemPrice;
+						stats.unknownCost += cost;
+						revenueDetails.unknown.push({
+							name,
+							price: itemPrice,
+							cost,
+							time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+						});
 					}
 				});
+
+				let adjustment = total - (barSum + bbqSum + unknownSum); // 折扣/折讓/服務費
+				stats.barRev += barSum;
+				stats.bbqRev += bbqSum;
+				stats.unknownRev += unknownSum;
+				stats.extraRev += adjustment;
+				if (adjustment !== 0) {
+					revenueDetails.extra.push({
+						amount: adjustment,
+						seat: order.seat || "",
+						time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+						seq: order.formattedSeq || order.seq || "",
+					});
+				}
+				stats.totalRev += total;
 			}
 		});
 	}
@@ -1990,14 +2001,88 @@ function updateFinanceStats(range) {
 	document.getElementById("monthBbqProfit").innerText =
 		`$${Math.round(stats.bbqRev - stats.bbqCost)}`;
 
-	let totalRev = stats.barRev + stats.bbqRev;
-	let totalCost = stats.barCost + stats.bbqCost;
+	let unknownRevEl = document.getElementById("monthUnknownRev");
+	if (unknownRevEl) unknownRevEl.innerText = `$${Math.round(stats.unknownRev)}`;
+
+	let extraStr =
+		stats.extraRev >= 0
+			? `$${Math.round(stats.extraRev)}`
+			: `-$${Math.abs(Math.round(stats.extraRev))}`;
+	let extraEl = document.getElementById("monthExtraRev");
+	if (extraEl) extraEl.innerText = extraStr;
+
+	let totalRev =
+		stats.totalRev ||
+		stats.barRev + stats.bbqRev + stats.unknownRev + stats.extraRev;
+	let totalCost = stats.barCost + stats.bbqCost + stats.unknownCost;
 	document.getElementById("monthTotalRev").innerText =
-		`$${Math.round(stats.totalRev || totalRev)}`;
+		`$${Math.round(totalRev)}`;
 	document.getElementById("monthTotalCost").innerText =
 		`-$${Math.round(totalCost)}`;
 	document.getElementById("monthTotalProfit").innerText =
-		`$${Math.round((stats.totalRev || totalRev) - totalCost)}`;
+		`$${Math.round(totalRev - totalCost)}`;
+}
+
+function openRevenueModal(type) {
+	let modal = document.getElementById("revenueDetailModal");
+	let list = document.getElementById("revenueDetailList");
+	let title = document.getElementById("revenueDetailTitle");
+	if (!modal || !list || !title) return;
+	const map = {
+		bar: "🍺 酒吧明細",
+		bbq: "🍖 燒烤明細",
+		unknown: "❔ 未分類明細",
+		extra: "🎫 整單調整來源",
+	};
+	title.innerText = map[type] || "品項明細";
+
+	let data = revenueDetails[type] || [];
+	if (!Array.isArray(data) || data.length === 0) {
+		list.innerHTML = "<div class='empty-hint'>目前區間沒有此類品項</div>";
+	} else {
+		if (type === "extra") {
+			list.innerHTML = data
+				.map((i) => {
+					let amt =
+						i.amount >= 0
+							? `<span class="detail-price">$${Math.round(i.amount)}</span>`
+							: `<span class="detail-price" style="color:#ef476f;">-$${Math.abs(Math.round(i.amount))}</span>`;
+					let seatText = i.seat ? `<span class="detail-name">${i.seat}</span>` : "";
+					let seqText = i.seq ? `<span class="detail-price">#${i.seq}</span>` : "";
+					return `<div class="detail-item-row">
+                        ${seatText}
+                        ${seqText}
+                        <div class="detail-info">
+                            ${amt}
+                            <span class="detail-time">${i.time || "--:--"}</span>
+                        </div>
+                    </div>`;
+				})
+				.join("");
+		} else {
+			list.innerHTML = data
+				.map((i) => {
+					let costText =
+						typeof i.cost === "number" && i.cost > 0
+							? `<span class="detail-price" style="color:#ef476f;">成本 $${i.cost}</span>`
+							: "";
+					return `<div class="detail-item-row">
+                    <div class="detail-name">${i.name}</div>
+                    <div class="detail-info">
+                        <span class="detail-price">$${i.price}</span>
+                        ${costText}
+                        <span class="detail-time">${i.time || "--:--"}</span>
+                    </div>
+                </div>`;
+				})
+				.join("");
+		}
+	}
+	modal.style.display = "flex";
+}
+function closeRevenueModal() {
+	let modal = document.getElementById("revenueDetailModal");
+	if (modal) modal.style.display = "none";
 }
 
 function showOwnerDetailedOrders(year, month, day) {

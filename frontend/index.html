@@ -264,6 +264,16 @@
                             <hr>
                             <div class="sum-row highlight"><span>淨利潤</span><span id="monthTotalProfit">$0</span></div>
                         </div>
+                        <div class="summary-card extra-theme">
+                            <h3>🎫 折扣 / 服務費</h3>
+                            <div class="sum-row"><span>整單調整</span><span id="monthExtraRev">$0</span></div>
+                            <div class="sum-row tip-text" style="font-size:13px; color:#94a3b8;">
+                                <span>備註</span><span>折扣為負，服務費為正</span>
+                            </div>
+                            <button class="btn-effect detail-btn" onclick="openRevenueModal('extra')">
+                                📋 查看調整來源
+                            </button>
+                        </div>
                         <div class="summary-card bar-theme">
                             <h3>🍺 酒吧部</h3>
                             <div class="sum-row"><span>營收</span><span id="monthBarRev">$0</span></div>
@@ -271,6 +281,9 @@
                             </div>
                             <hr>
                             <div class="sum-row highlight"><span>毛利</span><span id="monthBarProfit">$0</span></div>
+                            <button class="btn-effect detail-btn" onclick="openRevenueModal('bar')">
+                                📋 查看酒吧明細
+                            </button>
                         </div>
                         <div class="summary-card bbq-theme">
                             <h3>🍖 燒烤部</h3>
@@ -279,6 +292,16 @@
                             </div>
                             <hr>
                             <div class="sum-row highlight"><span>毛利</span><span id="monthBbqProfit">$0</span></div>
+                            <button class="btn-effect detail-btn" onclick="openRevenueModal('bbq')">
+                                📋 查看燒烤明細
+                            </button>
+                        </div>
+                        <div class="summary-card unknown-theme">
+                            <h3>❔ 未分類</h3>
+                            <div class="sum-row"><span>營收</span><span id="monthUnknownRev">$0</span></div>
+                            <button class="btn-effect detail-btn" onclick="openRevenueModal('unknown')">
+                                📋 查看未分類明細
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -722,6 +745,17 @@
                     <button onclick="rejectIncomingOrder()" class="btn-effect bg-light-gray">❌
                         忽略/拒絕</button>
                     <button onclick="confirmIncomingOrder()" class="btn-effect bg-danger-btn">✅ 確認接單</button>
+                </div>
+            </div>
+        </div>
+        <div id="revenueDetailModal" class="modal" style="display:none;">
+            <div class="modal-content text-left">
+                <div class="modal-header">
+                    <h2 id="revenueDetailTitle">品項明細</h2>
+                </div>
+                <div class="modal-body" id="revenueDetailList" style="max-height:50vh; overflow-y:auto;"></div>
+                <div class="modal-actions">
+                    <button onclick="closeRevenueModal()" class="btn-effect bg-light-gray">關閉</button>
                 </div>
             </div>
         </div>

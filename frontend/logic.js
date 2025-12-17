@@ -129,7 +129,7 @@ function getVisibleOrders() {
 }
 
 function getItemCategoryType(itemName) {
-	if (!itemName) return "bar";
+	if (!itemName) return "unknown";
 	const barCats = [
 		"調酒",
 		"純飲",
@@ -165,7 +165,7 @@ function getItemCategoryType(itemName) {
 		itemName.includes("麵")
 	)
 		return "bbq";
-	return "bar";
+	return "unknown";
 }
 
 function getCostByItemName(itemName) {
@@ -1023,10 +1023,7 @@ async function printReceipt(data, isTicket = false) {
 	});
 
 	itemsOrdered.forEach((i) => {
-		let itemType =
-			typeof getItemCategoryType === "function"
-				? getItemCategoryType(i.name)
-				: "bar";
+		let itemType = getItemCategoryType(i.name)
 		if (itemType === "bbq") {
 			kitchenItems.push(i);
 			return;
