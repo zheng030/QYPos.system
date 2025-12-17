@@ -1251,7 +1251,7 @@ function renderItemStats(range, button) {
 	let bbqList = [];
 
 	sorted.forEach(([name, count]) => {
-		let type = getItemCategoryType(name);
+		let type = item.type || getItemCategoryType(name);
 		if (type === "bar") barList.push({ name, count });
 		else bbqList.push({ name, count });
 	});
@@ -1308,7 +1308,7 @@ function renderPublicStats() {
 					order.items.forEach((item) => {
 						let name = item.name.split(" <")[0].replace(" (招待)", "").trim();
 						if (!stats[name])
-							stats[name] = { count: 0, type: getItemCategoryType(name) };
+							stats[name] = { count: 0, type: item.type || getItemCategoryType(name) };
 						stats[name].count += item.count || 1;
 					});
 				}
@@ -1901,17 +1901,17 @@ function updateFinanceStats(range) {
 		bizEnd = bizStart + DAY_MS;
 	}
 
-let stats = {
-	barRev: 0,
-	barCost: 0,
-	bbqRev: 0,
-	bbqCost: 0,
-	unknownRev: 0,
-	unknownCost: 0,
-	extraRev: 0, // 整單折扣/折讓/服務費統一放這裡
-	totalRev: 0,
-};
-revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
+	let stats = {
+		barRev: 0,
+		barCost: 0,
+		bbqRev: 0,
+		bbqCost: 0,
+		unknownRev: 0,
+		unknownCost: 0,
+		extraRev: 0, // 整單折扣/折讓/服務費統一放這裡
+		totalRev: 0,
+	};
+	revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 
 	if (Array.isArray(historyOrders)) {
 		historyOrders.forEach((order) => {
@@ -1934,7 +1934,7 @@ revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 				items.forEach((item) => {
 					let cost = getCostByItemName(item.name);
 					let name = item.name.replace(" (招待)", "").trim();
-					let type = getItemCategoryType(name);
+					let type = item.type || getItemCategoryType(name);
 					let itemPrice = item.price ? item.price : 0;
 
 					if (type === "bar") {
@@ -1945,6 +1945,7 @@ revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 							price: itemPrice,
 							cost,
 							time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+							seq: order.formattedSeq || order.seq || "",
 						});
 					} else if (type === "bbq") {
 						bbqSum += itemPrice;
@@ -1954,6 +1955,7 @@ revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 							price: itemPrice,
 							cost,
 							time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+							seq: order.formattedSeq || order.seq || "",
 						});
 					} else {
 						unknownSum += itemPrice;
@@ -1963,6 +1965,7 @@ revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 							price: itemPrice,
 							cost,
 							time: order.time || t.toLocaleString("zh-TW", { hour12: false }),
+							seq: order.formattedSeq || order.seq || "",
 						});
 					}
 				});
@@ -2050,8 +2053,8 @@ function openRevenueModal(type) {
 					let seatText = i.seat ? `<span class="detail-name">${i.seat}</span>` : "";
 					let seqText = i.seq ? `<span class="detail-price">#${i.seq}</span>` : "";
 					return `<div class="detail-item-row">
-                        ${seatText}
                         ${seqText}
+                        ${seatText}
                         <div class="detail-info">
                             ${amt}
                             <span class="detail-time">${i.time || "--:--"}</span>
@@ -2067,6 +2070,7 @@ function openRevenueModal(type) {
 							? `<span class="detail-price" style="color:#ef476f;">成本 $${i.cost}</span>`
 							: "";
 					return `<div class="detail-item-row">
+					<span class="detail-price">#${i.seq}</span>
                     <div class="detail-name">${i.name}</div>
                     <div class="detail-info">
                         <span class="detail-price">$${i.price}</span>

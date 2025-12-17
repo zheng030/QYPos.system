@@ -129,7 +129,9 @@ function getVisibleOrders() {
 }
 
 function getItemCategoryType(itemName) {
+	itemName = itemName.match(/^[^<]+/)?.[0].trim();
 	if (!itemName) return "unknown";
+	if (itemName === "奶茶") return "bbq";
 	const barCats = [
 		"調酒",
 		"純飲",
@@ -182,6 +184,7 @@ function getCostByItemName(itemName) {
 
 function getItemSalesStats(startTime, endTime) {
 	let stats = {};
+	let typeMap = {};
 	if (!historyOrders || historyOrders.length === 0) return { bar: [], bbq: [] };
 
 	historyOrders.forEach((order) => {
@@ -196,6 +199,8 @@ function getItemSalesStats(startTime, endTime) {
 					.replace(/\s*[\(（].*?[\)）]$/, "")
 					.trim();
 				const count = item.count || 1;
+				const t = item.type || getItemCategoryType(name);
+				if (!typeMap[name]) typeMap[name] = t;
 				if (name) {
 					if (!stats[name]) stats[name] = 0;
 					stats[name] += count;
@@ -209,7 +214,7 @@ function getItemSalesStats(startTime, endTime) {
 
 	for (const [name, count] of Object.entries(stats)) {
 		if (inventory[name] === false) continue;
-		const itemType = getItemCategoryType(name);
+		const itemType = typeMap[name] || getItemCategoryType(name);
 		if (itemType === "bar") {
 			barList.push({ name, count });
 		} else if (itemType === "bbq") {
@@ -787,10 +792,14 @@ function checkoutAll(manualFinal) {
 			displaySeat = `${selectedTable} (拆單)`;
 		}
 		let processedItems = cart.map((item) => {
+			let name = item.name;
+			let price = item.price;
+			let type = getItemCategoryType(name);
 			if (item.isTreat) {
-				return { ...item, price: 0, name: item.name + " (招待)" };
+				name = `${name} (招待)`;
+				price = 0;
 			}
-			return item;
+			return { ...item, name, price, type };
 		});
 		// Firebase 不接受 undefined，確保客人資訊至少為空字串
 		let newOrder = {
@@ -943,10 +952,14 @@ function confirmPayment() {
 
 	// 本次結帳品項：處理招待
 	let processedItems = tempRightList.map((item) => {
+		let name = item.name;
+		let price = item.price;
+		let type = getItemCategoryType(name);
 		if (item.isTreat) {
-			return { ...item, price: 0, name: `${item.name} (招待)` };
+			name = `${name} (招待)`;
+			price = 0;
 		}
-		return item;
+		return { ...item, name, price, type };
 	});
 
 	// 計算原價（不含折扣/折讓）
@@ -1023,7 +1036,7 @@ async function printReceipt(data, isTicket = false) {
 	});
 
 	itemsOrdered.forEach((i) => {
-		let itemType = getItemCategoryType(i.name)
+		let itemType = i.type || getItemCategoryType(i.name);
 		if (itemType === "bbq") {
 			kitchenItems.push(i);
 			return;
