@@ -1239,7 +1239,10 @@ function renderItemStats(range, button) {
 			if (biz >= startBiz && biz < endBiz) {
 				if (Array.isArray(order.items)) {
 					order.items.forEach((item) => {
-						let name = item.name.trim();
+						let nameMatch = item.name.match(/^[^<]+/);
+						let name = nameMatch
+							? nameMatch[0].replace(/\s*\(招待\)$/, "").trim()
+							: item.name.replace(/\s*\(招待\)$/, "").trim();
 						let qty = item.count || 1;
 						if (!typeMap[name])
 							typeMap[name] = item.type || getItemCategoryType(name);
@@ -1311,7 +1314,10 @@ function renderPublicStats() {
 			if (t.getFullYear() === year && t.getMonth() === month) {
 				if (order.items && Array.isArray(order.items)) {
 					order.items.forEach((item) => {
-						let name = item.name.split(" <")[0].replace(" (招待)", "").trim();
+						let nameMatch = item.name.match(/^[^<]+/);
+						let name = nameMatch
+							? nameMatch[0].replace(" (招待)", "").trim()
+							: item.name.replace(" (招待)", "").trim();
 						if (!stats[name])
 							stats[name] = { count: 0, type: item.type || getItemCategoryType(name) };
 						stats[name].count += item.count || 1;

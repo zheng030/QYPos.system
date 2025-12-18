@@ -182,51 +182,6 @@ function getCostByItemName(itemName) {
 	return 0;
 }
 
-function getItemSalesStats(startTime, endTime) {
-	let stats = {};
-	let typeMap = {};
-	if (!historyOrders || historyOrders.length === 0) return { bar: [], bbq: [] };
-
-	historyOrders.forEach((order) => {
-		if (!order || !order.items) return;
-		const orderTime = getDateFromOrder(order);
-		if (orderTime >= startTime && orderTime < endTime) {
-			order.items.forEach((item) => {
-				let name = item.name
-					.split(" <")[0]
-					.replace(/\s*\(招待\)$/, "")
-					.trim()
-					.replace(/\s*[\(（].*?[\)）]$/, "")
-					.trim();
-				const count = item.count || 1;
-				const t = item.type || getItemCategoryType(name);
-				if (!typeMap[name]) typeMap[name] = t;
-				if (name) {
-					if (!stats[name]) stats[name] = 0;
-					stats[name] += count;
-				}
-			});
-		}
-	});
-
-	let barList = [];
-	let bbqList = [];
-
-	for (const [name, count] of Object.entries(stats)) {
-		if (inventory[name] === false) continue;
-		const itemType = typeMap[name] || getItemCategoryType(name);
-		if (itemType === "bar") {
-			barList.push({ name, count });
-		} else if (itemType === "bbq") {
-			bbqList.push({ name, count });
-		}
-	}
-
-	barList.sort((a, b) => b.count - a.count);
-	bbqList.sort((a, b) => b.count - a.count);
-
-	return { bar: barList, bbq: bbqList };
-}
 
 /* ========== 資料庫監聽與初始化 ========== */
 
