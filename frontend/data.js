@@ -178,12 +178,12 @@ const menuData = {
             { name: "日式炒烏龍麵", price: 150 },
             { name: "酒蒸蛤蠣", price: 180 },
             { name: "唐揚雞", price: 150 },
-            { name: "唐揚咖哩", price: 220 },
-            { name: "蛤仔透抽", price: 180 }],
+            { name: "唐揚咖哩", price: 220 }],
         "湯品": [
             { name: "龍膽石斑魚湯", price: 280 },
             { name: "蛤仔湯", price: 100 },
             { name: "蚵仔湯", price: 100 },
+            { name: "蛤仔透抽", price: 180 },
             { name: "蛤仔蚵仔", price: 180 },
             { name: "福州丸湯", price: 100 }]
     },
