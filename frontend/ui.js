@@ -1226,6 +1226,7 @@ function renderItemStats(range, button) {
 		}
 	}
 	let counts = {};
+	let typeMap = {};
 	let startBiz = getBusinessDate(start);
 	let endBiz = getBusinessDate(end);
 
@@ -1238,6 +1239,8 @@ function renderItemStats(range, button) {
 					order.items.forEach((item) => {
 						let name = item.name.trim();
 						let qty = item.count || 1;
+						if (!typeMap[name])
+							typeMap[name] = item.type || getItemCategoryType(name);
 						if (!counts[name]) counts[name] = 0;
 						counts[name] += qty;
 					});
@@ -1251,7 +1254,7 @@ function renderItemStats(range, button) {
 	let bbqList = [];
 
 	sorted.forEach(([name, count]) => {
-		let type = item.type || getItemCategoryType(name);
+		let type = typeMap[name] || getItemCategoryType(name);
 		if (type === "bar") barList.push({ name, count });
 		else bbqList.push({ name, count });
 	});
