@@ -139,13 +139,13 @@
 }
 
 .flavor-tag.lemon {
-    background: #f1f5f9;
-    color: #64748b;
+    background: #ecfccb;
+    color: #4d7c0f;
 }
 
-.flavor-tag.lemon.lemon-不要 {
-    background: #fee2e2;
-    color: #dc2626;
+.flavor-tag.lemon.lemon-要 {
+    background: #ecfccb;
+    color: #4d7c0f;
 }
 
 /* ========== 今日訂單列表中的口味顯示 ========== */

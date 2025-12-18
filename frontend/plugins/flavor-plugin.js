@@ -2,7 +2,7 @@
 /*
  * 此 Plugin 為顧客點餐介面新增口味選項功能
  * - 辣度：不辣、小辣、中辣、大辣 (預設：不辣)
- * - 檸檬汁：要、不要 (預設：要)
+ * - 檸檬汁：要、不要 (預設：不要)
  *
  * 設計原則：
  * 1. 最小化修改原始檔案 (僅 index.html 加入 2 行引用)
@@ -25,7 +25,7 @@
         lemon: {
             label: '🍋 檸檬汁',
             options: ['要', '不要'],
-            default: '要'
+            default: '不要'
         },
         // 只有這些類別才顯示口味選項
         applicableCategories: ['燒烤', '炸物', '主餐']
@@ -200,9 +200,9 @@
             tags.push(`<span class="flavor-tag spice spice-${currentFlavor.spice}">${currentFlavor.spice}</span>`);
         }
 
-        // 檸檬汁：非預設(要)才顯示
+        // 檸檬汁：只有「要」才顯示標籤
         if (currentFlavor.lemon !== FLAVOR_CONFIG.lemon.default) {
-            tags.push(`<span class="flavor-tag lemon lemon-${currentFlavor.lemon}">不要檸檬</span>`);
+            tags.push(`<span class="flavor-tag lemon lemon-${currentFlavor.lemon}">要檸檬</span>`);
         }
 
         return tags.length > 0 ? ' ' + tags.join('') : '';
