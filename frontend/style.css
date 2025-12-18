@@ -452,20 +452,32 @@ button {
 }
 .accordion-header {
 	width: 100%;
-	background: white;
-	color: var(--text-main);
-	padding: 18px 25px;
+	background: #e0e7ff;
+	color: var(--primary-color);
+	padding: 15px 20px;
 	text-align: left;
-	border-radius: var(--radius-md);
-	margin-top: 12px;
-	font-size: 17px;
-	font-weight: bold;
+	border-radius: 8px;
+	margin-top: 15px;
+	font-size: 18px;
+	font-weight: 700;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	grid-column: 1 / -1;
 	box-shadow: var(--shadow-sm);
-	border: 1px solid #f1f5f9;
+	border: 1px solid transparent;
+	transition: all 0.2s ease;
+}
+.accordion-header:hover {
+	background: #dbeafe;
+	transform: translateY(-2px);
+	box-shadow: var(--shadow-md);
+}
+.accordion-header .arrow {
+	transition: transform 0.3s ease;
+}
+.accordion-header.active .arrow {
+	transform: rotate(180deg);
 }
 .accordion-content {
 	display: none;
