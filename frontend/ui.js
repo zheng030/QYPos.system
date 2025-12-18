@@ -755,7 +755,7 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+			leftHTML += `<div class="checkout-item" onclick="moveToPay(${index})"><span>${item.name}${item.isTreat && !item.name.includes("(招待)") ? " (招待)" : ""
 				}</span><span>${priceHtml}</span></div>`;
 		});
 	if (tempRightList.length === 0)
@@ -766,7 +766,7 @@ function renderCheckoutLists() {
 			let priceHtml = item.isTreat
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${item.isTreat ? " (招待)" : ""
+			rightHTML += `<div class="checkout-item" onclick="removeFromPay(${index})"><span>${item.name}${item.isTreat && !item.name.includes("(招待)") ? " (招待)" : ""
 				}</span><span>${priceHtml}</span></div>`;
 		});
 	document.getElementById("unpaidList").innerHTML = leftHTML;
@@ -822,7 +822,7 @@ function openReprintModal() {
 			price === 0
 				? `<span style="color:#06d6a0; font-weight:700;">$0</span>`
 				: `$${price}`;
-		list.innerHTML += `<label class="checkout-item" style="justify-content: space-between; gap: 10px;"><div style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="reprint-checkbox" id="reprint-item-${index}" checked><span>${item.name}${item.isTreat ? " (招待)" : ""}${countText}</span></div><span style="color:#475569;">${priceText}</span></label>`;
+		list.innerHTML += `<label class="checkout-item" style="justify-content: space-between; gap: 10px;"><div style="display:flex; align-items:center; gap:10px;"><input type="checkbox" class="reprint-checkbox" id="reprint-item-${index}" checked><span>${item.name}${item.isTreat && !item.name.includes("(招待)") ? " (招待)" : ""}${countText}</span></div><span style="color:#475569;">${priceText}</span></label>`;
 	});
 	reprintSelectionModal.style.display = "flex";
 }
@@ -951,8 +951,10 @@ function showHistory() {
 							: "";
 					let priceStr =
 						i.count && i.count > 1 ? `$${i.price * i.count}` : `$${i.price}`;
-					if (i.isTreat)
-						return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name} (招待)${countStr}</span> <span>$0</span></div>`;
+					if (i.isTreat) {
+						const treatTag = i.name.includes("(招待)") ? "" : " (招待)";
+						return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}${treatTag}${countStr}</span> <span>$0</span></div>`;
+					}
 					return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${i.name}${countStr}</span> <span>${priceStr}</span></div>`;
 				})
 				.join("");
@@ -2114,7 +2116,7 @@ function showOwnerDetailedOrders(year, month, day) {
 			.map((i) => {
 				let n = i.name;
 				if (i.count > 1) n += ` x${i.count}`;
-				if (i.isTreat) n += ` (招待)`;
+				if (i.isTreat && !n.includes("(招待)")) n += ` (招待)`;
 				return n;
 			})
 			.join("、");

@@ -796,7 +796,7 @@ function checkoutAll(manualFinal) {
 			let price = item.price;
 			let type = getItemCategoryType(name);
 			if (item.isTreat) {
-				name = `${name} (招待)`;
+				if (!name.includes("(招待)")) name = `${name} (招待)`;
 				price = 0;
 			}
 			return { ...item, name, price, type };
@@ -956,7 +956,7 @@ function confirmPayment() {
 		let price = item.price;
 		let type = getItemCategoryType(name);
 		if (item.isTreat) {
-			name = `${name} (招待)`;
+			if (!name.includes("(招待)")) name = `${name} (招待)`;
 			price = 0;
 		}
 		return { ...item, name, price, type };
@@ -1072,8 +1072,8 @@ async function printReceipt(data, isTicket = false) {
 	const generateHtml = (title, items, isFullReceipt) => {
 		let itemsHtml = "";
 		items.forEach((i) => {
-			let displayName = i.name;
-			if (i.isTreat) displayName += " (招待)";
+		let displayName = i.name;
+		if (i.isTreat && !displayName.includes("(招待)")) displayName += " (招待)";
 			let priceStr = isFullReceipt ? (i.isTreat ? "$0" : `$${i.price}`) : "";
 
 			// 🔥 修正：讓 kitchen-item 具有 space-between 屬性，確保排版靠左
