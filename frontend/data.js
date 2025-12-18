@@ -171,22 +171,20 @@ const menuData = {
     },
 
     "主餐": {
-        "飯類": [
+        "主餐": [
             { name: "炒飯", price: 90 },
             { name: "親子丼", price: 160 },
-            { name: "海鮮粥", price: 350 }],
-        "麵類": [
-            { name: "日式炒烏龍麵", price: 150 }],
-        "副食": [
+            { name: "海鮮粥", price: 350 },
+            { name: "日式炒烏龍麵", price: 150 },
             { name: "酒蒸蛤蠣", price: 180 },
             { name: "唐揚雞", price: 150 },
             { name: "唐揚咖哩", price: 220 },
-            { name: "蛤仔透抽", price: 180 },
-            { name: "蛤仔蚵仔", price: 180 }],
+            { name: "蛤仔透抽", price: 180 }],
         "湯品": [
             { name: "龍膽石斑魚湯", price: 280 },
             { name: "蛤仔湯", price: 100 },
             { name: "蚵仔湯", price: 100 },
+            { name: "蛤仔蚵仔", price: 180 },
             { name: "福州丸湯", price: 100 }]
     },
     "炸物": [
