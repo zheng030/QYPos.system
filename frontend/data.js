@@ -156,6 +156,10 @@ const menuData = {
             { name: "大熱狗", price: 35 },
             { name: "鹹麻吉", price: 35 },
             { name: "花生麻吉", price: 35 }],
+        "花生糯米腸組合": [
+            { name: "A 糯米腸+香腸", price: 80 },
+            { name: "B 糯米腸+鹹豬肉", price: 100 },
+            { name: "C 糯米腸+香腸+鹹豬肉", price: 150 }],
         "隱藏限定": [
             { name: "碳烤豆腐", price: 40 },
             { name: "牛蒡甜不辣", price: 40 },
