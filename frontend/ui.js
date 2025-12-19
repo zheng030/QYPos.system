@@ -122,22 +122,30 @@ function renderTableGrid() {
 	tables.forEach((t) => {
 		let btn = document.createElement("div");
 		btn.className = "tableBtn btn-effect";
-		let status = tableStatuses[t];
-		let hasCart = tableCarts[t] && tableCarts[t].length > 0;
+	let status = tableStatuses[t];
+	let hasCart = tableCarts[t] && tableCarts[t].length > 0;
 
-		if (status !== "yellow" && tableTimers[t]) {
-			delete tableTimers[t];
-			saveAllToCloud();
-		}
-		if (status === "yellow" && !hasCart) {
-			delete tableTimers[t];
-			delete tableStatuses[t];
-			delete tableCarts[t];
-			delete tableCustomers[t];
-			delete tableSplitCounters[t];
-			saveAllToCloud();
-			status = null;
-		}
+	if (status !== "yellow" && tableTimers[t]) {
+		delete tableTimers[t];
+		saveAllToCloud({ [`tableTimers/${t}`]: null });
+	}
+	if (status === "yellow" && !hasCart) {
+		delete tableTimers[t];
+		delete tableStatuses[t];
+		delete tableCarts[t];
+		delete tableCustomers[t];
+		delete tableSplitCounters[t];
+		delete tableBatchCounts[t];
+		saveAllToCloud({
+			[`tableTimers/${t}`]: null,
+			[`tableStatuses/${t}`]: null,
+			[`tableCarts/${t}`]: null,
+			[`tableCustomers/${t}`]: null,
+			[`tableSplitCounters/${t}`]: null,
+			[`tableBatchCounts/${t}`]: null,
+		});
+		status = null;
+	}
 
 		if (status === "red") {
 			btn.classList.add("status-red");
@@ -1405,17 +1413,18 @@ function deleteSingleOrder(index) {
 		let idxInHistory = Array.isArray(historyOrders)
 			? historyOrders.indexOf(target)
 			: -1;
-		if (idxInHistory === -1) {
-			alert("刪除失敗：索引不存在");
-			return;
-		}
-		historyOrders.splice(idxInHistory, 1);
-		localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
-		if (typeof saveAllToCloud === "function") saveAllToCloud();
-		showHistory();
-	} catch (e) {
-		alert("刪除失敗：" + e.message);
+	if (idxInHistory === -1) {
+		alert("刪除失敗：索引不存在");
+		return;
 	}
+	historyOrders.splice(idxInHistory, 1);
+	localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
+	if (typeof saveAllToCloud === "function")
+		saveAllToCloud({ historyOrders });
+	showHistory();
+} catch (e) {
+	alert("刪除失敗：" + e.message);
+}
 }
 
 /* ========== 6. 修改：庫存管理 (下拉式選單) ========== */
@@ -2203,7 +2212,7 @@ function confirmChangePassword() {
 	}
 
 	OWNER_PASSWORDS[ownerName] = newPwd;
-	saveAllToCloud();
+	saveAllToCloud({ [`ownerPasswords/${ownerName}`]: newPwd });
 	alert("✅ 密碼已更新");
 	closeChangePasswordModal();
 }

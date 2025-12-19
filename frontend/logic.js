@@ -185,108 +185,146 @@ function getCostByItemName(itemName) {
 
 /* ========== 資料庫監聽與初始化 ========== */
 
+function refreshUiAfterDataChange() {
+	if (
+		document.getElementById("tableSelect") &&
+		document.getElementById("tableSelect").style.display === "block"
+	)
+		renderTableGrid();
+
+	setTimeout(() => {
+		if (
+			document.getElementById("historyPage") &&
+			document.getElementById("historyPage").style.display === "block"
+		)
+			showHistory();
+
+		if (
+			document.getElementById("reportPage") &&
+			document.getElementById("reportPage").style.display === "block"
+		) {
+			let activeOption = document.querySelector(".segment-option.active");
+			let type =
+				activeOption && activeOption.innerText === "本周"
+					? "week"
+					: activeOption && activeOption.innerText === "當月"
+						? "month"
+						: "day";
+			generateReport(type);
+			renderCalendar();
+		}
+
+		if (
+			document.getElementById("itemStatsModal") &&
+			document.getElementById("itemStatsModal").style.display === "flex"
+		) {
+			let activeBtn = document.querySelector(".report-controls button.active");
+			let range = "day";
+			if (activeBtn) {
+				if (activeBtn.id === "statBtnWeek") range = "week";
+				if (activeBtn.id === "statBtnMonth") range = "month";
+			}
+			renderItemStats(range);
+		}
+
+		if (
+			document.getElementById("pastHistoryPage") &&
+			document.getElementById("pastHistoryPage").style.display === "block"
+		) {
+			renderPublicStats();
+		}
+	}, 50);
+
+	let currentOwner = document.getElementById("ownerWelcome")
+		? document.getElementById("ownerWelcome").innerText
+		: "";
+	if (
+		document.getElementById("confidentialPage") &&
+		document.getElementById("confidentialPage").style.display === "block" &&
+		currentOwner
+	) {
+		let savedMode = sessionStorage.getItem("ownerMode") || "finance";
+		if (savedMode === "cost") {
+			updateFinancialPage(currentOwner);
+		} else {
+			renderConfidentialCalendar(currentOwner);
+		}
+	}
+}
+
+function normalizeHistoryData(val) {
+	let rawHistory = val
+		? Array.isArray(val)
+			? val
+			: Object.values(val)
+		: [];
+	historyOrders = rawHistory.filter((order) => {
+		return (
+			order &&
+			typeof order === "object" &&
+			Array.isArray(order.items) &&
+			order.total !== undefined
+		);
+	});
+}
+
 function initRealtimeData() {
-	db.ref("/").on("value", (snapshot) => {
-		const data = snapshot.val() || {};
+	db.ref("historyOrders").on("value", (snapshot) => {
+		normalizeHistoryData(snapshot.val());
+		refreshUiAfterDataChange();
+	});
 
-		let rawHistory = data.historyOrders
-			? Array.isArray(data.historyOrders)
-				? data.historyOrders
-				: Object.values(data.historyOrders)
-			: [];
-		historyOrders = rawHistory.filter((order) => {
-			return (
-				order &&
-				typeof order === "object" &&
-				Array.isArray(order.items) &&
-				order.total !== undefined
-			);
-		});
+	db.ref("tableTimers").on("value", (snapshot) => {
+		tableTimers = snapshot.val() || {};
+		refreshUiAfterDataChange();
+	});
 
-		tableTimers = data.tableTimers || {};
-		tableCarts = data.tableCarts || {};
-		tableStatuses = data.tableStatuses || {};
-		tableCustomers = data.tableCustomers || {};
-		tableSplitCounters = data.tableSplitCounters || {};
-		itemCosts = data.itemCosts || {};
-		itemPrices = data.itemPrices || {};
-		inventory = data.inventory || {};
-		incomingOrders = data.incomingOrders || {};
-		tableBatchCounts = data.tableBatchCounts || {};
+	db.ref("tableCarts").on("value", (snapshot) => {
+		tableCarts = snapshot.val() || {};
+		refreshUiAfterDataChange();
+	});
 
-		if (data.ownerPasswords) OWNER_PASSWORDS = data.ownerPasswords;
+	db.ref("tableStatuses").on("value", (snapshot) => {
+		tableStatuses = snapshot.val() || {};
+		refreshUiAfterDataChange();
+	});
 
-		// 檢查新訂單 (排除客人模式)
+	db.ref("tableCustomers").on("value", (snapshot) => {
+		tableCustomers = snapshot.val() || {};
+		refreshUiAfterDataChange();
+	});
+
+	db.ref("tableSplitCounters").on("value", (snapshot) => {
+		tableSplitCounters = snapshot.val() || {};
+	});
+
+	db.ref("itemCosts").on("value", (snapshot) => {
+		itemCosts = snapshot.val() || {};
+	});
+
+	db.ref("itemPrices").on("value", (snapshot) => {
+		itemPrices = snapshot.val() || {};
+	});
+
+	db.ref("inventory").on("value", (snapshot) => {
+		inventory = snapshot.val() || {};
+		refreshUiAfterDataChange();
+	});
+
+	db.ref("incomingOrders").on("value", (snapshot) => {
+		incomingOrders = snapshot.val() || {};
 		if (!document.body.classList.contains("customer-mode")) {
 			checkIncomingOrders();
 		}
+		refreshUiAfterDataChange();
+	});
 
-		if (
-			document.getElementById("tableSelect") &&
-			document.getElementById("tableSelect").style.display === "block"
-		)
-			renderTableGrid();
+	db.ref("tableBatchCounts").on("value", (snapshot) => {
+		tableBatchCounts = snapshot.val() || {};
+	});
 
-		setTimeout(() => {
-			if (
-				document.getElementById("historyPage") &&
-				document.getElementById("historyPage").style.display === "block"
-			)
-				showHistory();
-
-			if (
-				document.getElementById("reportPage") &&
-				document.getElementById("reportPage").style.display === "block"
-			) {
-				let activeOption = document.querySelector(".segment-option.active");
-				let type =
-					activeOption && activeOption.innerText === "本周"
-						? "week"
-						: activeOption && activeOption.innerText === "當月"
-							? "month"
-							: "day";
-				generateReport(type);
-				renderCalendar();
-			}
-
-			if (
-				document.getElementById("itemStatsModal") &&
-				document.getElementById("itemStatsModal").style.display === "flex"
-			) {
-				let activeBtn = document.querySelector(
-					".report-controls button.active",
-				);
-				let range = "day";
-				if (activeBtn) {
-					if (activeBtn.id === "statBtnWeek") range = "week";
-					if (activeBtn.id === "statBtnMonth") range = "month";
-				}
-				renderItemStats(range);
-			}
-
-			if (
-				document.getElementById("pastHistoryPage") &&
-				document.getElementById("pastHistoryPage").style.display === "block"
-			) {
-				renderPublicStats();
-			}
-		}, 50);
-
-		let currentOwner = document.getElementById("ownerWelcome")
-			? document.getElementById("ownerWelcome").innerText
-			: "";
-		if (
-			document.getElementById("confidentialPage") &&
-			document.getElementById("confidentialPage").style.display === "block" &&
-			currentOwner
-		) {
-			let savedMode = sessionStorage.getItem("ownerMode") || "finance";
-			if (savedMode === "cost") {
-				updateFinancialPage(currentOwner);
-			} else {
-				renderConfidentialCalendar(currentOwner);
-			}
-		}
+	db.ref("ownerPasswords").on("value", (snapshot) => {
+		if (snapshot.val()) OWNER_PASSWORDS = snapshot.val();
 	});
 }
 
@@ -304,23 +342,18 @@ function checkIncomingOrders() {
 	closeIncomingOrderModal();
 }
 
-function saveAllToCloud() {
-	db.ref("/")
-		.update({
-			historyOrders,
-			tableTimers,
-			tableCarts,
-			tableStatuses,
-			tableCustomers,
-			tableSplitCounters,
-			itemCosts,
-			itemPrices,
-			ownerPasswords: OWNER_PASSWORDS,
-			incomingOrders,
-			tableBatchCounts,
-			inventory,
-		})
-		.catch((err) => console.error(err));
+function saveAllToCloud(updates) {
+	if (!updates || typeof updates !== "object" || Object.keys(updates).length === 0) {
+		console.warn("saveAllToCloud called without updates; skipping cloud write.");
+		return Promise.resolve();
+	}
+
+	let payload = {};
+	for (const [path, value] of Object.entries(updates)) {
+		payload[path] = value === undefined ? null : value;
+	}
+
+	return db.ref("/").update(payload).catch((err) => console.error(err));
 }
 
 function refreshData() {
@@ -352,7 +385,8 @@ function updateItemData(name, type, value) {
 	if (isNaN(val)) val = 0;
 	if (type === "cost") itemCosts[name] = val;
 	else if (type === "price") itemPrices[name] = val;
-	saveAllToCloud();
+	const path = type === "cost" ? `itemCosts/${name}` : `itemPrices/${name}`;
+	saveAllToCloud({ [path]: val });
 }
 
 function toggleStockStatus(name, isAvailable) {
@@ -366,7 +400,7 @@ function toggleStockStatus(name, isAvailable) {
 		el.style.color = isAvailable ? "#06d6a0" : "#ef476f";
 	}
 
-	saveAllToCloud();
+	saveAllToCloud({ [`inventory/${name}`]: isAvailable });
 }
 
 function toggleOptionStock(name, option, isAvailable) {
@@ -400,7 +434,15 @@ function toggleOptionStock(name, option, isAvailable) {
 			}
 		}
 	}
-	saveAllToCloud();
+
+	let updates = { [`inventory/${name}::${option}`]: isAvailable };
+	if (FOOD_OPTION_VARIANTS[name]) {
+		let hasAny = FOOD_OPTION_VARIANTS[name].some(
+			(opt) => inventory[`${name}::${opt}`] !== false,
+		);
+		updates[`inventory/${name}`] = hasAny;
+	}
+	saveAllToCloud(updates);
 }
 
 function toggleParentWithOptions(name, isAvailable) {
@@ -430,9 +472,15 @@ function toggleParentWithOptions(name, isAvailable) {
 					if (cb) cb.checked = isAvailable;
 				}
 			}
+			});
+	}
+	let updates = { [`inventory/${name}`]: isAvailable };
+	if (FOOD_OPTION_VARIANTS[name]) {
+		FOOD_OPTION_VARIANTS[name].forEach((opt) => {
+			updates[`inventory/${name}::${opt}`] = isAvailable;
 		});
 	}
-	saveAllToCloud();
+	saveAllToCloud(updates);
 }
 
 function getAvailableVariants(name) {
@@ -487,13 +535,19 @@ function saveOrderManual() {
 		});
 
 		tableCarts[selectedTable] = itemsToSave;
-		tableStatuses[selectedTable] = "yellow";
-		tableCustomers[selectedTable].name =
-			document.getElementById("custName").value;
-		tableCustomers[selectedTable].phone =
-			document.getElementById("custPhone").value;
+	tableStatuses[selectedTable] = "yellow";
+	tableCustomers[selectedTable].name =
+		document.getElementById("custName").value;
+	tableCustomers[selectedTable].phone =
+		document.getElementById("custPhone").value;
 
-		saveAllToCloud();
+	saveAllToCloud({
+		[`tableCarts/${selectedTable}`]: itemsToSave,
+		[`tableStatuses/${selectedTable}`]: "yellow",
+		[`tableCustomers/${selectedTable}`]: tableCustomers[selectedTable],
+		[`tableTimers/${selectedTable}`]: tableTimers[selectedTable],
+		[`tableSplitCounters/${selectedTable}`]: tableSplitCounters[selectedTable],
+	});
 
 		printReceipt(
 			{
@@ -544,7 +598,7 @@ function closeBusiness() {
 	if (!confirm("確定要結束營業並清空今日資料嗎？")) return;
 	localStorage.removeItem("orderHistory");
 	historyOrders = [];
-	saveAllToCloud();
+	saveAllToCloud({ historyOrders });
 	showToast("已結束營業，資料已清空");
 	goHome();
 }
@@ -600,8 +654,7 @@ async function customerSubmitOrder() {
 		timestamp: Date.now(),
 	});
 
-	db.ref(`incomingOrders/${selectedTable}`)
-		.set(pendingList)
+	saveAllToCloud({ [`incomingOrders/${selectedTable}`]: pendingList })
 		.then(() => {
 			alert(
 				"✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。",
@@ -631,7 +684,7 @@ function confirmIncomingOrder() {
 			: [];
 	if (!pendingQueue.length) {
 		delete incomingOrders[currentIncomingTable];
-		saveAllToCloud();
+		saveAllToCloud({ [`incomingOrders/${currentIncomingTable}`]: null });
 		closeIncomingOrderModal();
 		checkIncomingOrders();
 		return;
@@ -660,7 +713,12 @@ function confirmIncomingOrder() {
 	let currentCart = tableCarts[currentIncomingTable] || [];
 	let newCart = currentCart.concat(items);
 	tableCarts[currentIncomingTable] = newCart;
-	cart = newCart;
+	// 只有在正在查看同一桌時才同步畫面購物車，避免其他桌被覆蓋
+	const isViewingSameTable = selectedTable === currentIncomingTable;
+	if (isViewingSameTable) {
+		cart = newCart;
+		entryCartSignature = JSON.stringify(cart || []);
+	}
 
 	tableStatuses[currentIncomingTable] = "yellow";
 	if (!tableCustomers[currentIncomingTable])
@@ -697,11 +755,21 @@ function confirmIncomingOrder() {
 		incomingOrders[currentIncomingTable] = pendingQueue;
 	}
 
-	saveAllToCloud();
+	saveAllToCloud({
+		[`incomingOrders/${currentIncomingTable}`]:
+			pendingQueue.length > 0 ? pendingQueue : null,
+		[`tableBatchCounts/${currentIncomingTable}`]: batchId,
+		[`tableCarts/${currentIncomingTable}`]: newCart,
+		[`tableStatuses/${currentIncomingTable}`]: "yellow",
+		[`tableCustomers/${currentIncomingTable}`]: tableCustomers[currentIncomingTable],
+		[`tableTimers/${currentIncomingTable}`]: tableTimers[currentIncomingTable],
+		[`tableSplitCounters/${currentIncomingTable}`]:
+			tableSplitCounters[currentIncomingTable],
+	});
 	closeIncomingOrderModal();
 	showToast(`✅ 已接收 ${currentIncomingTable} 的訂單`);
 	checkIncomingOrders();
-	renderCart();
+	if (isViewingSameTable) renderCart();
 }
 
 function rejectIncomingOrder() {
@@ -716,7 +784,10 @@ function rejectIncomingOrder() {
 	if (pendingQueue.length > 0) pendingQueue.shift();
 	if (pendingQueue.length === 0) delete incomingOrders[currentIncomingTable];
 	else incomingOrders[currentIncomingTable] = pendingQueue;
-	saveAllToCloud();
+	saveAllToCloud({
+		[`incomingOrders/${currentIncomingTable}`]:
+			pendingQueue.length === 0 ? null : pendingQueue,
+	});
 	closeIncomingOrderModal();
 	checkIncomingOrders();
 }
@@ -784,7 +855,16 @@ function checkoutAll(manualFinal) {
 	sentItems = [];
 	sessionStorage.removeItem("sentItems");
 
-	saveAllToCloud();
+	const updates = {
+		historyOrders,
+		[`tableCarts/${selectedTable}`]: null,
+		[`tableTimers/${selectedTable}`]: null,
+		[`tableStatuses/${selectedTable}`]: null,
+		[`tableCustomers/${selectedTable}`]: null,
+		[`tableSplitCounters/${selectedTable}`]: null,
+		[`tableBatchCounts/${selectedTable}`]: null,
+	};
+	saveAllToCloud(updates);
 	cart = [];
 	currentDiscount = { type: "none", value: 0 };
 	isServiceFeeEnabled = false;
@@ -845,7 +925,13 @@ function fixAllOrderIds() {
 			tableCustomers[table].orderId = currentMaxSeq;
 		}
 	}
-	saveAllToCloud();
+	let updates = { historyOrders };
+	for (let table in tableCustomers) {
+		if (tableCustomers[table] && tableStatuses[table] === "yellow") {
+			updates[`tableCustomers/${table}`] = tableCustomers[table];
+		}
+	}
+	saveAllToCloud(updates);
 	alert(
 		"✅ 修復完成！\n歷史訂單已重整，目前桌位單號已校正。\n網頁將自動重新整理。",
 	);
@@ -963,7 +1049,21 @@ function confirmPayment() {
 		sessionStorage.removeItem("sentItems");
 	}
 
-	saveAllToCloud();
+	const updates = {
+		historyOrders,
+		[`tableCarts/${selectedTable}`]: cart.length === 0 ? null : cart,
+		[`tableTimers/${selectedTable}`]:
+			cart.length === 0 ? null : tableTimers[selectedTable],
+		[`tableStatuses/${selectedTable}`]:
+			cart.length === 0 ? null : tableStatuses[selectedTable] || "yellow",
+		[`tableCustomers/${selectedTable}`]:
+			cart.length === 0 ? null : tableCustomers[selectedTable],
+		[`tableSplitCounters/${selectedTable}`]:
+			cart.length === 0 ? null : tableSplitCounters[selectedTable],
+		[`tableBatchCounts/${selectedTable}`]:
+			cart.length === 0 ? null : tableBatchCounts[selectedTable],
+	};
+	saveAllToCloud(updates);
 	renderCart();
 	closeCheckoutModal();
 	showToast(
