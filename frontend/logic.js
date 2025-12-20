@@ -89,6 +89,45 @@ function getMergedItems(items) {
 	return merged;
 }
 
+function getItemSignature(item) {
+	let name = item && item.name ? item.name : "";
+	let price = item && item.price !== undefined ? item.price : "";
+	let isTreat = item && item.isTreat ? 1 : 0;
+	let batchIdx = item && item.batchIdx !== undefined ? item.batchIdx : "";
+	let batchId = item && item.batchId !== undefined ? item.batchId : "";
+	let sentAt = item && item.sentAt !== undefined ? item.sentAt : "";
+	let incomingIdx =
+		item && item.incomingIdx !== undefined ? item.incomingIdx : "";
+	let isSent = item && item.isSent ? 1 : 0;
+	return [
+		name,
+		price,
+		isTreat,
+		batchIdx,
+		batchId,
+		sentAt,
+		incomingIdx,
+		isSent,
+	].join("||");
+}
+
+function getDeltaItems(currentCart, baseCart) {
+	let baseCounts = new Map();
+	baseCart.forEach((item) => {
+		let key = getItemSignature(item);
+		baseCounts.set(key, (baseCounts.get(key) || 0) + 1);
+	});
+
+	let delta = [];
+	currentCart.forEach((item) => {
+		let key = getItemSignature(item);
+		let count = baseCounts.get(key) || 0;
+		if (count > 0) baseCounts.set(key, count - 1);
+		else delta.push(item);
+	});
+	return delta;
+}
+
 function getDateFromOrder(order) {
 	if (!order) return new Date();
 	if (order.timestamp) return new Date(order.timestamp);
@@ -528,38 +567,49 @@ function saveOrderManual() {
 			tableCustomers[selectedTable].orderId = todayCount + 1;
 		}
 
-		let itemsToSave = cart.map((item) => {
-			let newItem = { ...item };
-			delete newItem.isNew;
-			return newItem;
-		});
+			let itemsToSave = cart.map((item) => {
+				let newItem = { ...item };
+				delete newItem.isNew;
+				return newItem;
+			});
 
-		tableCarts[selectedTable] = itemsToSave;
-	tableStatuses[selectedTable] = "yellow";
-	tableCustomers[selectedTable].name =
-		document.getElementById("custName").value;
-	tableCustomers[selectedTable].phone =
-		document.getElementById("custPhone").value;
+			let baseCart = [];
+			try {
+				baseCart = JSON.parse(entryCartSignature || "[]");
+			} catch (e) {
+				baseCart = [];
+			}
+			let newItems = getDeltaItems(cart, baseCart);
+
+			tableCarts[selectedTable] = itemsToSave;
+		tableStatuses[selectedTable] = "yellow";
+		tableCustomers[selectedTable].name =
+			document.getElementById("custName").value;
+		tableCustomers[selectedTable].phone =
+			document.getElementById("custPhone").value;
 
 	saveAllToCloud({
 		[`tableCarts/${selectedTable}`]: itemsToSave,
 		[`tableStatuses/${selectedTable}`]: "yellow",
 		[`tableCustomers/${selectedTable}`]: tableCustomers[selectedTable],
 		[`tableTimers/${selectedTable}`]: tableTimers[selectedTable],
-		[`tableSplitCounters/${selectedTable}`]: tableSplitCounters[selectedTable],
-	});
+			[`tableSplitCounters/${selectedTable}`]: tableSplitCounters[selectedTable],
+		});
 
-		printReceipt(
-			{
-				seq: tableCustomers[selectedTable].orderId,
-				table: selectedTable,
-				time: new Date().toLocaleString("zh-TW", { hour12: false }),
-				items: cart,
-				original: 0,
-				total: 0,
-			},
-			true,
-		);
+			let shouldPrintItems = baseCart.length > 0 ? newItems : cart;
+			if (shouldPrintItems.length > 0) {
+				printReceipt(
+					{
+						seq: tableCustomers[selectedTable].orderId,
+						table: selectedTable,
+						time: new Date().toLocaleString("zh-TW", { hour12: false }),
+						items: shouldPrintItems,
+						original: 0,
+						total: 0,
+					},
+					true,
+				);
+			}
 
 		showToast(
 			`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`,
