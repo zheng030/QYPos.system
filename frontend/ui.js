@@ -2237,9 +2237,11 @@ window.toggleAccordion = function (id) {
 window.addEventListener("DOMContentLoaded", () => {
 	const urlParams = new URLSearchParams(window.location.search);
 	const tableParam = urlParams.get("table");
+	const storedCustomerMode = sessionStorage.getItem("customerMode") === "true";
 	if (tableParam) {
 		console.log("進入客人點餐模式，桌號:", tableParam);
 		document.body.classList.add("customer-mode");
+		sessionStorage.setItem("customerMode", "true");
 		sessionStorage.setItem("isLoggedIn", "true");
 		showApp();
 		selectedTable = decodeURIComponent(tableParam);
@@ -2259,6 +2261,17 @@ window.addEventListener("DOMContentLoaded", () => {
 		cart = tableCarts[selectedTable] || [];
 		renderCart();
 	} else {
+		if (storedCustomerMode) {
+			sessionStorage.removeItem("isLoggedIn");
+			sessionStorage.removeItem("customerMode");
+			if (document.getElementById("login-screen")) {
+				document.getElementById("login-screen").style.display = "block";
+			}
+			if (document.getElementById("app-container")) {
+				document.getElementById("app-container").style.display = "none";
+			}
+			return;
+		}
 		if (sessionStorage.getItem("isLoggedIn") === "true") {
 			showApp();
 		}
