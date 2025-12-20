@@ -1091,12 +1091,7 @@ async function printReceipt(data, isTicket = false) {
 	});
 
 	itemsOrdered.forEach((i) => {
-		let itemType = i.type || getItemCategoryType(i.name);
-		if (itemType === "bbq") {
-			kitchenItems.push(i);
-			return;
-		}
-		// 若分類函式回傳 bar，仍用 fallback 檢查
+		// 僅依主分類判斷吧檯/廚房
 		let itemCat = "";
 		for (const [cat, content] of Object.entries(menuData)) {
 			if (Array.isArray(content)) {
