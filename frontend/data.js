@@ -130,6 +130,7 @@ const menuData = {
             { name: "鑫鑫腸", price: 25 },
             { name: "百頁豆腐", price: 25 },
             { name: "豆包", price: 30 },
+            { name: "糯米腸", price: 25 },
             { name: "肥腸", price: 30 },
             { name: "鱈魚丸", price: 30 },
             { name: "豬捲蔥", price: 40 },
