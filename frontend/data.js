@@ -168,6 +168,7 @@ const menuData = {
             { name: "洋蔥牛五花", price: 55 },
             { name: "香蔥牛五花", price: 55 },
             { name: "碳烤雞排", price: 90 },
+            { name: "碳烤魷魚", price: 200 },
             { name: "帶骨牛小排", price: 280 }]
     },
 
