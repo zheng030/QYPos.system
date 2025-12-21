@@ -4,6 +4,12 @@ console.log("UI JS v15 Loaded - 介面程式已載入");
 
 let revenueDetails = { bar: [], bbq: [], unknown: [], extra: [] };
 
+async function ensureSubscriptions(roots) {
+	if (typeof ensureDataSubscriptions === "function") {
+		await ensureDataSubscriptions(roots);
+	}
+}
+
 function showApp() {
 	document.getElementById("login-screen").style.display = "none";
 	document.getElementById("app-container").style.display = "block";
@@ -35,20 +41,30 @@ function goHome() {
 	document.getElementById("home").style.display = "grid";
 }
 
-function openTableSelect() {
+async function openTableSelect() {
 	hideAll();
+		await ensureSubscriptions([
+			"tableTimers",
+			"tableCarts",
+			"tableStatuses",
+			"tableCustomers",
+			"tableSplitCounters",
+			"tableBatchCounts",
+		]);
 	refreshData();
 	document.getElementById("tableSelect").style.display = "block";
 	renderTableGrid();
 }
 
-function openSettingsPage() {
+async function openSettingsPage() {
 	hideAll();
+	await ensureSubscriptions(["ownerPasswords"]);
 	document.getElementById("settingsPage").style.display = "block";
 }
 
-function openProductPage() {
+async function openProductPage() {
 	hideAll();
+	await ensureSubscriptions(["inventory"]);
 	document.getElementById("productPage").style.display = "block";
 	renderProductManagement();
 }
@@ -170,11 +186,20 @@ function renderTableGrid() {
 	});
 }
 
-function openOrderPageLogic(table) {
+async function openOrderPageLogic(table) {
 	selectedTable = table;
 	document.getElementById("seatLabel").innerHTML = "（" + table + "）";
 	hideAll();
 	document.getElementById("orderPage").style.display = "block";
+	await ensureSubscriptions(["inventory", "itemPrices"]);
+	await ensureSubscriptions([
+		"tableTimers",
+		"tableCarts",
+		"tableStatuses",
+		"tableCustomers",
+		"tableSplitCounters",
+		"tableBatchCounts",
+	]);
 
 	if (tableTimers[table]) startSeatTimerDisplay();
 	else {
@@ -894,16 +919,26 @@ function openPage(pageId) {
 	if (el) el.style.display = "block";
 
 	setTimeout(() => {
-		if (pageId === "historyPage") showHistory();
-		if (pageId === "reportPage") {
-			generateReport("day");
-			renderCalendar();
-			moveSegmentHighlighter(0);
-		}
-		if (pageId === "pastHistoryPage") {
-			if (typeof initHistoryDate === "function") initHistoryDate();
-			renderPublicStats();
-		}
+		(async () => {
+			if (pageId === "historyPage") {
+				await ensureSubscriptions(["historyOrders"]);
+				showHistory();
+			}
+			if (pageId === "reportPage") {
+				await ensureSubscriptions(["historyOrders"]);
+				generateReport("day");
+				renderCalendar();
+				moveSegmentHighlighter(0);
+			}
+			if (pageId === "pastHistoryPage") {
+				await ensureSubscriptions(["historyOrders"]);
+				if (typeof initHistoryDate === "function") initHistoryDate();
+				renderPublicStats();
+			}
+			if (pageId === "itemStatsPage") {
+				await ensureSubscriptions(["historyOrders"]);
+			}
+		})();
 	}, 100);
 }
 
@@ -1517,10 +1552,11 @@ function checkOwner(name) {
 	}
 }
 
-function openConfidentialPage(ownerName) {
+async function openConfidentialPage(ownerName) {
 	hideAll();
 	document.getElementById("confidentialPage").style.display = "block";
 	document.getElementById("ownerWelcome").innerText = ownerName;
+	await ensureSubscriptions(["historyOrders", "itemCosts", "itemPrices"]);
 	document.getElementById("financeDashboard").style.display = "none";
 	let currentLoginMode = sessionStorage.getItem("ownerMode") || "finance";
 	if (currentLoginMode === "cost") {
@@ -2213,7 +2249,7 @@ window.toggleAccordion = function (id) {
 
 /* ========== 這裡是最重要的修正區域 ========== */
 /* 在 DOMContentLoaded 監聽器中，加入 buildCategories() 呼叫 */
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
 	const urlParams = new URLSearchParams(window.location.search);
 	const tableParam = urlParams.get("table");
 	const storedCustomerMode = sessionStorage.getItem("customerMode") === "true";
@@ -2223,6 +2259,7 @@ window.addEventListener("DOMContentLoaded", () => {
 		sessionStorage.setItem("customerMode", "true");
 		sessionStorage.setItem("isLoggedIn", "true");
 		showApp();
+		await ensureSubscriptions(["tableCarts", "inventory", "itemPrices"]);
 		selectedTable = decodeURIComponent(tableParam);
 		hideAll();
 		document.getElementById("orderPage").style.display = "block";

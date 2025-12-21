@@ -35,6 +35,14 @@ const DATA_ROOT_KEYS = [
 	"tableBatchCounts",
 	"ownerPasswords",
 ];
+const CUSTOMER_DATA_ROOT_KEYS = [
+	"tableCarts",
+	"inventory",
+	"itemPrices",
+];
+const ADMIN_BASE_ROOT_KEYS = [
+	"incomingOrders"
+];
 const LOCAL_DATA_PREFIX = "localData.";
 const LOCAL_REV_KEY = "localRevisions";
 
@@ -61,24 +69,31 @@ let historyViewDate = new Date();
 let isCartSimpleMode = false;
 let isHistorySimpleMode = false;
 
+
 const DataSync = {
 	localRevisions: {},
 	remoteRevisions: {},
-	initLocal() {
-		this.loadLocalRevisions();
-		this.loadLocalData();
+	subscribedRoots: new Set(),
+	initLocal(roots) {
+		this.loadLocalRevisions(roots);
+		this.loadLocalData(roots);
 	},
 	setRemoteRevisions(revs) {
 		this.remoteRevisions = revs || {};
 	},
-	loadLocalRevisions() {
+	async refreshRevisions() {
+		let snap = await db.ref("revisions").once("value").catch(() => null);
+		let revs = snap ? snap.val() : {};
+		this.setRemoteRevisions(revs || {});
+	},
+	loadLocalRevisions(roots) {
 		try {
 			let raw = localStorage.getItem(LOCAL_REV_KEY);
 			this.localRevisions = raw ? JSON.parse(raw) : {};
 		} catch (e) {
 			this.localRevisions = {};
 		}
-		DATA_ROOT_KEYS.forEach((key) => {
+		(roots || DATA_ROOT_KEYS).forEach((key) => {
 			if (typeof this.localRevisions[key] !== "number")
 				this.localRevisions[key] = 0;
 		});
@@ -166,8 +181,8 @@ const DataSync = {
 			}
 		});
 	},
-	loadLocalData() {
-		DATA_ROOT_KEYS.forEach((root) => {
+	loadLocalData(roots) {
+		(roots || DATA_ROOT_KEYS).forEach((root) => {
 			let raw = localStorage.getItem(`${LOCAL_DATA_PREFIX}${root}`);
 			if (!raw) return;
 			try {
@@ -305,6 +320,23 @@ const DataSync = {
 			this.saveLocalRevisions();
 			this.saveLocalDataForRoots(roots);
 		}
+	},
+	async ensureRoots(roots) {
+		await this.refreshRevisions();
+		for (const root of roots || []) {
+			if (this.subscribedRoots.has(root)) continue;
+			this.subscribedRoots.add(root);
+			if (this.shouldApplyRemote(root)) {
+				await db
+					.ref(root)
+					.once("value")
+					.then((snap) => this.applyRemoteValue(root, snap.val()))
+					.catch(() => { });
+			}
+		}
+	},
+	subscribeRoots(roots) {
+		this.ensureRoots(roots);
 	},
 };
 
@@ -495,6 +527,21 @@ function refreshUiAfterDataChange() {
 	)
 		renderTableGrid();
 
+	if (
+		document.getElementById("orderPage") &&
+		document.getElementById("orderPage").style.display === "block" &&
+		selectedTable
+	) {
+		cart = tableCarts[selectedTable] || [];
+		entryCartSignature = JSON.stringify(cart || []);
+		let info = tableCustomers[selectedTable] || { name: "", phone: "" };
+		let nameEl = document.getElementById("custName");
+		let phoneEl = document.getElementById("custPhone");
+		if (nameEl) nameEl.value = info.name || "";
+		if (phoneEl) phoneEl.value = info.phone || "";
+		renderCart();
+	}
+
 	setTimeout(() => {
 		if (
 			document.getElementById("historyPage") &&
@@ -572,13 +619,19 @@ function normalizeHistoryData(val) {
 }
 
 function initRealtimeData() {
-	DataSync.initLocal();
+	const isCustomerMode =
+		sessionStorage.getItem("customerMode") === "true" ||
+		document.body.classList.contains("customer-mode");
+	const activeRoots = isCustomerMode
+		? CUSTOMER_DATA_ROOT_KEYS
+		: ADMIN_BASE_ROOT_KEYS;
+	DataSync.initLocal(activeRoots);
 	refreshUiAfterDataChange();
 
 	db.ref("revisions").on("value", (snapshot) => {
 		let revs = snapshot.val() || {};
 		DataSync.setRemoteRevisions(revs);
-		DATA_ROOT_KEYS.forEach((root) => {
+		DataSync.subscribedRoots.forEach((root) => {
 			if (DataSync.shouldApplyRemote(root)) {
 				db.ref(root)
 					.once("value")
@@ -588,12 +641,14 @@ function initRealtimeData() {
 		});
 	});
 
-	DATA_ROOT_KEYS.forEach((root) => {
-		db.ref(root).on("value", (snapshot) => {
-			if (!DataSync.shouldApplyRemote(root)) return;
-			DataSync.applyRemoteValue(root, snapshot.val());
-		});
-	});
+	DataSync.subscribeRoots(activeRoots);
+}
+
+if (typeof window !== "undefined") {
+	window.ensureDataSubscriptions = function (roots) {
+		DataSync.initLocal(roots);
+		return DataSync.ensureRoots(roots);
+	};
 }
 
 function checkIncomingOrders() {
