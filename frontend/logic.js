@@ -630,7 +630,7 @@ function saveAllToCloud(updates) {
 
 function refreshData() {
 	try {
-		let localHist = JSON.parse(localStorage.getItem("orderHistory"));
+		let localHist = JSON.parse(localStorage.getItem("localData.historyOrders")) || JSON.parse(localStorage.getItem("orderHistory"));
 		if (localHist && (!historyOrders || historyOrders.length === 0))
 			historyOrders = localHist;
 	} catch (e) { }
@@ -879,10 +879,8 @@ function saveAndExit() {
 
 function closeBusiness() {
 	if (!confirm("確定要結束營業並清空今日資料嗎？")) return;
-	localStorage.removeItem("orderHistory");
-	historyOrders = [];
-	saveAllToCloud({ historyOrders });
-	showToast("已結束營業，資料已清空");
+	// 暫時不實作
+	// showToast("已結束營業，資料已清空");
 	goHome();
 }
 
@@ -1125,7 +1123,6 @@ function checkoutAll(manualFinal) {
 		};
 		if (!Array.isArray(historyOrders)) historyOrders = [];
 		historyOrders.push(newOrder);
-		localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
 	}
 	delete tableCarts[selectedTable];
 	delete tableTimers[selectedTable];
@@ -1308,7 +1305,6 @@ function confirmPayment() {
 	};
 	if (!Array.isArray(historyOrders)) historyOrders = [];
 	historyOrders.push(newOrder);
-	localStorage.setItem("orderHistory", JSON.stringify(historyOrders));
 
 	// 更新桌上剩餘品項
 	tempLeftList = Array.isArray(tempLeftList) ? tempLeftList : [];
