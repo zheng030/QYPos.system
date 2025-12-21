@@ -21,6 +21,23 @@ let ownerPasswords = { 景偉: "0001", 小飛: "0002", 威志: "0003" };
 let incomingOrders = {};
 let tableBatchCounts = {};
 
+const DATA_ROOT_KEYS = [
+	"historyOrders",
+	"tableTimers",
+	"tableCarts",
+	"tableStatuses",
+	"tableCustomers",
+	"tableSplitCounters",
+	"itemCosts",
+	"itemPrices",
+	"inventory",
+	"incomingOrders",
+	"tableBatchCounts",
+	"ownerPasswords",
+];
+const LOCAL_DATA_PREFIX = "localData.";
+const LOCAL_REV_KEY = "localRevisions";
+
 let selectedTable = null;
 let cart = [];
 // 🔥 新增：用來儲存客人已送出的商品 (從暫存讀取)
@@ -43,6 +60,253 @@ let entryCartSignature = "[]"; // 紀錄進入點餐頁時的購物車狀態
 let historyViewDate = new Date();
 let isCartSimpleMode = false;
 let isHistorySimpleMode = false;
+
+const DataSync = {
+	localRevisions: {},
+	remoteRevisions: {},
+	initLocal() {
+		this.loadLocalRevisions();
+		this.loadLocalData();
+	},
+	setRemoteRevisions(revs) {
+		this.remoteRevisions = revs || {};
+	},
+	loadLocalRevisions() {
+		try {
+			let raw = localStorage.getItem(LOCAL_REV_KEY);
+			this.localRevisions = raw ? JSON.parse(raw) : {};
+		} catch (e) {
+			this.localRevisions = {};
+		}
+		DATA_ROOT_KEYS.forEach((key) => {
+			if (typeof this.localRevisions[key] !== "number")
+				this.localRevisions[key] = 0;
+		});
+	},
+	saveLocalRevisions() {
+		localStorage.setItem(LOCAL_REV_KEY, JSON.stringify(this.localRevisions));
+	},
+	saveLocalDataForRoots(roots) {
+		roots.forEach((root) => {
+			switch (root) {
+				case "historyOrders":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}historyOrders`,
+						JSON.stringify(historyOrders || []),
+					);
+					break;
+				case "tableTimers":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}tableTimers`,
+						JSON.stringify(tableTimers || {}),
+					);
+					break;
+				case "tableCarts":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}tableCarts`,
+						JSON.stringify(tableCarts || {}),
+					);
+					break;
+				case "tableStatuses":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}tableStatuses`,
+						JSON.stringify(tableStatuses || {}),
+					);
+					break;
+				case "tableCustomers":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}tableCustomers`,
+						JSON.stringify(tableCustomers || {}),
+					);
+					break;
+				case "tableSplitCounters":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}tableSplitCounters`,
+						JSON.stringify(tableSplitCounters || {}),
+					);
+					break;
+				case "itemCosts":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}itemCosts`,
+						JSON.stringify(itemCosts || {}),
+					);
+					break;
+				case "itemPrices":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}itemPrices`,
+						JSON.stringify(itemPrices || {}),
+					);
+					break;
+				case "inventory":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}inventory`,
+						JSON.stringify(inventory || {}),
+					);
+					break;
+				case "incomingOrders":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}incomingOrders`,
+						JSON.stringify(incomingOrders || {}),
+					);
+					break;
+				case "tableBatchCounts":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}tableBatchCounts`,
+						JSON.stringify(tableBatchCounts || {}),
+					);
+					break;
+				case "ownerPasswords":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}ownerPasswords`,
+						JSON.stringify(OWNER_PASSWORDS || {}),
+					);
+					break;
+				default:
+					break;
+			}
+		});
+	},
+	loadLocalData() {
+		DATA_ROOT_KEYS.forEach((root) => {
+			let raw = localStorage.getItem(`${LOCAL_DATA_PREFIX}${root}`);
+			if (!raw) return;
+			try {
+				let val = JSON.parse(raw);
+				switch (root) {
+					case "historyOrders":
+						normalizeHistoryData(val);
+						break;
+					case "tableTimers":
+						tableTimers = val || {};
+						break;
+					case "tableCarts":
+						tableCarts = val || {};
+						break;
+					case "tableStatuses":
+						tableStatuses = val || {};
+						break;
+					case "tableCustomers":
+						tableCustomers = val || {};
+						break;
+					case "tableSplitCounters":
+						tableSplitCounters = val || {};
+						break;
+					case "itemCosts":
+						itemCosts = val || {};
+						break;
+					case "itemPrices":
+						itemPrices = val || {};
+						break;
+					case "inventory":
+						inventory = val || {};
+						break;
+					case "incomingOrders":
+						incomingOrders = val || {};
+						break;
+					case "tableBatchCounts":
+						tableBatchCounts = val || {};
+						break;
+					case "ownerPasswords":
+						OWNER_PASSWORDS = val || OWNER_PASSWORDS;
+						break;
+					default:
+						break;
+				}
+			} catch (e) {
+				// Ignore invalid local cache
+			}
+		});
+	},
+	getRootKey(path) {
+		if (!path || typeof path !== "string") return "";
+		return path.split("/")[0];
+	},
+	hasLocalCache(root) {
+		return localStorage.getItem(`${LOCAL_DATA_PREFIX}${root}`) !== null;
+	},
+	shouldApplyRemote(root) {
+		let remoteRev = this.remoteRevisions[root];
+		let localRev = this.localRevisions[root] || 0;
+		if (typeof remoteRev === "number") return remoteRev > localRev;
+		return !this.hasLocalCache(root);
+	},
+	applyRemoteValue(root, value) {
+		switch (root) {
+			case "historyOrders":
+				normalizeHistoryData(value);
+				break;
+			case "tableTimers":
+				tableTimers = value || {};
+				break;
+			case "tableCarts":
+				tableCarts = value || {};
+				break;
+			case "tableStatuses":
+				tableStatuses = value || {};
+				break;
+			case "tableCustomers":
+				tableCustomers = value || {};
+				break;
+			case "tableSplitCounters":
+				tableSplitCounters = value || {};
+				break;
+			case "itemCosts":
+				itemCosts = value || {};
+				break;
+			case "itemPrices":
+				itemPrices = value || {};
+				break;
+			case "inventory":
+				inventory = value || {};
+				break;
+			case "incomingOrders":
+				incomingOrders = value || {};
+				break;
+			case "tableBatchCounts":
+				tableBatchCounts = value || {};
+				break;
+			case "ownerPasswords":
+				if (value) OWNER_PASSWORDS = value;
+				break;
+			default:
+				break;
+		}
+
+		if (typeof this.remoteRevisions[root] === "number") {
+			this.localRevisions[root] = this.remoteRevisions[root];
+			this.saveLocalRevisions();
+		}
+		this.saveLocalDataForRoots([root]);
+
+		if (root === "incomingOrders") {
+			if (!document.body.classList.contains("customer-mode")) {
+				checkIncomingOrders();
+			}
+		}
+
+		if (
+			root === "historyOrders" ||
+			root === "tableTimers" ||
+			root === "tableCarts" ||
+			root === "tableStatuses" ||
+			root === "tableCustomers" ||
+			root === "inventory" ||
+			root === "incomingOrders"
+		) {
+			refreshUiAfterDataChange();
+		}
+	},
+	bumpRevisionsForPayload(payload, roots) {
+		roots.forEach((root) => {
+			this.localRevisions[root] = (this.localRevisions[root] || 0) + 1;
+			payload[`revisions/${root}`] = this.localRevisions[root];
+		});
+		if (roots.length > 0) {
+			this.saveLocalRevisions();
+			this.saveLocalDataForRoots(roots);
+		}
+	},
+};
 
 function getTodayMaxBaseSeq() {
 	let currentBizDate = getBusinessDate(new Date());
@@ -308,62 +572,27 @@ function normalizeHistoryData(val) {
 }
 
 function initRealtimeData() {
-	db.ref("historyOrders").on("value", (snapshot) => {
-		normalizeHistoryData(snapshot.val());
-		refreshUiAfterDataChange();
+	DataSync.initLocal();
+	refreshUiAfterDataChange();
+
+	db.ref("revisions").on("value", (snapshot) => {
+		let revs = snapshot.val() || {};
+		DataSync.setRemoteRevisions(revs);
+		DATA_ROOT_KEYS.forEach((root) => {
+			if (DataSync.shouldApplyRemote(root)) {
+				db.ref(root)
+					.once("value")
+					.then((snap) => DataSync.applyRemoteValue(root, snap.val()))
+					.catch(() => { });
+			}
+		});
 	});
 
-	db.ref("tableTimers").on("value", (snapshot) => {
-		tableTimers = snapshot.val() || {};
-		refreshUiAfterDataChange();
-	});
-
-	db.ref("tableCarts").on("value", (snapshot) => {
-		tableCarts = snapshot.val() || {};
-		refreshUiAfterDataChange();
-	});
-
-	db.ref("tableStatuses").on("value", (snapshot) => {
-		tableStatuses = snapshot.val() || {};
-		refreshUiAfterDataChange();
-	});
-
-	db.ref("tableCustomers").on("value", (snapshot) => {
-		tableCustomers = snapshot.val() || {};
-		refreshUiAfterDataChange();
-	});
-
-	db.ref("tableSplitCounters").on("value", (snapshot) => {
-		tableSplitCounters = snapshot.val() || {};
-	});
-
-	db.ref("itemCosts").on("value", (snapshot) => {
-		itemCosts = snapshot.val() || {};
-	});
-
-	db.ref("itemPrices").on("value", (snapshot) => {
-		itemPrices = snapshot.val() || {};
-	});
-
-	db.ref("inventory").on("value", (snapshot) => {
-		inventory = snapshot.val() || {};
-		refreshUiAfterDataChange();
-	});
-
-	db.ref("incomingOrders").on("value", (snapshot) => {
-		incomingOrders = snapshot.val() || {};
-		if (!document.body.classList.contains("customer-mode")) {
-			checkIncomingOrders();
-		}
-		refreshUiAfterDataChange();
-	});
-
-	db.ref("tableBatchCounts").on("value", (snapshot) => {
-		tableBatchCounts = snapshot.val() || {};
-	});
-
-	db.ref("ownerPasswords").on("value", (snapshot) => {
-		if (snapshot.val()) OWNER_PASSWORDS = snapshot.val();
+	DATA_ROOT_KEYS.forEach((root) => {
+		db.ref(root).on("value", (snapshot) => {
+			if (!DataSync.shouldApplyRemote(root)) return;
+			DataSync.applyRemoteValue(root, snapshot.val());
+		});
 	});
 }
 
@@ -388,9 +617,13 @@ function saveAllToCloud(updates) {
 	}
 
 	let payload = {};
+	let touchedRoots = new Set();
 	for (const [path, value] of Object.entries(updates)) {
 		payload[path] = value === undefined ? null : value;
+		let root = DataSync.getRootKey(path);
+		if (root) touchedRoots.add(root);
 	}
+	DataSync.bumpRevisionsForPayload(payload, Array.from(touchedRoots));
 
 	return db.ref("/").update(payload).catch((err) => console.error(err));
 }
