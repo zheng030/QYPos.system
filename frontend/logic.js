@@ -511,7 +511,7 @@ function toggleParentWithOptions(name, isAvailable) {
 					if (cb) cb.checked = isAvailable;
 				}
 			}
-			});
+		});
 	}
 	let updates = { [`inventory/${name}`]: isAvailable };
 	if (FOOD_OPTION_VARIANTS[name]) {
@@ -567,49 +567,49 @@ function saveOrderManual() {
 			tableCustomers[selectedTable].orderId = todayCount + 1;
 		}
 
-			let itemsToSave = cart.map((item) => {
-				let newItem = { ...item };
-				delete newItem.isNew;
-				return newItem;
-			});
+		let itemsToSave = cart.map((item) => {
+			let newItem = { ...item };
+			delete newItem.isNew;
+			return newItem;
+		});
 
-			let baseCart = [];
-			try {
-				baseCart = JSON.parse(entryCartSignature || "[]");
-			} catch (e) {
-				baseCart = [];
-			}
-			let newItems = getDeltaItems(cart, baseCart);
+		let baseCart = [];
+		try {
+			baseCart = JSON.parse(entryCartSignature || "[]");
+		} catch (e) {
+			baseCart = [];
+		}
+		let newItems = getDeltaItems(cart, baseCart);
 
-			tableCarts[selectedTable] = itemsToSave;
+		tableCarts[selectedTable] = itemsToSave;
 		tableStatuses[selectedTable] = "yellow";
 		tableCustomers[selectedTable].name =
 			document.getElementById("custName").value;
 		tableCustomers[selectedTable].phone =
 			document.getElementById("custPhone").value;
 
-	saveAllToCloud({
-		[`tableCarts/${selectedTable}`]: itemsToSave,
-		[`tableStatuses/${selectedTable}`]: "yellow",
-		[`tableCustomers/${selectedTable}`]: tableCustomers[selectedTable],
-		[`tableTimers/${selectedTable}`]: tableTimers[selectedTable],
+		saveAllToCloud({
+			[`tableCarts/${selectedTable}`]: itemsToSave,
+			[`tableStatuses/${selectedTable}`]: "yellow",
+			[`tableCustomers/${selectedTable}`]: tableCustomers[selectedTable],
+			[`tableTimers/${selectedTable}`]: tableTimers[selectedTable],
 			[`tableSplitCounters/${selectedTable}`]: tableSplitCounters[selectedTable],
 		});
 
-			let shouldPrintItems = baseCart.length > 0 ? newItems : cart;
-			if (shouldPrintItems.length > 0) {
-				printReceipt(
-					{
-						seq: tableCustomers[selectedTable].orderId,
-						table: selectedTable,
-						time: new Date().toLocaleString("zh-TW", { hour12: false }),
-						items: shouldPrintItems,
-						original: 0,
-						total: 0,
-					},
-					true,
-				);
-			}
+		let shouldPrintItems = baseCart.length > 0 ? newItems : cart;
+		if (shouldPrintItems.length > 0) {
+			printReceipt(
+				{
+					seq: tableCustomers[selectedTable].orderId,
+					table: selectedTable,
+					time: new Date().toLocaleString("zh-TW", { hour12: false }),
+					items: shouldPrintItems,
+					original: 0,
+					total: 0,
+				},
+				true,
+			);
+		}
 
 		showToast(
 			`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`,
@@ -655,7 +655,7 @@ function closeBusiness() {
 
 async function customerSubmitOrder() {
 	if (cart.length === 0) {
-		alert("購物車是空的喔！");
+		alert("目前購物車內無新增品項！");
 		return;
 	}
 
@@ -1172,8 +1172,8 @@ async function printReceipt(data, isTicket = false) {
 	const generateHtml = (title, items, isFullReceipt) => {
 		let itemsHtml = "";
 		items.forEach((i) => {
-		let displayName = i.name;
-		if (i.isTreat && !displayName.includes("(招待)")) displayName += " (招待)";
+			let displayName = i.name;
+			if (i.isTreat && !displayName.includes("(招待)")) displayName += " (招待)";
 			let priceStr = isFullReceipt ? (i.isTreat ? "$0" : `$${i.price}`) : "";
 
 			// 🔥 修正：讓 kitchen-item 具有 space-between 屬性，確保排版靠左
