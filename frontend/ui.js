@@ -1038,7 +1038,6 @@ function filterOrders(startTime, endTime, titleText) {
 	let count = 0;
 	let barTotal = 0;
 	let bbqTotal = 0;
-	let kitchenCats = ["燒烤", "主餐", "炸物"];
 
 	if (!Array.isArray(historyOrders)) return;
 
@@ -1050,26 +1049,8 @@ function filterOrders(startTime, endTime, titleText) {
 			count++;
 			if (order.items && Array.isArray(order.items)) {
 				order.items.forEach((item) => {
-					let itemCat = "";
-					for (const [cat, content] of Object.entries(menuData)) {
-						if (Array.isArray(content)) {
-							if (content.some((x) => item.name.includes(x.name)))
-								itemCat = cat;
-						} else {
-							for (const sub of Object.values(content)) {
-								if (sub.some((x) => item.name.includes(x.name))) itemCat = cat;
-							}
-						}
-					}
-					if (itemCat === "") {
-						if (
-							item.name.includes("雞") ||
-							item.name.includes("豬") ||
-							item.name.includes("牛")
-						)
-							itemCat = "主餐";
-					}
-					if (kitchenCats.includes(itemCat)) bbqTotal += item.price || 0;
+					let itemType = item.type || getItemCategoryType(item.name);
+					if (itemType === "bbq") bbqTotal += item.price || 0;
 					else barTotal += item.price || 0;
 				});
 			}
