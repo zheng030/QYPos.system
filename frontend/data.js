@@ -25,7 +25,7 @@ const tables = [
 const categories = ["調酒", "純飲", "shot", "啤酒", "咖啡", "飲料", "燒烤", "主餐", "炸物", "厚片", "甜點", "其他"];
 
 const FOOD_OPTION_VARIANTS = {
-    炒飯: ["牛", "豬", "雞", "蝦仁"],
+    炒飯: ["牛", "豬", "蝦仁"],
     日式炒烏龍麵: ["牛", "豬", "雞"],
     親子丼: ["牛", "豬", "雞"],
 };
@@ -65,7 +65,7 @@ const menuData = {
             { name: "玫瑰紅茶", price: 300 },
             { name: "珍珠奶茶", price: 300 },
             { name: "紅豆牛奶", price: 300 },
-            { name: "隱藏特調", price: 300 }]
+            { name: "隱藏特調(無酒精)", price: 300 }]
     },
 
     "純飲": {
@@ -169,6 +169,7 @@ const menuData = {
             { name: "香蔥牛五花", price: 55 },
             { name: "蕃茄牛五花", price: 55 },
             { name: "麝香牛五花", price: 55 },
+            { name: "砂糖橘牛五花", price: 60 },
             { name: "碳烤雞排", price: 90 },
             { name: "碳烤魷魚", price: 200 },
             { name: "帶骨牛小排", price: 280 }]
@@ -181,7 +182,6 @@ const menuData = {
             { name: "海鮮粥", price: 350 },
             { name: "日式炒烏龍麵", price: 150 },
             { name: "酒蒸蛤蠣", price: 180 },
-            { name: "唐揚雞", price: 150 },
             { name: "唐揚咖哩", price: 220 }],
         "湯品": [
             { name: "龍膽石斑魚湯", price: 280 },
@@ -198,6 +198,7 @@ const menuData = {
         { name: "鑫鑫腸", price: 100 },
         { name: "雞米花", price: 100 },
         { name: "洋蔥圈", price: 100 },
+        { name: "唐揚雞", price: 150 },
         { name: "酥炸魷魚", price: 200 },
         { name: "炸物拼盤", price: 400 }],
     "厚片": [
@@ -207,8 +208,15 @@ const menuData = {
         { name: "巧克力厚片", price: 80 },
         { name: "巧克力棉花糖厚片", price: 80 }],
     "甜點": [
-        { name: "起司蛋糕", price: 120 }],
+        { name: "原味巴斯克", price: 120 },
+        { name: "生巧巴斯克", price: 140 },
+        { name: "伯爵巴斯克", price: 140 },
+        { name: "蕉心巴斯克", price: 150 },
+        { name: "開心果巴斯克", price: 180 },
+        { name: "提拉米蘇", price: 180 },
+        { name: "小小龍", price: 260 }],
     "其他": [
+        { name: "檸檬(盤)", price: 50 },
         { name: "服務費", price: 100 },
         { name: "清潔費", price: 300 },
         { name: "碎碎平安", price: 500 }]
