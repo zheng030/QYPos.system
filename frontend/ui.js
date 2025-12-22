@@ -10,11 +10,12 @@ async function ensureSubscriptions(roots) {
 	}
 }
 
-function showApp() {
+function showApp(options = {}) {
+	const { skipHome = false } = options;
 	document.getElementById("login-screen").style.display = "none";
 	document.getElementById("app-container").style.display = "block";
 	initRealtimeData();
-	goHome();
+	if (!skipHome) goHome();
 }
 
 function hideAll() {
@@ -43,14 +44,14 @@ function goHome() {
 
 async function openTableSelect() {
 	hideAll();
-		await ensureSubscriptions([
-			"tableTimers",
-			"tableCarts",
-			"tableStatuses",
-			"tableCustomers",
-			"tableSplitCounters",
-			"tableBatchCounts",
-		]);
+	await ensureSubscriptions([
+		"tableTimers",
+		"tableCarts",
+		"tableStatuses",
+		"tableCustomers",
+		"tableSplitCounters",
+		"tableBatchCounts",
+	]);
 	refreshData();
 	document.getElementById("tableSelect").style.display = "block";
 	renderTableGrid();
@@ -2258,7 +2259,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 		document.body.classList.add("customer-mode");
 		sessionStorage.setItem("customerMode", "true");
 		sessionStorage.setItem("isLoggedIn", "true");
-		showApp();
+		showApp({ skipHome: true });
 		await ensureSubscriptions(["tableCarts", "inventory", "itemPrices"]);
 		selectedTable = decodeURIComponent(tableParam);
 		hideAll();

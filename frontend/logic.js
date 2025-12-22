@@ -39,6 +39,7 @@ const CUSTOMER_DATA_ROOT_KEYS = [
 	"tableCarts",
 	"inventory",
 	"itemPrices",
+	"incomingOrders"
 ];
 const ADMIN_BASE_ROOT_KEYS = [
 	"incomingOrders"
