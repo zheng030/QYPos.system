@@ -2259,8 +2259,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 		document.body.classList.add("customer-mode");
 		sessionStorage.setItem("customerMode", "true");
 		sessionStorage.setItem("isLoggedIn", "true");
-		showApp({ skipHome: true });
 		await ensureSubscriptions(["tableCarts", "inventory", "itemPrices"]);
+		showApp({ skipHome: true });
 		selectedTable = decodeURIComponent(tableParam);
 		hideAll();
 		document.getElementById("orderPage").style.display = "block";
@@ -2275,7 +2275,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 		buildCategories();
 
-		cart = tableCarts[selectedTable] || [];
+		sentItems = (tableCarts[selectedTable] || []).map((item) => ({
+			...item,
+			isSent: true,
+		}));
+		sessionStorage.setItem("sentItems", JSON.stringify(sentItems));
+		cart = [];
 		renderCart();
 	} else {
 		if (storedCustomerMode) {

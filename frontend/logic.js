@@ -533,14 +533,24 @@ function refreshUiAfterDataChange() {
 		document.getElementById("orderPage").style.display === "block" &&
 		selectedTable
 	) {
-		cart = tableCarts[selectedTable] || [];
-		entryCartSignature = JSON.stringify(cart || []);
-		let info = tableCustomers[selectedTable] || { name: "", phone: "" };
-		let nameEl = document.getElementById("custName");
-		let phoneEl = document.getElementById("custPhone");
-		if (nameEl) nameEl.value = info.name || "";
-		if (phoneEl) phoneEl.value = info.phone || "";
-		renderCart();
+		if (document.body.classList.contains("customer-mode")) {
+			sentItems = (tableCarts[selectedTable] || []).map((item) => ({
+				...item,
+				isSent: true,
+			}));
+			sessionStorage.setItem("sentItems", JSON.stringify(sentItems));
+			entryCartSignature = JSON.stringify(cart || []);
+			renderCart();
+		} else {
+			cart = tableCarts[selectedTable] || [];
+			entryCartSignature = JSON.stringify(cart || []);
+			let info = tableCustomers[selectedTable] || { name: "", phone: "" };
+			let nameEl = document.getElementById("custName");
+			let phoneEl = document.getElementById("custPhone");
+			if (nameEl) nameEl.value = info.name || "";
+			if (phoneEl) phoneEl.value = info.phone || "";
+			renderCart();
+		}
 	}
 
 	setTimeout(() => {
