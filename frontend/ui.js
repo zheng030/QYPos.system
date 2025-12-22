@@ -501,6 +501,15 @@ function renderCart() {
 		finalHtml += ` <small style="color:#555;">(${noteText.join(", ")})</small>`;
 	}
 	totalText.innerHTML = finalHtml;
+
+	const saveBtn = document.querySelector(".save-btn");
+	if (saveBtn) {
+		if (cart.length > 0) {
+			saveBtn.classList.add("active");
+		} else {
+			saveBtn.classList.remove("active");
+		}
+	}
 }
 
 function addInlineHiddenBeer() {
