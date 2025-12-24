@@ -415,9 +415,15 @@ button {
 	box-shadow: none;
 	border: 1px solid #d1fae5;
 }
-.item button:hover {
+.item button:active {
 	background: #059669;
 	color: white;
+}
+@media (hover: hover) and (pointer: fine) {
+	.item button:hover {
+		background: #059669;
+		color: white;
+	}
 }
 
 .item.sold-out {
