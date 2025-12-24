@@ -140,9 +140,14 @@ function renderTableGrid() {
 		let btn = document.createElement("div");
 		btn.className = "tableBtn btn-effect";
 		let status = tableStatuses[t];
-		let hasCart = tableCarts[t] && tableCarts[t].length > 0;
-
-		if (status !== "yellow" && tableTimers[t]) {
+		let cartData = tableCarts[t];
+		let hasCart = false;
+		if (Array.isArray(cartData)) {
+			hasCart = cartData.length > 0;
+		} else if (cartData && typeof cartData === "object") {
+			hasCart = Object.keys(cartData).length > 0;
+		}
+		if (status !== "yellow" && !hasCart && tableTimers[t]) {
 			delete tableTimers[t];
 			saveAllToCloud({ [`tableTimers/${t}`]: null });
 		}
