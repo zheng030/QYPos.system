@@ -1412,7 +1412,11 @@ function reprintOrder(index) {
 				? new Date(target.timestamp).toLocaleString("zh-TW", { hour12: false })
 				: new Date().toLocaleString("zh-TW", { hour12: false }));
 		let orig = target.originalTotal || target.total || 0;
-		let items = Array.isArray(target.items) ? target.items : [];
+		let rawItems = Array.isArray(target.items) ? target.items : [];
+		let items =
+			isHistorySimpleMode
+				? getMergedItems(rawItems)
+				: rawItems;
 		printReceipt(
 			{
 				seq,

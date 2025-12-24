@@ -1473,7 +1473,13 @@ async function printReceipt(data, isTicket = false) {
 		items.forEach((i) => {
 			let displayName = i.name;
 			if (i.isTreat && !displayName.includes("(招待)")) displayName += " (招待)";
-			let priceStr = isFullReceipt ? (i.isTreat ? "$0" : `$${i.price}`) : "";
+			if (i.count && i.count > 1) displayName += ` x${i.count} `;
+			let count = i.count || 1;
+			let priceStr = isFullReceipt
+				? i.isTreat
+					? "$0"
+					: `$${i.price * count}`
+				: "";
 
 			// 🔥 修正：讓 kitchen-item 具有 space-between 屬性，確保排版靠左
 			let itemClass = isFullReceipt
