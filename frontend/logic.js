@@ -836,6 +836,10 @@ function hasAvailableVariants(name) {
 
 function addToCart(name, price) {
 	cart.push({ name, price, isNew: true, isTreat: false });
+	let sameCount = cart.filter(
+		(item) => item.name === name && item.price === price && !item.isTreat,
+	).length;
+	showToast(`✅ 已加入：${name}`, { count: sameCount });
 	renderCart();
 }
 function toggleTreat(index) {

@@ -2189,13 +2189,63 @@ function moveSegmentHighlighter(index) {
 	if (highlighter) highlighter.style.transform = `translateX(${movePercent}%)`;
 }
 
-function showToast(message) {
+function showToast(message, options = {}) {
 	const toast = document.getElementById("toast-container");
-	toast.innerText = message;
-	toast.style.opacity = "1";
-	setTimeout(() => {
-		toast.style.opacity = "0";
+	if (!toast) return;
+
+	if (!toast.toastState) {
+		toast.toastState = { items: new Map() };
+	}
+
+	let state = toast.toastState.items.get(message);
+	if (!state) {
+		let el = document.createElement("div");
+		el.className = "toast-item";
+		state = { count: 0, el, hideTimer: null, removeTimer: null };
+		toast.appendChild(el);
+	}
+
+	if (typeof options.count === "number" && options.count > 0) {
+		state.count = options.count;
+	} else {
+		state.count += 1;
+	}
+	state.el.innerHTML = "";
+	const msgSpan = document.createElement("span");
+	const plainNode = document.createElement("div");
+	plainNode.innerHTML = message;
+	msgSpan.textContent = plainNode.innerText;
+	state.el.appendChild(msgSpan);
+
+	if (state.count > 1) {
+		const countSpan = document.createElement("span");
+		countSpan.textContent = ` x${state.count}`;
+		countSpan.style.color = "#ef476f";
+		countSpan.style.fontWeight = "bold";
+		countSpan.style.marginLeft = "6px";
+		state.el.appendChild(countSpan);
+	}
+
+	// Re-append to move it to the newest position
+	toast.appendChild(state.el);
+
+	if (state.hideTimer) clearTimeout(state.hideTimer);
+	if (state.removeTimer) clearTimeout(state.removeTimer);
+
+	// Show animation
+	requestAnimationFrame(() => {
+		state.el.classList.add("show");
+	});
+
+	state.hideTimer = setTimeout(() => {
+		state.el.classList.remove("show");
+		state.removeTimer = setTimeout(() => {
+			if (state.el.parentNode) state.el.parentNode.removeChild(state.el);
+			toast.toastState.items.delete(message);
+		}, 300);
 	}, 2500);
+
+	toast.toastState.items.set(message, state);
 }
 function closeSummaryModal() {
 	summaryModal.style.display = "none";
