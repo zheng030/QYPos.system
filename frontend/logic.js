@@ -1473,7 +1473,7 @@ async function printReceipt(data, isTicket = false) {
 		items.forEach((i) => {
 			let displayName = i.name;
 			if (i.isTreat && !displayName.includes("(招待)")) displayName += " (招待)";
-			if (i.count && i.count > 1) displayName += ` x${i.count} `;
+			if (!isTicket && i.count && i.count > 1) displayName += ` x${i.count} `;
 			let count = i.count || 1;
 			let priceStr = isFullReceipt
 				? i.isTreat
