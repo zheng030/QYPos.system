@@ -10,11 +10,11 @@ async function ensureSubscriptions(roots) {
 	}
 }
 
-function showApp(options = {}) {
+async function showApp(options = {}) {
 	const { skipHome = false } = options;
 	document.getElementById("login-screen").style.display = "none";
 	document.getElementById("app-container").style.display = "block";
-	initRealtimeData();
+	await initRealtimeData();
 	if (!skipHome) goHome();
 }
 
@@ -52,9 +52,8 @@ async function openTableSelect() {
 		"tableSplitCounters",
 		"tableBatchCounts",
 	]);
-	refreshData();
 	document.getElementById("tableSelect").style.display = "block";
-	renderTableGrid();
+	await renderTableGrid();
 }
 
 async function openSettingsPage() {
@@ -132,10 +131,11 @@ function closeIncomingOrderModal() {
 }
 
 /* ========== 座位與點餐 UI ========== */
-function renderTableGrid() {
+async function renderTableGrid() {
 	let grid = document.getElementById("tableSelectGrid");
 	if (!grid) return;
 	grid.innerHTML = "";
+	const pendingSaves = [];
 	tables.forEach((t) => {
 		let btn = document.createElement("div");
 		btn.className = "tableBtn btn-effect";
@@ -149,7 +149,7 @@ function renderTableGrid() {
 		}
 		if (status !== "yellow" && !hasCart && tableTimers[t]) {
 			delete tableTimers[t];
-			saveAllToCloud({ [`tableTimers/${t}`]: null });
+			pendingSaves.push(saveAllToCloud({ [`tableTimers/${t}`]: null }));
 		}
 		if (status === "yellow" && !hasCart) {
 			delete tableTimers[t];
@@ -158,14 +158,14 @@ function renderTableGrid() {
 			delete tableCustomers[t];
 			delete tableSplitCounters[t];
 			delete tableBatchCounts[t];
-			saveAllToCloud({
+			pendingSaves.push(saveAllToCloud({
 				[`tableTimers/${t}`]: null,
 				[`tableStatuses/${t}`]: null,
 				[`tableCarts/${t}`]: null,
 				[`tableCustomers/${t}`]: null,
 				[`tableSplitCounters/${t}`]: null,
 				[`tableBatchCounts/${t}`]: null,
-			});
+			}));
 			status = null;
 		}
 
@@ -190,6 +190,7 @@ function renderTableGrid() {
 		};
 		grid.appendChild(btn);
 	});
+	await Promise.all(pendingSaves);
 }
 
 async function openOrderPageLogic(table) {
@@ -744,10 +745,10 @@ function confirmAllowance() {
 	closeAllowanceModal();
 }
 
-function openPaymentModal() {
+async function openPaymentModal() {
 	if (cart.length === 0) {
 		if (!confirm("購物車是空的，確定要直接清桌嗎？")) return;
-		checkoutAll(0);
+		await checkoutAll(0);
 		return;
 	}
 	document.getElementById("payOriginal").innerText = "$" + discountedTotal;
@@ -767,13 +768,13 @@ function openPaymentModal() {
 function closePaymentModal() {
 	paymentModal.style.display = "none";
 }
-function confirmCheckout() {
+async function confirmCheckout() {
 	let finalAmount = parseInt(document.getElementById("payFinal").value);
 	if (isNaN(finalAmount) || finalAmount < 0) {
 		alert("金額錯誤！");
 		return;
 	}
-	checkoutAll(finalAmount);
+	await checkoutAll(finalAmount);
 	closePaymentModal();
 }
 
@@ -1025,7 +1026,7 @@ function showHistory() {
 			historyBox.innerHTML += `<div class="history-row btn-effect" onclick="window.toggleDetail('${rowId}')"><span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span><span class="seat">${o.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:${displayStyle};"><div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${o.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${o.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;"><button onclick="reprintOrder(${index})" class="print-btn btn-effect">🖨 列印明細</button><button onclick="deleteSingleOrder(${index})" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`;
 		});
 	} catch (e) {
-		console.error("showHistory 錯誤", e);
+		alert("showHistory 錯誤\n" + JSON.stringify(e));
 	}
 }
 
@@ -1079,7 +1080,7 @@ function generateReport(type) {
 			filterOrders(start, new Date(), title);
 		}
 	} catch (e) {
-		console.error("generateReport 錯誤", e);
+		alert("generateReport 錯誤\n" + JSON.stringify(e));
 	}
 }
 
@@ -1165,7 +1166,7 @@ function renderCalendar() {
 			grid.appendChild(cell);
 		}
 	} catch (e) {
-		console.error("renderCalendar 錯誤", e);
+		alert("renderCalendar 錯誤\n" + JSON.stringify(e));
 	}
 }
 
@@ -1433,7 +1434,7 @@ function reprintOrder(index) {
 	}
 }
 
-function deleteSingleOrder(index) {
+async function deleteSingleOrder(index) {
 	try {
 		if (!confirm("確定刪除此筆訂單嗎？")) return;
 		let orders =
@@ -1453,7 +1454,7 @@ function deleteSingleOrder(index) {
 			return;
 		}
 		historyOrders.splice(idxInHistory, 1);
-		saveAllToCloud({ historyOrders });
+		await saveAllToCloud({ historyOrders });
 		showHistory();
 	} catch (e) {
 		alert("刪除失敗：" + e.message);
@@ -2272,7 +2273,7 @@ function closeChangePasswordModal() {
 	changePasswordModal.style.display = "none";
 }
 
-function confirmChangePassword() {
+async function confirmChangePassword() {
 	let ownerName = document.getElementById("pwdOwnerName").innerText;
 	let oldPwd = document.getElementById("oldPwd").value;
 	let newPwd = document.getElementById("newPwd").value;
@@ -2296,7 +2297,7 @@ function confirmChangePassword() {
 	}
 
 	OWNER_PASSWORDS[ownerName] = newPwd;
-	saveAllToCloud({ [`ownerPasswords/${ownerName}`]: newPwd });
+	await saveAllToCloud({ [`ownerPasswords/${ownerName}`]: newPwd });
 	alert("✅ 密碼已更新");
 	closeChangePasswordModal();
 }
@@ -2328,7 +2329,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 		sessionStorage.setItem("customerMode", "true");
 		sessionStorage.setItem("isLoggedIn", "true");
 		await ensureSubscriptions(["tableCarts", "inventory", "itemPrices"]);
-		showApp({ skipHome: true });
+		await showApp({ skipHome: true });
 		selectedTable = decodeURIComponent(tableParam);
 		hideAll();
 		document.getElementById("orderPage").style.display = "block";
@@ -2363,7 +2364,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 			return;
 		}
 		if (sessionStorage.getItem("isLoggedIn") === "true") {
-			showApp();
+			await showApp();
 		}
 	}
 });

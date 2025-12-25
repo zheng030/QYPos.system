@@ -246,7 +246,7 @@ const DataSync = {
 		if (typeof remoteRev === "number") return remoteRev > localRev;
 		return !this.hasLocalCache(root);
 	},
-	applyRemoteValue(root, value) {
+	async applyRemoteValue(root, value) {
 		switch (root) {
 			case "historyOrders":
 				normalizeHistoryData(value);
@@ -309,7 +309,7 @@ const DataSync = {
 			root === "inventory" ||
 			root === "incomingOrders"
 		) {
-			refreshUiAfterDataChange();
+			await refreshUiAfterDataChange();
 		}
 	},
 	bumpRevisionsForPayload(payload, roots) {
@@ -336,8 +336,8 @@ const DataSync = {
 			}
 		}
 	},
-	subscribeRoots(roots) {
-		this.ensureRoots(roots);
+	async subscribeRoots(roots) {
+		await this.ensureRoots(roots);
 	},
 };
 
@@ -459,7 +459,7 @@ function getVisibleOrders() {
 		});
 		return filtered.reverse();
 	} catch (e) {
-		console.error("getVisibleOrders Error:", e);
+		alert("getVisibleOrders Error:\n" + JSON.stringify(e));
 		return [];
 	}
 }
@@ -521,12 +521,12 @@ function getCostByItemName(itemName) {
 
 /* ========== 資料庫監聽與初始化 ========== */
 
-function refreshUiAfterDataChange() {
+async function refreshUiAfterDataChange() {
 	if (
 		document.getElementById("tableSelect") &&
 		document.getElementById("tableSelect").style.display === "block"
 	)
-		renderTableGrid();
+		await renderTableGrid();
 
 	if (
 		document.getElementById("orderPage") &&
@@ -629,7 +629,7 @@ function normalizeHistoryData(val) {
 	});
 }
 
-function initRealtimeData() {
+async function initRealtimeData() {
 	const isCustomerMode =
 		sessionStorage.getItem("customerMode") === "true" ||
 		document.body.classList.contains("customer-mode");
@@ -637,22 +637,22 @@ function initRealtimeData() {
 		? CUSTOMER_DATA_ROOT_KEYS
 		: ADMIN_BASE_ROOT_KEYS;
 	DataSync.initLocal(activeRoots);
-	refreshUiAfterDataChange();
+	await refreshUiAfterDataChange();
 
 	db.ref("revisions").on("value", (snapshot) => {
 		let revs = snapshot.val() || {};
 		DataSync.setRemoteRevisions(revs);
-		DataSync.subscribedRoots.forEach((root) => {
+		DataSync.subscribedRoots.forEach(async (root) => {
 			if (DataSync.shouldApplyRemote(root)) {
-				db.ref(root)
-					.once("value")
-					.then((snap) => DataSync.applyRemoteValue(root, snap.val()))
-					.catch(() => { });
+				try {
+					const snap = await db.ref(root).once("value");
+					await DataSync.applyRemoteValue(root, snap.val());
+				} catch (e) { }
 			}
 		});
 	});
 
-	DataSync.subscribeRoots(activeRoots);
+	await DataSync.subscribeRoots(activeRoots);
 }
 
 if (typeof window !== "undefined") {
@@ -660,6 +660,11 @@ if (typeof window !== "undefined") {
 		DataSync.initLocal(roots);
 		return DataSync.ensureRoots(roots);
 	};
+}
+
+async function ensureRoots(roots) {
+	DataSync.initLocal(roots);
+	await DataSync.ensureRoots(roots);
 }
 
 function checkIncomingOrders() {
@@ -676,10 +681,10 @@ function checkIncomingOrders() {
 	closeIncomingOrderModal();
 }
 
-function saveAllToCloud(updates) {
+async function saveAllToCloud(updates) {
 	if (!updates || typeof updates !== "object" || Object.keys(updates).length === 0) {
 		console.warn("saveAllToCloud called without updates; skipping cloud write.");
-		return Promise.resolve();
+		return;
 	}
 
 	let payload = {};
@@ -691,24 +696,20 @@ function saveAllToCloud(updates) {
 	}
 	DataSync.bumpRevisionsForPayload(payload, Array.from(touchedRoots));
 
-	return db.ref("/").update(payload).catch((err) => console.error(err));
-}
-
-function refreshData() {
 	try {
-		let localHist = JSON.parse(localStorage.getItem("localData.historyOrders")) || JSON.parse(localStorage.getItem("orderHistory"));
-		if (localHist && (!historyOrders || historyOrders.length === 0))
-			historyOrders = localHist;
-	} catch (e) { }
+		await db.ref("/").update(payload);
+	} catch (err) {
+		alert(JSON.stringify(err));
+	}
 }
 
-function checkLogin() {
+async function checkLogin() {
 	try {
 		let input = document.getElementById("loginPass").value;
 		if (input === SYSTEM_PASSWORD) {
 			sessionStorage.setItem("isLoggedIn", "true");
 			document.getElementById("loginError").style.display = "none";
-			showApp();
+			await showApp();
 		} else {
 			document.getElementById("loginError").style.display = "block";
 			document.getElementById("loginPass").value = "";
@@ -718,16 +719,16 @@ function checkLogin() {
 	}
 }
 
-function updateItemData(name, type, value) {
+async function updateItemData(name, type, value) {
 	let val = parseInt(value);
 	if (isNaN(val)) val = 0;
 	if (type === "cost") itemCosts[name] = val;
 	else if (type === "price") itemPrices[name] = val;
 	const path = type === "cost" ? `itemCosts/${name}` : `itemPrices/${name}`;
-	saveAllToCloud({ [path]: val });
+	await saveAllToCloud({ [path]: val });
 }
 
-function toggleStockStatus(name, isAvailable) {
+async function toggleStockStatus(name, isAvailable) {
 	if (!inventory) inventory = {};
 	inventory[name] = isAvailable;
 
@@ -738,10 +739,10 @@ function toggleStockStatus(name, isAvailable) {
 		el.style.color = isAvailable ? "#06d6a0" : "#ef476f";
 	}
 
-	saveAllToCloud({ [`inventory/${name}`]: isAvailable });
+	await saveAllToCloud({ [`inventory/${name}`]: isAvailable });
 }
 
-function toggleOptionStock(name, option, isAvailable) {
+async function toggleOptionStock(name, option, isAvailable) {
 	if (!inventory) inventory = {};
 	inventory[`${name}::${option}`] = isAvailable;
 
@@ -780,10 +781,10 @@ function toggleOptionStock(name, option, isAvailable) {
 		);
 		updates[`inventory/${name}`] = hasAny;
 	}
-	saveAllToCloud(updates);
+	await saveAllToCloud(updates);
 }
 
-function toggleParentWithOptions(name, isAvailable) {
+async function toggleParentWithOptions(name, isAvailable) {
 	if (!inventory) inventory = {};
 	inventory[name] = isAvailable;
 
@@ -818,7 +819,7 @@ function toggleParentWithOptions(name, isAvailable) {
 			updates[`inventory/${name}::${opt}`] = isAvailable;
 		});
 	}
-	saveAllToCloud(updates);
+	await saveAllToCloud(updates);
 }
 
 function getAvailableVariants(name) {
@@ -851,11 +852,12 @@ function removeItem(index) {
 	renderCart();
 }
 
-function saveOrderManual() {
+async function saveOrderManual() {
 	try {
+		await ensureRoots(["historyOrders"]);
 		if (cart.length === 0) {
 			showToast("購物車是空的，訂單未成立。");
-			saveAndExit();
+			await saveAndExit();
 			return;
 		}
 		if (!tableCustomers[selectedTable]) tableCustomers[selectedTable] = {};
@@ -891,7 +893,7 @@ function saveOrderManual() {
 		tableCustomers[selectedTable].phone =
 			document.getElementById("custPhone").value;
 
-		saveAllToCloud({
+		await saveAllToCloud({
 			[`tableCarts/${selectedTable}`]: itemsToSave,
 			[`tableStatuses/${selectedTable}`]: "yellow",
 			[`tableCustomers/${selectedTable}`]: tableCustomers[selectedTable],
@@ -917,13 +919,13 @@ function saveOrderManual() {
 		showToast(
 			`✔ 訂單已送出 (單號 #${tableCustomers[selectedTable].orderId})！`,
 		);
-		openTableSelect();
+		await openTableSelect();
 	} catch (e) {
 		alert("出單發生錯誤: " + e.message);
 	}
 }
 
-function saveAndExit() {
+async function saveAndExit() {
 	try {
 		if (!Array.isArray(cart)) cart = [];
 		let hasChanges = JSON.stringify(cart) !== entryCartSignature;
@@ -940,10 +942,10 @@ function saveAndExit() {
 		currentDiscount = { type: "none", value: 0 };
 		isServiceFeeEnabled = false;
 		tempCustomItem = null;
-		openTableSelect();
+		await openTableSelect();
 	} catch (e) {
-		console.error("返回錯誤:", e);
-		openTableSelect();
+		alert("返回錯誤:\n" + JSON.stringify(e));
+		await openTableSelect();
 	}
 }
 
@@ -1005,27 +1007,36 @@ async function customerSubmitOrder() {
 		timestamp: Date.now(),
 	});
 
-	saveAllToCloud({ [`incomingOrders/${selectedTable}`]: pendingList })
-		.then(() => {
-			alert(
-				"✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。",
-			);
+	try {
+		await saveAllToCloud({ [`incomingOrders/${selectedTable}`]: pendingList });
+		alert(
+			"✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。",
+		);
 
-			// 🔥 修改：將購物車內容移至 sentItems
-			let justSent = cart.map((item) => ({ ...item, isSent: true }));
-			sentItems = [...sentItems, ...justSent];
-			sessionStorage.setItem("sentItems", JSON.stringify(sentItems));
+		// 🔥 修改：將購物車內容移至 sentItems
+		let justSent = cart.map((item) => ({ ...item, isSent: true }));
+		sentItems = [...sentItems, ...justSent];
+		sessionStorage.setItem("sentItems", JSON.stringify(sentItems));
 
-			cart = [];
-			renderCart();
-		})
-		.catch((err) => {
-			alert("傳送失敗，請通知服務人員：" + err.message);
-		});
+		cart = [];
+		renderCart();
+	} catch (err) {
+		alert("傳送失敗，請通知服務人員：" + err.message);
+	}
 }
 
-function confirmIncomingOrder() {
+async function confirmIncomingOrder() {
 	if (!currentIncomingTable) return;
+	await ensureRoots([
+		"incomingOrders",
+		"tableBatchCounts",
+		"tableCarts",
+		"tableStatuses",
+		"tableCustomers",
+		"tableTimers",
+		"tableSplitCounters",
+		"historyOrders",
+	]);
 
 	let pendingRaw = incomingOrders[currentIncomingTable];
 	let pendingQueue = Array.isArray(pendingRaw)
@@ -1035,7 +1046,7 @@ function confirmIncomingOrder() {
 			: [];
 	if (!pendingQueue.length) {
 		delete incomingOrders[currentIncomingTable];
-		saveAllToCloud({ [`incomingOrders/${currentIncomingTable}`]: null });
+		await saveAllToCloud({ [`incomingOrders/${currentIncomingTable}`]: null });
 		closeIncomingOrderModal();
 		checkIncomingOrders();
 		return;
@@ -1106,7 +1117,7 @@ function confirmIncomingOrder() {
 		incomingOrders[currentIncomingTable] = pendingQueue;
 	}
 
-	saveAllToCloud({
+	await saveAllToCloud({
 		[`incomingOrders/${currentIncomingTable}`]:
 			pendingQueue.length > 0 ? pendingQueue : null,
 		[`tableBatchCounts/${currentIncomingTable}`]: batchId,
@@ -1123,7 +1134,7 @@ function confirmIncomingOrder() {
 	if (isViewingSameTable) renderCart();
 }
 
-function rejectIncomingOrder() {
+async function rejectIncomingOrder() {
 	if (!currentIncomingTable) return;
 	if (!confirm("確定要忽略這筆訂單嗎？")) return;
 	let pendingRaw = incomingOrders[currentIncomingTable];
@@ -1135,7 +1146,7 @@ function rejectIncomingOrder() {
 	if (pendingQueue.length > 0) pendingQueue.shift();
 	if (pendingQueue.length === 0) delete incomingOrders[currentIncomingTable];
 	else incomingOrders[currentIncomingTable] = pendingQueue;
-	saveAllToCloud({
+	await saveAllToCloud({
 		[`incomingOrders/${currentIncomingTable}`]:
 			pendingQueue.length === 0 ? null : pendingQueue,
 	});
@@ -1143,7 +1154,8 @@ function rejectIncomingOrder() {
 	checkIncomingOrders();
 }
 
-function checkoutAll(manualFinal) {
+async function checkoutAll(manualFinal) {
+	await ensureRoots(["historyOrders"]);
 	let payingTotal = manualFinal !== undefined ? manualFinal : discountedTotal;
 	let time = new Date().toLocaleString("zh-TW", { hour12: false });
 	let originalTotal = currentOriginalTotal;
@@ -1214,12 +1226,12 @@ function checkoutAll(manualFinal) {
 		[`tableSplitCounters/${selectedTable}`]: null,
 		[`tableBatchCounts/${selectedTable}`]: null,
 	};
-	saveAllToCloud(updates);
+	await saveAllToCloud(updates);
 	cart = [];
 	currentDiscount = { type: "none", value: 0 };
 	isServiceFeeEnabled = false;
 	alert(`💰 結帳完成！實收 $${payingTotal} \n(如需明細，請至「今日訂單」補印)`);
-	openTableSelect();
+	await openTableSelect();
 }
 
 function calcFinalPay() {
@@ -1247,7 +1259,8 @@ function calcSplitTotal() {
 	return finalSplit;
 }
 
-function fixAllOrderIds() {
+async function fixAllOrderIds() {
+	await ensureRoots(["historyOrders", "tableCustomers", "tableStatuses"]);
 	if (
 		!confirm(
 			"⚠️ 確定要執行「一鍵重整」嗎？\n\n1. 將所有歷史訂單依照日期重新編號 (#1, #2...)\n2. 修正目前桌上未結帳訂單的錯誤單號",
@@ -1281,7 +1294,7 @@ function fixAllOrderIds() {
 			updates[`tableCustomers/${table}`] = tableCustomers[table];
 		}
 	}
-	saveAllToCloud(updates);
+	await saveAllToCloud(updates);
 	alert(
 		"✅ 修復完成！\n歷史訂單已重整，目前桌位單號已校正。\n網頁將自動重新整理。",
 	);
@@ -1310,7 +1323,8 @@ function updateSystemTime() {
 		"🕒 " + new Date().toLocaleString("zh-TW", { hour12: false });
 }
 
-function confirmPayment() {
+async function confirmPayment() {
+	await ensureRoots(["historyOrders"]);
 	if (!Array.isArray(tempRightList) || tempRightList.length === 0) {
 		alert("請先將品項移至右側再結帳");
 		return;
@@ -1412,7 +1426,7 @@ function confirmPayment() {
 		[`tableBatchCounts/${selectedTable}`]:
 			cart.length === 0 ? null : tableBatchCounts[selectedTable],
 	};
-	saveAllToCloud(updates);
+	await saveAllToCloud(updates);
 	renderCart();
 	closeCheckoutModal();
 	showToast(
