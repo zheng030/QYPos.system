@@ -620,6 +620,7 @@ function getItemCategoryType(itemName) {
 }
 
 function getCostByItemName(itemName) {
+	itemName = itemName.match(/^[^<]+/)?.[0].trim();
 	if (!itemName) return 0;
 	let cleanName = itemName.replace(" (招待)", "").trim();
 	if (itemCosts[cleanName] !== undefined) return itemCosts[cleanName];
