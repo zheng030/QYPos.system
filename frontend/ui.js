@@ -2369,11 +2369,66 @@ window.addEventListener("DOMContentLoaded", async () => {
 	}
 });
 
+function downloadSyncLog() {
+	if (!window.__syncLog || window.__syncLog.length === 0) {
+		alert("Sync log is empty.");
+		return;
+	}
+	const payload = JSON.stringify(window.__syncLog, null, 2);
+	const blob = new Blob([payload], { type: "application/json" });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = "log.json";
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadLocalStorage() {
+	try {
+		const data = {};
+		for (let i = 0; i < localStorage.length; i += 1) {
+			const key = localStorage.key(i);
+			data[key] = localStorage.getItem(key);
+		}
+		const payload = JSON.stringify(data, null, 2);
+		const blob = new Blob([payload], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = "localstorage.json";
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	} catch (e) {
+		alert("匯出 localStorage 失敗: " + e.message);
+	}
+}
+
+window.addEventListener("keydown", (e) => {
+	if (!e.shiftKey || e.code !== "Backquote") return;
+	const target = e.target;
+	if (
+		target &&
+		(target.tagName === "INPUT" ||
+			target.tagName === "TEXTAREA" ||
+			target.isContentEditable)
+	)
+		return;
+	e.preventDefault();
+	downloadSyncLog();
+});
+
 
 if (typeof window !== "undefined") {
 	window.FOOD_OPTION_VARIANTS = FOOD_OPTION_VARIANTS;
 	window.getAvailableVariants = getAvailableVariants;
 	window.hasAvailableVariants = hasAvailableVariants;
+	window.downloadSyncLog = downloadSyncLog;
+	window.downloadLocalStorage = downloadLocalStorage;
 	window.toggleOptionStock = toggleOptionStock;
 	window.toggleParentWithOptions = toggleParentWithOptions;
 	window.toggleHistoryView = toggleHistoryView;

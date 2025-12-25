@@ -247,6 +247,11 @@ const DataSync = {
 		return !this.hasLocalCache(root);
 	},
 	async applyRemoteValue(root, value) {
+		const beforeValue = cloneValue(getRootValue(root));
+		const beforeRev =
+			typeof this.localRevisions[root] === "number"
+				? this.localRevisions[root]
+				: null;
 		switch (root) {
 			case "historyOrders":
 				normalizeHistoryData(value);
@@ -311,6 +316,20 @@ const DataSync = {
 		) {
 			await refreshUiAfterDataChange();
 		}
+		const afterValue = cloneValue(getRootValue(root));
+		const afterRev =
+			typeof this.localRevisions[root] === "number"
+				? this.localRevisions[root]
+				: null;
+		pushSyncRecord({
+			ts: Date.now(),
+			type: "applyRemoteValue",
+			root,
+			beforeValue,
+			afterValue,
+			beforeRev,
+			afterRev,
+		});
 	},
 	bumpRevisionsForPayload(payload, roots) {
 		roots.forEach((root) => {
@@ -340,6 +359,100 @@ const DataSync = {
 		await this.ensureRoots(roots);
 	},
 };
+
+function ensureSyncLog() {
+	if (typeof window === "undefined") return null;
+	if (!window.__syncLog) window.__syncLog = [];
+	return window.__syncLog;
+}
+
+function pushSyncRecord(record) {
+	const log = ensureSyncLog();
+	if (!log) return;
+	log.push(record);
+	if (log.length > 1000) log.shift();
+}
+
+function getCallerName() {
+	try {
+		const stack = new Error().stack || "";
+		const lines = stack.split("\n").map((l) => l.trim());
+		for (const line of lines) {
+			if (
+				line.includes("saveAllToCloud") ||
+				line.includes("getCallerName") ||
+				line === "Error"
+			)
+				continue;
+			const match = line.match(/at\s+([^\s(]+)/);
+			if (match && match[1]) return match[1];
+		}
+	} catch (e) { }
+	return "unknown";
+}
+
+function getRootValue(root) {
+	switch (root) {
+		case "historyOrders":
+			return historyOrders;
+		case "tableTimers":
+			return tableTimers;
+		case "tableCarts":
+			return tableCarts;
+		case "tableStatuses":
+			return tableStatuses;
+		case "tableCustomers":
+			return tableCustomers;
+		case "tableSplitCounters":
+			return tableSplitCounters;
+		case "itemCosts":
+			return itemCosts;
+		case "itemPrices":
+			return itemPrices;
+		case "inventory":
+			return inventory;
+		case "incomingOrders":
+			return incomingOrders;
+		case "tableBatchCounts":
+			return tableBatchCounts;
+		case "ownerPasswords":
+			return typeof OWNER_PASSWORDS !== "undefined"
+				? OWNER_PASSWORDS
+				: ownerPasswords;
+		default:
+			return null;
+	}
+}
+
+function getCachedRootValue(root) {
+	if (typeof localStorage === "undefined") return null;
+	try {
+		const raw = localStorage.getItem(`${LOCAL_DATA_PREFIX}${root}`);
+		return raw ? JSON.parse(raw) : null;
+	} catch (e) {
+		return null;
+	}
+}
+
+function getValueAtPath(rootValue, path) {
+	if (!path) return null;
+	const parts = path.split("/");
+	if (parts.length === 1) return rootValue;
+	let current = rootValue;
+	for (let i = 1; i < parts.length; i += 1) {
+		if (current === null || current === undefined) return null;
+		current = current[parts[i]];
+	}
+	return current;
+}
+
+function cloneValue(value) {
+	try {
+		return JSON.parse(JSON.stringify(value));
+	} catch (e) {
+		return value;
+	}
+}
 
 function getTodayMaxBaseSeq() {
 	let currentBizDate = getBusinessDate(new Date());
@@ -694,11 +807,39 @@ async function saveAllToCloud(updates) {
 		let root = DataSync.getRootKey(path);
 		if (root) touchedRoots.add(root);
 	}
-	DataSync.bumpRevisionsForPayload(payload, Array.from(touchedRoots));
+	const roots = Array.from(touchedRoots);
+	const caller = getCallerName();
+	const beforeByPath = {};
+	const afterByPath = {};
+	for (const path of Object.keys(payload)) {
+		const root = DataSync.getRootKey(path);
+		const cachedRoot = root ? getCachedRootValue(root) : null;
+		const currentRoot = root ? getRootValue(root) : null;
+		beforeByPath[path] = cloneValue(getValueAtPath(cachedRoot, path));
+		afterByPath[path] = cloneValue(getValueAtPath(currentRoot, path));
+	}
+
+	const record = {
+		ts: Date.now(),
+		type: "saveAllToCloud",
+		caller,
+		roots,
+		paths: Object.keys(payload),
+		beforeValues: beforeByPath,
+		afterValues: afterByPath,
+		status: "pending",
+	};
+	pushSyncRecord(record);
+	DataSync.bumpRevisionsForPayload(payload, roots);
 
 	try {
 		await db.ref("/").update(payload);
+		record.status = "ok";
+		record.doneTs = Date.now();
 	} catch (err) {
+		record.status = "error";
+		record.doneTs = Date.now();
+		record.error = err && err.message ? err.message : String(err);
 		alert(JSON.stringify(err));
 	}
 }
