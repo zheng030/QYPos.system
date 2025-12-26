@@ -119,7 +119,7 @@ const menuData = {
         { name: "紅茶", price: 80 },
         { name: "綠茶", price: 80 },
         { name: "烏龍茶", price: 80 },
-        { name: "奶茶", price: 80 },],
+        { name: "奶茶", price: 100 },],
     "燒烤": {
 
         "Popular": [
