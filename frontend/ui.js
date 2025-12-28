@@ -276,10 +276,19 @@ function buildCategories() {
 function openItems(category) {
 	let data = menuData[category];
 	let backBtn = `<button class="back-to-cat btn-effect" onclick="buildCategories()">⬅ 返回 ${category} 分類</button>`;
+	const shouldHide =
+		document.body.classList.contains("customer-mode")
+			? shouldHideCustomerItemName
+			: () => false;
 
 	const createItemHtml = (item, isFlat = false) => {
+		if (shouldHide(item.name)) return "";
 		let actionsHtml = "";
-		let nameHtml = `<span>${item.name} <b>$${item.price}</b></span>`;
+		const priceLabel =
+			typeof item.price === "string" ? item.price : `$${item.price}`;
+		const priceArg =
+			typeof item.price === "string" ? JSON.stringify(item.price) : item.price;
+		let nameHtml = `<span>${item.name} <b>${priceLabel}</b></span>`;
 		let itemClass = isFlat ? "item list-mode" : "item shot-item";
 
 		let isSoldOut =
@@ -290,7 +299,7 @@ function openItems(category) {
 			nameHtml = `<span style="font-weight:bold; color:var(--primary-color);">🍺 隱藏啤酒</span>`;
 			actionsHtml = `<input id="hbName" class="inline-input" placeholder="品名" style="width:100px;"><input type="number" id="hbPrice" class="inline-input" placeholder="時價" style="width:70px;"><button onclick="addInlineHiddenBeer()">加入</button>`;
 		} else {
-			actionsHtml = `<button onclick='checkItemType("${item.name}", ${item.price}, "${category}")'>加入</button>`;
+			actionsHtml = `<button onclick='checkItemType("${item.name}", ${priceArg}, "${category}")'>加入</button>`;
 			if (category === "shot") {
 				actionsHtml += `<button onclick='addShotSet("${item.name}", ${item.price})' class="set-btn btn-effect" style="margin-left:5px; background:var(--secondary-color);">🔥 一組</button>`;
 			}
@@ -333,9 +342,11 @@ function openItems(category) {
 					html += createItemHtml(item, true);
 				});
 			} else {
+				const visibleItems = items.filter((item) => !shouldHide(item.name));
+				if (visibleItems.length === 0) return;
 				let accId = `acc-${index}`;
 				html += `<button class="accordion-header btn-effect" onclick="toggleAccordion('${accId}')">${subCat} <span class="arrow">▼</span></button><div id="${accId}" class="accordion-content">`;
-				items.forEach((item) => {
+				visibleItems.forEach((item) => {
 					html += createItemHtml(item, false);
 				});
 				html += `</div>`;
@@ -360,6 +371,7 @@ function renderCart() {
 	const totalText = document.getElementById("total");
 	cartList.innerHTML = "";
 	currentOriginalTotal = 0;
+	const isCustomerMode = document.body.classList.contains("customer-mode");
 
 	const svcBtn = document.getElementById("svcBtn");
 	if (svcBtn) {
@@ -401,6 +413,10 @@ function renderCart() {
 		if (!c.isSent) {
 			currentOriginalTotal += itemTotal;
 		}
+		const shouldHideForCustomer =
+			isCustomerMode &&
+			shouldHideCustomerItemName(c.name);
+		if (shouldHideForCustomer) return;
 
 		let treatClass = c.isTreat
 			? "treat-btn active btn-effect"

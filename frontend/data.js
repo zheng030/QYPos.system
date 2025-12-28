@@ -218,6 +218,7 @@ const menuData = {
     "其他": [
         { name: "檸檬(盤)", price: 50 },
         { name: "服務費", price: 100 },
+        { name: "服務費(隱藏)", price: "自訂" },
         { name: "清潔費", price: 300 },
         { name: "碎碎平安", price: 500 }]
 };

@@ -619,6 +619,21 @@ function getItemCategoryType(itemName) {
 	return "unknown";
 }
 
+function normalizeItemNameForMatch(name) {
+	if (!name) return "";
+	return name
+		.match(/^[^<]+/)?.[0]
+		.replace(" (招待)", "")
+		.trim();
+}
+
+
+function shouldHideCustomerItemName(name) {
+	const cleanName = normalizeItemNameForMatch(name);
+	if (!cleanName) return false;
+	return cleanName.includes("(隱藏)");
+}
+
 function getCostByItemName(itemName) {
 	itemName = itemName.match(/^[^<]+/)?.[0].trim();
 	if (!itemName) return 0;
@@ -978,9 +993,20 @@ function hasAvailableVariants(name) {
 }
 
 function addToCart(name, price) {
-	cart.push({ name, price, isNew: true, isTreat: false });
+	let finalPrice = price;
+	if (price === "自訂") {
+		let input = prompt("請輸入金額", price === "自訂" ? "" : String(price));
+		if (input === null) return;
+		let parsed = parseInt(input, 10);
+		if (isNaN(parsed) || parsed < 0) {
+			alert("金額錯誤");
+			return;
+		}
+		finalPrice = parsed;
+	}
+	cart.push({ name, price: finalPrice, isNew: true, isTreat: false });
 	let sameCount = cart.filter(
-		(item) => item.name === name && item.price === price && !item.isTreat,
+		(item) => item.name === name && item.price === finalPrice && !item.isTreat,
 	).length;
 	showToast(`✅ 已加入：${name}`, { count: sameCount });
 	renderCart();
