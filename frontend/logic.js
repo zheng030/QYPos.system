@@ -627,11 +627,14 @@ function normalizeItemNameForMatch(name) {
 		.trim();
 }
 
+function stripHiddenTag(name) {
+	if (!name) return "";
+	const cleaned = name.replace(/\s*[\(（]隱藏[\)）]\s*/g, "").trim();
+	return cleaned || name;
+}
 
 function shouldHideCustomerItemName(name) {
-	const cleanName = normalizeItemNameForMatch(name);
-	if (!cleanName) return false;
-	return cleanName.includes("(隱藏)");
+	return name.includes("(隱藏)");
 }
 
 function getCostByItemName(itemName) {
@@ -1349,7 +1352,7 @@ async function checkoutAll(manualFinal) {
 			displaySeat = `${selectedTable} (拆單)`;
 		}
 		let processedItems = cart.map((item) => {
-			let name = item.name;
+			let name = stripHiddenTag(item.name);
 			let price = item.price;
 			let type = getItemCategoryType(name);
 			if (item.isTreat) {
@@ -1525,7 +1528,7 @@ async function confirmPayment() {
 
 	// 本次結帳品項：處理招待
 	let processedItems = tempRightList.map((item) => {
-		let name = item.name;
+		let name = stripHiddenTag(item.name);
 		let price = item.price;
 		let type = getItemCategoryType(name);
 		if (item.isTreat) {
