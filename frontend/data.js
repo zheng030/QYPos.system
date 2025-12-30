@@ -200,6 +200,7 @@ const menuData = {
         { name: "洋蔥圈", price: 100 },
         { name: "唐揚雞", price: 150 },
         { name: "酥炸魷魚", price: 200 },
+        { name: "酥炸蚵仔酥", price: 250 },
         { name: "炸物拼盤", price: 400 }],
     "厚片": [
         { name: "花生厚片", price: 80 },
