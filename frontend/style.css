@@ -1960,10 +1960,12 @@ body.customer-mode .del-btn {
 }
 
 /* Custom Date Range styling */
-#customStatsDateRange input[type="date"] {
+#customStatsDateRange input[type="date"],
+#customFinanceDateRange input[type="date"] {
     cursor: pointer;
 }
-#customStatsDateRange input[type="date"]::-webkit-calendar-picker-indicator {
+#customStatsDateRange input[type="date"]::-webkit-calendar-picker-indicator,
+#customFinanceDateRange input[type="date"]::-webkit-calendar-picker-indicator {
     cursor: pointer;
     filter: invert(0.4);
 }

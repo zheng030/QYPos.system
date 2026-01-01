@@ -253,8 +253,18 @@
                             <button onclick="updateFinanceStats('week')" id="finBtnWeek" class="btn-effect">本周</button>
                             <button onclick="updateFinanceStats('month')" id="finBtnMonth"
                                 class="btn-effect active">當月</button>
-                            <button onclick="updateFinanceStats('custom')" id="finBtnCustom" class="btn-effect"
+                            <button onclick="updateFinanceStats('custom')" id="finBtnCustom"
+                                class="btn-effect">日期區間</button>
+                            <button onclick="updateFinanceStats('specific')" id="finBtnSpecific" class="btn-effect"
                                 style="display:none;"></button>
+                        </div>
+                        <div id="customFinanceDateRange" class="segment-control-container"
+                            style="display:none; width: auto; padding: 8px 20px; animation: fadeIn 0.3s ease; align-items: center;">
+                            <input type="date" id="financeStartDate" onchange="updateFinanceStats('custom')"
+                                style="border:none; background:transparent; font-size:15px; color:#475569; font-weight:bold; font-family:inherit;">
+                            <span style="margin: 0 10px; color: #a1a9b3;">～</span>
+                            <input type="date" id="financeEndDate" onchange="updateFinanceStats('custom')"
+                                style="border:none; background:transparent; font-size:15px; color:#475569; font-weight:bold; font-family:inherit;">
                         </div>
                         <div class="summary-card total-theme">
                             <h3 id="financeTitle">🏠 全店總計 (本月)</h3>

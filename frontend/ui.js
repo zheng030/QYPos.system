@@ -1749,10 +1749,10 @@ function changeOwnerMonth(offset) {
 	let owner = document.getElementById("ownerWelcome").innerText;
 	renderConfidentialCalendar(owner);
 	document.getElementById("ownerOrderListSection").style.display = "none";
-	const customBtn = document.getElementById("finBtnCustom");
-	if (customBtn) {
-		customBtn.style.display = "none";
-		customBtn.dataset.date = "";
+	const specificBtn = document.getElementById("finBtnSpecific");
+	if (specificBtn) {
+		specificBtn.style.display = "none";
+		specificBtn.dataset.date = "";
 	}
 }
 
@@ -1887,14 +1887,14 @@ function renderConfidentialCalendar(ownerName) {
 			cell.classList.add("active");
 
 			showOwnerDetailedOrders(year, month, d);
-			let customBtn = document.getElementById("finBtnCustom");
-			if (customBtn) {
+			let specificBtn = document.getElementById("finBtnSpecific");
+			if (specificBtn) {
 				let mm = String(month + 1).padStart(2, "0");
 				let dd = String(d).padStart(2, "0");
-				customBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`;
-				customBtn.dataset.date = `${year}-${mm}-${dd}`;
-				customBtn.style.display = "inline-block";
-				updateFinanceStats("custom", new Date(year, month, d, 5, 0, 0, 0));
+				specificBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`;
+				specificBtn.dataset.date = `${year}-${mm}-${dd}`;
+				specificBtn.style.display = "inline-block";
+				updateFinanceStats("specific", new Date(year, month, d, 5, 0, 0, 0));
 			}
 		};
 
@@ -1909,6 +1909,10 @@ function updateFinanceStats(range) {
 	document
 		.querySelectorAll(".finance-controls button")
 		.forEach((b) => b.classList.remove("active"));
+	const customRangeDiv = document.getElementById("customFinanceDateRange");
+	if (customRangeDiv) {
+		customRangeDiv.style.display = range === "custom" ? "flex" : "none";
+	}
 	if (range === "day")
 		document.getElementById("finBtnDay").classList.add("active");
 	if (range === "week")
@@ -1917,6 +1921,12 @@ function updateFinanceStats(range) {
 		document.getElementById("finBtnMonth").classList.add("active");
 	if (range === "custom") {
 		let btn = document.getElementById("finBtnCustom");
+		if (btn) {
+			btn.classList.add("active");
+		}
+	}
+	if (range === "specific") {
+		let btn = document.getElementById("finBtnSpecific");
 		if (btn) {
 			btn.classList.add("active");
 		}
@@ -1956,7 +1966,51 @@ function updateFinanceStats(range) {
 		bizStart = getBusinessDate(start);
 		bizEnd = getBusinessDate(end);
 	} else if (range === "custom") {
-		let btn = document.getElementById("finBtnCustom");
+		const sInput = document.getElementById("financeStartDate");
+		const eInput = document.getElementById("financeEndDate");
+
+		const toLocalISO = (d) => {
+			const offset = d.getTimezoneOffset() * 60000;
+			return new Date(d.getTime() - offset).toISOString().split("T")[0];
+		};
+
+		if (sInput && !sInput.value) {
+			let d = new Date();
+			d.setDate(1);
+			sInput.value = toLocalISO(d);
+		}
+		if (eInput && !eInput.value) {
+			let d = new Date();
+			d.setMonth(d.getMonth() + 1);
+			d.setDate(0);
+			eInput.value = toLocalISO(d);
+		}
+
+		if (sInput && eInput && sInput.value && eInput.value) {
+			let sParts = sInput.value.split("-");
+			let eParts = eInput.value.split("-");
+			start = new Date(sParts[0], sParts[1] - 1, sParts[2]);
+			start.setHours(5, 0, 0, 0);
+
+			end = new Date(eParts[0], eParts[1] - 1, eParts[2]);
+			end.setDate(end.getDate() + 1); // Inclusive
+			end.setHours(5, 0, 0, 0);
+
+			let displayStart = sInput.value.replace(/-/g, "/");
+			let displayEnd = eInput.value.replace(/-/g, "/");
+			titleText = `🏠 全店總計 (${displayStart}~${displayEnd})`;
+			bizStart = getBusinessDate(start);
+			bizEnd = getBusinessDate(end);
+		} else {
+			start.setHours(5, 0, 0, 0);
+			end = new Date(start);
+			end.setDate(end.getDate() + 1);
+			titleText = "🏠 全店總計 (特定區間)";
+			bizStart = getBusinessDate(start);
+			bizEnd = bizStart + DAY_MS;
+		}
+	} else if (range === "specific") {
+		let btn = document.getElementById("finBtnSpecific");
 		let dateStr = btn && btn.dataset.date ? btn.dataset.date : "";
 		if (dateStr) {
 			let [y, m, d] = dateStr.split("-").map((n) => parseInt(n, 10));
