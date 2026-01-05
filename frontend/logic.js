@@ -16,6 +16,8 @@ let tableSplitCounters = {};
 let itemCosts = {};
 let itemPrices = {};
 let inventory = {};
+let attendanceEmployees = {};
+let attendanceRecords = {};
 
 let ownerPasswords = { 景偉: "0001", 小飛: "0002", 威志: "0003" };
 let incomingOrders = {};
@@ -31,6 +33,8 @@ const DATA_ROOT_KEYS = [
 	"itemCosts",
 	"itemPrices",
 	"inventory",
+	"attendanceEmployees",
+	"attendanceRecords",
 	"incomingOrders",
 	"tableBatchCounts",
 	"ownerPasswords",
@@ -159,6 +163,18 @@ const DataSync = {
 						JSON.stringify(inventory || {}),
 					);
 					break;
+				case "attendanceEmployees":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}attendanceEmployees`,
+						JSON.stringify(attendanceEmployees || {}),
+					);
+					break;
+				case "attendanceRecords":
+					localStorage.setItem(
+						`${LOCAL_DATA_PREFIX}attendanceRecords`,
+						JSON.stringify(attendanceRecords || {}),
+					);
+					break;
 				case "incomingOrders":
 					localStorage.setItem(
 						`${LOCAL_DATA_PREFIX}incomingOrders`,
@@ -213,12 +229,18 @@ const DataSync = {
 					case "itemPrices":
 						itemPrices = val || {};
 						break;
-					case "inventory":
-						inventory = val || {};
-						break;
-					case "incomingOrders":
-						incomingOrders = val || {};
-						break;
+				case "inventory":
+					inventory = val || {};
+					break;
+				case "attendanceEmployees":
+					attendanceEmployees = val || {};
+					break;
+				case "attendanceRecords":
+					attendanceRecords = val || {};
+					break;
+				case "incomingOrders":
+					incomingOrders = val || {};
+					break;
 					case "tableBatchCounts":
 						tableBatchCounts = val || {};
 						break;
@@ -280,6 +302,12 @@ const DataSync = {
 			case "inventory":
 				inventory = value || {};
 				break;
+			case "attendanceEmployees":
+				attendanceEmployees = value || {};
+				break;
+			case "attendanceRecords":
+				attendanceRecords = value || {};
+				break;
 			case "incomingOrders":
 				incomingOrders = value || {};
 				break;
@@ -295,15 +323,26 @@ const DataSync = {
 
 		if (typeof this.remoteRevisions[root] === "number") {
 			this.localRevisions[root] = this.remoteRevisions[root];
-			this.saveLocalRevisions();
-		}
-		this.saveLocalDataForRoots([root]);
+		this.saveLocalRevisions();
+	}
+	this.saveLocalDataForRoots([root]);
 
-		if (root === "incomingOrders") {
-			if (!document.body.classList.contains("customer-mode")) {
-				checkIncomingOrders();
-			}
+	if (
+		(root === "attendanceEmployees" || root === "attendanceRecords") &&
+		typeof window !== "undefined" &&
+		window.CheckInPlugin &&
+		typeof window.CheckInPlugin.onDataUpdate === "function"
+	) {
+		try {
+			window.CheckInPlugin.onDataUpdate(root, cloneValue(getRootValue(root)));
+		} catch (e) { }
+	}
+
+	if (root === "incomingOrders") {
+		if (!document.body.classList.contains("customer-mode")) {
+			checkIncomingOrders();
 		}
+	}
 
 		if (
 			root === "historyOrders" ||
@@ -411,6 +450,10 @@ function getRootValue(root) {
 			return itemPrices;
 		case "inventory":
 			return inventory;
+		case "attendanceEmployees":
+			return attendanceEmployees;
+		case "attendanceRecords":
+			return attendanceRecords;
 		case "incomingOrders":
 			return incomingOrders;
 		case "tableBatchCounts":

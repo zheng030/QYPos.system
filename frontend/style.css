@@ -148,9 +148,6 @@ button {
 }
 
 /* ========== 3. 版面配置 ========== */
-#app-container {
-	padding-bottom: 40px;
-}
 .header-row {
 	display: flex;
 	justify-content: space-between;
