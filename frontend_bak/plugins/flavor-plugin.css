@@ -1,0 +1,190 @@
+/* flavor-plugin.css - 口味選項 Plugin 樣式 */
+/* 此檔案獨立於主樣式，方便追蹤 plugin 新增內容 */
+
+/* ========== Global 口味選擇區 (品項與訂單明細中間) ========== */
+#flavor-selector-container {
+    background: var(--card-bg, #ffffff);
+    border-radius: var(--radius-md, 12px);
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.05));
+    border: 2px solid #e0e7ff;
+    display: none; /* 預設隱藏，由 JS 根據類別決定顯示 */
+}
+
+#flavor-selector-container.active {
+    display: block;
+    background: linear-gradient(135deg, #fafbff 0%, #f8fafc 100%);
+}
+
+.flavor-section {
+    margin-bottom: 15px;
+}
+
+.flavor-section:last-child {
+    margin-bottom: 0;
+}
+
+.flavor-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-sub, #8d99ae);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.flavor-label .flavor-icon {
+    font-size: 16px;
+}
+
+/* ========== 按鈕式選項 (類似現有 radio-btn 樣式) ========== */
+.flavor-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.flavor-btn {
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 25px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-sub, #8d99ae);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.flavor-btn:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.flavor-btn:active {
+    transform: scale(0.96);
+}
+
+/* 已選擇狀態 */
+.flavor-btn.selected {
+    background: #e0e7ff;
+    border-color: var(--primary-color, #4361ee);
+    color: var(--primary-color, #4361ee);
+}
+
+/* 辣度特殊配色 */
+.flavor-btn.spice-selected[data-value="小辣"] {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #b45309;
+}
+
+.flavor-btn.spice-selected[data-value="中辣"] {
+    background: #fed7aa;
+    border-color: #ea580c;
+    color: #c2410c;
+}
+
+.flavor-btn.spice-selected[data-value="大辣"] {
+    background: #fecaca;
+    border-color: #dc2626;
+    color: #b91c1c;
+}
+
+/* 檸檬汁配色 */
+.flavor-btn.lemon-selected[data-value="要"] {
+    background: #ecfccb;
+    border-color: #84cc16;
+    color: #4d7c0f;
+}
+
+.flavor-btn.lemon-selected[data-value="不要"] {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #64748b;
+}
+
+/* ========== 訂單明細中的口味標籤 ========== */
+.flavor-tag {
+    display: inline-block;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-left: 6px;
+    font-weight: 500;
+}
+
+.flavor-tag.spice {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.flavor-tag.spice.spice-小辣 {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.flavor-tag.spice.spice-中辣 {
+    background: #fed7aa;
+    color: #c2410c;
+}
+
+.flavor-tag.spice.spice-大辣 {
+    background: #fecaca;
+    color: #b91c1c;
+}
+
+.flavor-tag.lemon {
+    background: #ecfccb;
+    color: #4d7c0f;
+}
+
+.flavor-tag.lemon.lemon-要 {
+    background: #ecfccb;
+    color: #4d7c0f;
+}
+
+/* ========== 今日訂單列表中的口味顯示 ========== */
+.history-detail .flavor-info {
+    font-size: 13px;
+    color: #6b7280;
+    margin-left: 8px;
+}
+
+.history-detail .flavor-info .spice-info {
+    color: #ea580c;
+}
+
+.history-detail .flavor-info .lemon-info {
+    color: #65a30d;
+}
+
+/* ========== RWD 調整 ========== */
+@media (max-width: 600px) {
+    #flavor-selector-container {
+        padding: 15px;
+    }
+
+    .flavor-btn {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+
+    .flavor-options {
+        gap: 6px;
+    }
+}
+
+/* ========== 通用樣式增強 ========== */
+#flavor-selector-container .flavor-section {
+    text-align: left;
+}
+
+#flavor-selector-container .flavor-label {
+    font-size: 15px;
+    color: var(--text-main, #2b2d42);
+}
