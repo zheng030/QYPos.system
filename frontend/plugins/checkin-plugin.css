@@ -1019,45 +1019,74 @@
   box-shadow: var(--shadow-sm);
 }
 
+.checkin-chart-scroll {
+  width: 100%;
+  overflow: visible;
+}
+
+.checkin-chart-scroll.is-scrollable {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 6px;
+}
+
 .checkin-chart {
   display: flex;
   align-items: flex-end;
   gap: 8px;
   height: 180px;
   padding-top: 16px;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   max-width: 100%;
-  min-width: 0;
-}
-
-.checkin-chart.is-scrollable {
-  overflow-x: auto;
-  padding-bottom: 6px;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
 }
 
 .checkin-chart__bar {
-  flex: 1;
+  flex: 1 0 0;
+  height: 100%;
+  justify-content: flex-end;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   font-size: 10px;
   color: var(--slate-400);
+  position: relative;
 }
 
-.checkin-chart.is-scrollable .checkin-chart__bar {
+.checkin-chart-scroll.is-scrollable .checkin-chart__bar {
   flex: 0 0 30px;
 }
 
 .checkin-chart__fill {
   width: 100%;
+  min-height: 2px;
   border-radius: 8px 8px 0 0;
-  background: var(--slate-300);
+  background: #cbd5e1;
   transition: height 0.2s ease;
 }
 
 .checkin-chart__fill.is-strong {
-  background: var(--brand-600);
+  background: #0d9488;
+}
+
+.checkin-chart-tooltip {
+  position: fixed;
+  background: #1e293b;
+  color: #ffffff;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 9999;
 }
 
 .checkin-record-list {

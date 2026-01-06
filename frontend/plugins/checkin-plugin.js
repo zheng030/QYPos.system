@@ -221,6 +221,7 @@
 	let clockTimer = null;
 	let focusEmployeeSearch = false;
 	let isEmployeeSearchComposing = false;
+	let chartTooltipEl = null;
 
 	function setState(patch) {
 		Object.assign(state, patch);
@@ -1170,7 +1171,7 @@
 				date: d.toLocaleDateString("zh-TW"),
 			});
 		}
-		const maxHours = Math.max(8, ...chartData.map((d) => d.hours));
+		const maxHours = Math.max(1, ...chartData.map((d) => d.hours));
 
 		return `
 		<div class="checkin-section checkin-view--individual">
@@ -1225,13 +1226,15 @@
 								<button data-action="set-chart-mode" data-mode="month" class="${state.chartMode === "month" ? "is-active" : ""}">最近30天</button>
 							</div>
 						</div>
-						<div class="checkin-chart ${state.chartMode === "month" ? "is-scrollable" : ""}">
+						<div class="checkin-chart-scroll ${state.chartMode === "month" ? "is-scrollable" : ""}">
+							<div class="checkin-chart">
 							${chartData.map((entry) => `
-								<div class="checkin-chart__bar" title="${entry.date}: ${entry.hours} 小時">
-									<div class="checkin-chart__fill ${entry.hours >= 8 ? "is-strong" : ""}" style="height:${(entry.hours / maxHours) * 100}%"></div>
+								<div class="checkin-chart__bar" data-tooltip-date="${entry.date}" data-tooltip-hours="${entry.hours}">
+									<div class="checkin-chart__fill ${entry.hours >= 1 ? "is-strong" : ""}" style="height:${(entry.hours / maxHours) * 100}%"></div>
 									<span>${entry.label}</span>
 								</div>
 							`).join("")}
+							</div>
 						</div>
 					</div>
 					<div class="checkin-card">
@@ -1702,6 +1705,14 @@
 			${renderModal()}
 		`;
 		startClockTimer();
+		if (state.currentView === "individual" && state.chartMode === "month") {
+			requestAnimationFrame(() => {
+				const scroller = rootEl.querySelector(".checkin-chart-scroll.is-scrollable");
+				if (scroller) {
+					scroller.scrollLeft = scroller.scrollWidth;
+				}
+			});
+		}
 		if (focusEmployeeSearch && state.currentView === "employees") {
 			focusEmployeeSearch = false;
 			requestAnimationFrame(() => {
@@ -2105,6 +2116,50 @@
 		rootEl.addEventListener("input", handleRootInput);
 		rootEl.addEventListener("compositionstart", handleRootCompositionStart);
 		rootEl.addEventListener("compositionend", handleRootCompositionEnd);
+		rootEl.addEventListener("mouseover", handleChartTooltipOver);
+		rootEl.addEventListener("mousemove", handleChartTooltipMove);
+		rootEl.addEventListener("mouseout", handleChartTooltipOut);
+	}
+
+	function ensureChartTooltip() {
+		if (chartTooltipEl) return chartTooltipEl;
+		const el = document.createElement("div");
+		el.className = "checkin-chart-tooltip";
+		el.style.display = "none";
+		document.body.appendChild(el);
+		chartTooltipEl = el;
+		return el;
+	}
+
+	function handleChartTooltipOver(event) {
+		const bar = event.target.closest(".checkin-chart__bar");
+		if (!bar) return;
+		const tooltip = ensureChartTooltip();
+		const date = bar.dataset.tooltipDate || "";
+		const hours = bar.dataset.tooltipHours || "0";
+		tooltip.innerHTML = `<strong>${date}</strong><span>工時: ${hours} 小時</span>`;
+		tooltip.style.display = "flex";
+		handleChartTooltipMove(event);
+	}
+
+	function handleChartTooltipMove(event) {
+		if (!chartTooltipEl || chartTooltipEl.style.display === "none") return;
+		const offset = 14;
+		let x = event.clientX + offset;
+		let y = event.clientY - offset;
+		const rect = chartTooltipEl.getBoundingClientRect();
+		if (x + rect.width > window.innerWidth) x = event.clientX - rect.width - offset;
+		if (y - rect.height < 0) y = event.clientY + offset;
+		chartTooltipEl.style.left = `${x}px`;
+		chartTooltipEl.style.top = `${y}px`;
+	}
+
+	function handleChartTooltipOut(event) {
+		const bar = event.target.closest(".checkin-chart__bar");
+		if (!bar || !chartTooltipEl) return;
+		const related = event.relatedTarget;
+		if (related && bar.contains(related)) return;
+		chartTooltipEl.style.display = "none";
 	}
 
 	async function init(options) {
