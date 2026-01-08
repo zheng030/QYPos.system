@@ -229,18 +229,18 @@ const DataSync = {
 					case "itemPrices":
 						itemPrices = val || {};
 						break;
-				case "inventory":
-					inventory = val || {};
-					break;
-				case "attendanceEmployees":
-					attendanceEmployees = val || {};
-					break;
-				case "attendanceRecords":
-					attendanceRecords = val || {};
-					break;
-				case "incomingOrders":
-					incomingOrders = val || {};
-					break;
+					case "inventory":
+						inventory = val || {};
+						break;
+					case "attendanceEmployees":
+						attendanceEmployees = val || {};
+						break;
+					case "attendanceRecords":
+						attendanceRecords = val || {};
+						break;
+					case "incomingOrders":
+						incomingOrders = val || {};
+						break;
 					case "tableBatchCounts":
 						tableBatchCounts = val || {};
 						break;
@@ -323,26 +323,26 @@ const DataSync = {
 
 		if (typeof this.remoteRevisions[root] === "number") {
 			this.localRevisions[root] = this.remoteRevisions[root];
-		this.saveLocalRevisions();
-	}
-	this.saveLocalDataForRoots([root]);
-
-	if (
-		(root === "attendanceEmployees" || root === "attendanceRecords") &&
-		typeof window !== "undefined" &&
-		window.CheckInPlugin &&
-		typeof window.CheckInPlugin.onDataUpdate === "function"
-	) {
-		try {
-			window.CheckInPlugin.onDataUpdate(root, cloneValue(getRootValue(root)));
-		} catch (e) { }
-	}
-
-	if (root === "incomingOrders") {
-		if (!document.body.classList.contains("customer-mode")) {
-			checkIncomingOrders();
+			this.saveLocalRevisions();
 		}
-	}
+		this.saveLocalDataForRoots([root]);
+
+		if (
+			(root === "attendanceEmployees" || root === "attendanceRecords") &&
+			typeof window !== "undefined" &&
+			window.CheckInPlugin &&
+			typeof window.CheckInPlugin.onDataUpdate === "function"
+		) {
+			try {
+				window.CheckInPlugin.onDataUpdate(root, cloneValue(getRootValue(root)));
+			} catch (e) { }
+		}
+
+		if (root === "incomingOrders") {
+			if (!document.body.classList.contains("customer-mode")) {
+				checkIncomingOrders();
+			}
+		}
 
 		if (
 			root === "historyOrders" ||
@@ -680,10 +680,19 @@ function shouldHideCustomerItemName(name) {
 	return name.includes("(隱藏)");
 }
 
-function getCostByItemName(itemName) {
-	itemName = itemName.match(/^[^<]+/)?.[0].trim();
+function getCostByItemName(itemName, variant) {
+	let rawName = itemName || "";
+	let variantMatch = rawName.match(/[（(]([^（）()]+)[)）]/);
+	let variantFromName = variantMatch ? variantMatch[1].trim() : "";
+	itemName = rawName.match(/^[^<]+/)?.[0].trim();
 	if (!itemName) return 0;
 	let cleanName = itemName.replace(" (招待)", "").trim();
+	let finalVariant = (variant || variantFromName || "").trim();
+	let allowedVariants = FOOD_OPTION_VARIANTS?.[cleanName] || null;
+	if (finalVariant && (!allowedVariants || allowedVariants.includes(finalVariant))) {
+		let variantKey = `${cleanName}::${finalVariant}`;
+		if (itemCosts[variantKey] !== undefined) return itemCosts[variantKey];
+	}
 	if (itemCosts[cleanName] !== undefined) return itemCosts[cleanName];
 	let baseName = cleanName.replace(/\s*[\(（].*?[\)）]$/, "").trim();
 	if (itemCosts[baseName] !== undefined) return itemCosts[baseName];
@@ -1038,7 +1047,7 @@ function hasAvailableVariants(name) {
 	return getAvailableVariants(name).length > 0;
 }
 
-function addToCart(name, price) {
+function addToCart(name, price, options = {}) {
 	let finalPrice = price;
 	if (price === "自訂") {
 		let input = prompt("請輸入金額", price === "自訂" ? "" : String(price));
@@ -1050,7 +1059,14 @@ function addToCart(name, price) {
 		}
 		finalPrice = parsed;
 	}
-	cart.push({ name, price: finalPrice, isNew: true, isTreat: false });
+	let item = {
+		name,
+		price: finalPrice,
+		isNew: true,
+		isTreat: false,
+	};
+	if (options.variant) item.variant = options.variant;
+	cart.push(item);
 	let sameCount = cart.filter(
 		(item) => item.name === name && item.price === finalPrice && !item.isTreat,
 	).length;

@@ -610,6 +610,7 @@ function confirmFoodItem() {
 		addToCart(
 			`${tempCustomItem.name} <small style='color:#666'>(${meat})</small>`,
 			tempCustomItem.price,
+			{ variant: meat },
 		);
 		closeFoodModal();
 	} catch (e) {
@@ -1685,6 +1686,27 @@ function updateFinancialPage(ownerName) {
 			});
 		}
 
+		const buildRow = (name, price, cost, options = {}) => {
+			let displayName = options.displayName || name;
+			let priceCell = options.disablePrice
+				? `<input type="number" class="cost-input" value="${price}" placeholder="售價" disabled>`
+				: `<input type="number" class="cost-input" value="${price}" placeholder="售價"
+                            onchange="updateItemData('${name}', 'price', this.value)">`;
+			let costKey = options.costKey || name;
+			return `
+                <tr>
+                    <td style="font-weight: 500; color: #343a40;">${displayName}</td>
+                    <td>
+                        ${priceCell}
+                    </td>
+                    <td>
+                        <input type="number" class="cost-input" value="${cost}" placeholder="成本"
+                            onchange="updateItemData('${costKey}', 'cost', this.value)" style="color: #e03131; font-weight:bold;">
+                    </td>
+                </tr>
+            `;
+		};
+
 		items.forEach((item) => {
 			let currentPrice =
 				itemPrices[item.name] !== undefined
@@ -1693,19 +1715,26 @@ function updateFinancialPage(ownerName) {
 			let currentCost =
 				itemCosts[item.name] !== undefined ? itemCosts[item.name] : 0;
 
-			tableHtml += `
-                <tr>
-                    <td style="font-weight: 500; color: #343a40;">${item.name}</td>
-                    <td>
-                        <input type="number" class="cost-input" value="${currentPrice}" placeholder="售價"
-                            onchange="updateItemData('${item.name}', 'price', this.value)">
-                    </td>
-                    <td>
-                        <input type="number" class="cost-input" value="${currentCost}" placeholder="成本"
-                            onchange="updateItemData('${item.name}', 'cost', this.value)" style="color: #e03131; font-weight:bold;">
-                    </td>
-                </tr>
-            `;
+			tableHtml += buildRow(item.name, currentPrice, currentCost);
+
+			let variants = FOOD_OPTION_VARIANTS[item.name];
+			if (variants && variants.length > 0) {
+				variants.forEach((opt) => {
+					let costKey = `${item.name}::${opt}`;
+					let optCost =
+						itemCosts[costKey] !== undefined ? itemCosts[costKey] : 0;
+					tableHtml += buildRow(
+						item.name,
+						currentPrice,
+						optCost,
+						{
+							displayName: `${item.name} (${opt})`,
+							costKey,
+							disablePrice: true,
+						},
+					);
+				});
+			}
 		});
 
 		tableHtml += `</tbody></table>`;
@@ -2057,7 +2086,7 @@ function updateFinanceStats(range) {
 				let unknownSum = 0;
 
 				items.forEach((item) => {
-					let cost = getCostByItemName(item.name);
+					let cost = getCostByItemName(item.name, item.variant);
 					let name = item.name.replace(" (招待)", "").trim();
 					let type = item.type || getItemCategoryType(name);
 					let itemPrice = item.price ? item.price : 0;
