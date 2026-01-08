@@ -427,12 +427,24 @@
 	}
 
 	function formatDate(date) {
-		return date.toLocaleDateString("zh-TW", {
+		const businessDate = toBusinessDate(date);
+		return businessDate.toLocaleDateString("zh-TW", {
 			year: "numeric",
 			month: "long",
 			day: "numeric",
 			weekday: "long",
 		});
+	}
+
+	function formatBusinessDateOnly(date) {
+		const businessDate = toBusinessDate(date);
+		return businessDate.toLocaleDateString("zh-TW");
+	}
+
+	function toBusinessDate(date) {
+		const d = new Date(date);
+		d.setHours(d.getHours() - BUSINESS_DAY_SHIFT_HOURS);
+		return d;
 	}
 
 	function formatDateKey(date) {
@@ -592,7 +604,7 @@
 			const key = businessDate.toDateString();
 			if (!grouped[key]) {
 				grouped[key] = {
-					date: new Date(dateObj),
+					date: new Date(businessDate),
 					records: [],
 					sessions: [],
 					totalHours: 0,
@@ -628,7 +640,7 @@
 				}
 			});
 
-			const isToday = new Date().toDateString() === day.date.toDateString();
+			const isToday = formatDateKey(new Date()) === formatDateKey(day.date);
 			if (isToday && workStart !== null) {
 				const now = Date.now();
 				const duration = now - workStart;
@@ -1164,11 +1176,14 @@
 			const d = new Date(now);
 			d.setDate(d.getDate() - i);
 			const key = formatDateKey(d);
+			const businessDate = toBusinessDate(d);
 			const found = dailyData.find((dd) => formatDateKey(dd.date) === key);
 			chartData.push({
-				label: state.chartMode === "week" ? d.toLocaleDateString("zh-TW", { weekday: "short" }) : `${d.getMonth() + 1}/${d.getDate()}`,
+				label: state.chartMode === "week"
+					? businessDate.toLocaleDateString("zh-TW", { weekday: "short" })
+					: `${businessDate.getMonth() + 1}/${businessDate.getDate()}`,
 				hours: found ? found.totalHours : 0,
-				date: d.toLocaleDateString("zh-TW"),
+				date: businessDate.toLocaleDateString("zh-TW"),
 			});
 		}
 		const maxHours = Math.max(1, ...chartData.map((d) => d.hours));
@@ -1325,7 +1340,7 @@
 		const month = calendarDate.getMonth();
 		const firstDay = new Date(year, month, 1).getDay();
 		const daysInMonth = new Date(year, month + 1, 0).getDate();
-		const today = new Date();
+		const today = toBusinessDate(new Date());
 		const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 		const cells = [];
@@ -1430,7 +1445,7 @@
 												<span>${emp ? emp.name : "Unknown"}</span>
 											</div>
 										</td>
-										<td>${date ? date.toLocaleDateString() : "-"}</td>
+							<td>${date ? formatBusinessDateOnly(date) : "-"}</td>
 										<td>${date ? formatShortTime(date) : "-"}</td>
 										<td><span class="${meta.tagClass}">${getRecordLabel(record.type)}</span></td>
 										<td>${record.notes || "-"}</td>
@@ -1933,7 +1948,7 @@
 		const rows = filtered.map((record) => {
 			const emp = getEmployeeById(record.eid);
 			const date = toDate(record.ts);
-			const dateText = date ? date.toLocaleDateString("zh-TW") : "";
+			const dateText = date ? formatBusinessDateOnly(date) : "";
 			const timeText = date ? formatShortTime(date) : "";
 			return [
 				emp ? emp.name : "",
