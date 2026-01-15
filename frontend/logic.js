@@ -915,10 +915,51 @@ async function saveAllToCloud(updates) {
 	}
 }
 
+function base64ToBytes(base64) {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+}
+
+function bytesToBase64(bytes) {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+	return btoa(binary);
+}
+
+async function pbkdf2Hash(password, saltBase64) {
+	const keyMaterial = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(password),
+		"PBKDF2",
+		false,
+		["deriveBits"],
+	);
+	const derivedBits = await crypto.subtle.deriveBits(
+		{
+			name: "PBKDF2",
+			salt: base64ToBytes(saltBase64),
+			iterations: 100000,
+			hash: "SHA-256",
+		},
+		keyMaterial,
+		256,
+	);
+	return bytesToBase64(new Uint8Array(derivedBits));
+}
+
+async function verifySystemPassword(password) {
+	if (typeof SYSTEM_PASSWORD === "string") return false;
+	if (!SYSTEM_PASSWORD || !SYSTEM_PASSWORD.passwordSalt || !SYSTEM_PASSWORD.passwordHash) return false;
+	const computed = await pbkdf2Hash(password, SYSTEM_PASSWORD.passwordSalt);
+	return computed === SYSTEM_PASSWORD.passwordHash;
+}
+
 async function checkLogin() {
 	try {
 		let input = document.getElementById("loginPass").value;
-		if (input === SYSTEM_PASSWORD) {
+		if (await verifySystemPassword(input)) {
 			sessionStorage.setItem("isLoggedIn", "true");
 			document.getElementById("loginError").style.display = "none";
 			await showApp();

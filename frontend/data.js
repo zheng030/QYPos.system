@@ -11,7 +11,10 @@ const firebaseConfig = {
     measurementId: "G-2G680G6GHF"
 };
 
-const SYSTEM_PASSWORD = "5898";
+const SYSTEM_PASSWORD = {
+    passwordSalt: "JfQ2P/jVlbY9HZW2dyJJ8A==",
+    passwordHash: "B4xRSlbbNDSdB/944ssKtHHfi9ckFD6lBhjwPQDvWM8=",
+};
 let OWNER_PASSWORDS = { "景偉": "0001", "小飛": "0002", "威志": "0003" };
 
 // 保留吧檯，其餘改為 01桌 ~ 10桌
