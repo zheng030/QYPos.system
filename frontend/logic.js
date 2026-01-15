@@ -46,7 +46,8 @@ const CUSTOMER_DATA_ROOT_KEYS = [
 	"incomingOrders"
 ];
 const ADMIN_BASE_ROOT_KEYS = [
-	"incomingOrders"
+	"incomingOrders",
+	"ownerPasswords"
 ];
 const LOCAL_DATA_PREFIX = "localData.";
 const LOCAL_REV_KEY = "localRevisions";
