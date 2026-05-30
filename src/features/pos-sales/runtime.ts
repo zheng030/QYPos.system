@@ -23,8 +23,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       const kernel = context.getService<PosKernelService>(POS_KERNEL_SERVICE_KEY)
       const data = context.getService<PosDataService>(POS_DATA_SERVICE_KEY)
       const ui = context.getService<PosUiService>(POS_UI_SERVICE_KEY)
-      const hideAllHooks = context.getService<Set<() => void>>('pos-shell-hide-hooks')
-      if (!kernel || !data || !ui || !hideAllHooks) {
+      if (!kernel || !data || !ui) {
         throw new Error('POS sales dependencies are not ready')
       }
 
@@ -37,17 +36,19 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         tables: kernel.tables,
         categories: kernel.categories,
         menuData: kernel.menuData,
-        hideAllHooks,
         hideAll: ui.hideAll,
+        registerHideHook: ui.registerHideHook,
         showHome: ui.showHome,
         activatePage: ui.activatePage,
         renderQrCode,
         hasAvailableVariants: kernel.helpers.hasAvailableVariants,
         shouldHideCustomerItemName: kernel.orderUtils.shouldHideCustomerItemName,
         getMergedItems: kernel.orderUtils.getMergedItems,
-        ensureDataSubscriptions: data.ensureDataSubscriptions,
-        initRealtimeData: data.initRealtimeData,
-        saveAllToCloud: data.saveAllToCloud,
+        ensureCatalog: data.ensureCatalog,
+        ensureOwnerAuth: data.ensureOwnerAuth,
+        startStaffLive: data.startStaffLive,
+        startTableLiveSession: data.startTableLiveSession,
+        stopTableLiveSession: data.stopTableLiveSession,
         showToast: ui.showToast,
         setCurrentCategory(category) {
           kernel.state.currentCategory = category
@@ -56,16 +57,16 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
 
       const serviceFlow = createServiceFlowModule({
         state: kernel.state,
-        db: kernel.db,
         menuData: kernel.menuData,
-        getBusinessDate: kernel.dates.getBusinessDate,
-        getDateFromOrder: kernel.dates.getDateFromOrder,
         getDeltaItems: kernel.orderUtils.getDeltaItems,
         getItemCategoryType: kernel.helpers.getItemCategoryType,
-        getTodayMaxBaseSeq: data.getTodayMaxBaseSeq,
         stripHiddenTag: kernel.orderUtils.stripHiddenTag,
-        ensureRoots: data.ensureRoots,
-        saveAllToCloud: data.saveAllToCloud,
+        saveTableDraft: data.saveTableDraft,
+        submitIncomingOrder: data.submitIncomingOrder,
+        acceptIncomingOrder: data.acceptIncomingOrder,
+        rejectIncomingOrder: data.rejectIncomingOrder,
+        checkoutTable: data.checkoutTable,
+        checkoutSplit: data.checkoutSplit,
         renderCart: workspaceUi.renderCart,
         openTableSelect: workspaceUi.openTableSelect,
         goHome: workspaceUi.goHome,
@@ -272,6 +273,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       const service: PosSalesService = {
         showApp: workspaceUi.showApp,
         openTableSelect: workspaceUi.openTableSelect,
+        openSettingsPage: workspaceUi.openSettingsPage,
         goHome: workspaceUi.goHome,
         renderCart: workspaceUi.renderCart,
         renderTableGrid: workspaceUi.renderTableGrid,
@@ -284,6 +286,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       context.registerService(POS_SALES_SERVICE_KEY, service)
       context.registerService('pos-sales', {
         ...service,
+        openSettingsPage: workspaceUi.openSettingsPage,
         showIncomingOrderModal: workspaceUi.showIncomingOrderModal,
         closeIncomingOrderModal: workspaceUi.closeIncomingOrderModal,
       })

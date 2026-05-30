@@ -4,6 +4,7 @@ import {
   formatBusinessDateOnly,
   formatDateInput,
   formatShortTime,
+  getAuthNotice,
   getEmployeeById,
   getEmployeesArray,
   getRecordLabel,
@@ -113,7 +114,8 @@ export function renderEmployees() {
 }
 
 export function renderChangePassword() {
-  return `<div class="checkin-section checkin-view--password"><div class="checkin-card"><div class="checkin-card__header">${icon('lock', 18)} 修改密碼</div><form class="checkin-card__body checkin-form" data-action="change-password">${state.passwordError ? `<div class="checkin-alert checkin-alert--error">${icon('alert', 16)}<span>${state.passwordError}</span></div>` : ''}<label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 16)}</span><input type="password" name="current" placeholder="目前密碼" required /></label><label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 16)}</span><input type="password" name="next" placeholder="新密碼" required /></label><label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 16)}</span><input type="password" name="confirm" placeholder="確認新密碼" required /></label><button class="checkin-btn checkin-btn--primary checkin-btn--full" type="submit">確認修改</button></form></div></div>`
+  const authNotice = getAuthNotice()
+  return `<div class="checkin-section checkin-view--password"><div class="checkin-card"><div class="checkin-card__header">${icon('lock', 18)} 修改密碼</div><form class="checkin-card__body checkin-form" data-action="change-password">${authNotice ? `<div class="checkin-dev-notice">${authNotice}</div>` : ''}${state.passwordError ? `<div class="checkin-alert checkin-alert--error">${icon('alert', 16)}<span>${state.passwordError}</span></div>` : ''}<label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 16)}</span><input type="password" name="current" placeholder="目前密碼" required /></label><label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 16)}</span><input type="password" name="next" placeholder="新密碼" required /></label><label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 16)}</span><input type="password" name="confirm" placeholder="確認新密碼" required /></label><button class="checkin-btn checkin-btn--primary checkin-btn--full" type="submit">確認修改</button></form></div></div>`
 }
 
 export function renderModal() {

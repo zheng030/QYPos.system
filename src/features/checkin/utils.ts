@@ -1,3 +1,4 @@
+import { authGate } from '@/shared/auth-gate'
 import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
 
 import {
@@ -17,6 +18,24 @@ import {
 } from './store'
 import type { AttendanceEmployee, AttendanceEmployeesMap, AttendanceRecord, AttendanceRecordsMap } from './types'
 
+function padMonth(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+export function toAttendanceMonthKey(date: Date | string | number) {
+  const nextDate = new Date(date)
+  nextDate.setHours(nextDate.getHours() - BUSINESS_DAY_SHIFT_HOURS)
+  return `${nextDate.getFullYear()}-${padMonth(nextDate.getMonth() + 1)}`
+}
+
+export function getWindowMonthKeys(anchor = new Date()) {
+  const current = new Date(anchor)
+  current.setHours(current.getHours() - BUSINESS_DAY_SHIFT_HOURS)
+  const previous = new Date(current)
+  previous.setMonth(previous.getMonth() - 1)
+  return [toAttendanceMonthKey(previous), toAttendanceMonthKey(current)]
+}
+
 export async function makePasswordRecord(password: string) {
   const salt = randomSaltBase64(16)
   const hash = await pbkdf2Hash(password, salt)
@@ -24,9 +43,15 @@ export async function makePasswordRecord(password: string) {
 }
 
 export async function verifyPassword(password: string, employee: AttendanceEmployee | null) {
-  if (!employee?.passwordHash || !employee.passwordSalt) return false
-  const computed = await pbkdf2Hash(password, employee.passwordSalt)
-  return computed === employee.passwordHash
+  return authGate.verifyEmployeeLogin(password, employee)
+}
+
+export async function verifyPasswordChangeCurrent(password: string, employee: AttendanceEmployee | null) {
+  return authGate.verifyEmployeePasswordChange(password, employee)
+}
+
+export function getAuthNotice() {
+  return authGate.getDevBypassNotice()
 }
 
 export function icon(name: string, size?: number, className?: string) {
@@ -218,11 +243,6 @@ export function normalizeRecords(data: unknown): AttendanceRecordsMap {
   return data as AttendanceRecordsMap
 }
 
-export function updateGlobalData() {
-  state.employees = { ...state.employees }
-  state.records = { ...state.records }
-}
-
 export function getEmployeesArray() {
   return Object.values(state.employees || {}).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hant'))
 }
@@ -371,27 +391,24 @@ export function groupRecordsByDay(records: AttendanceRecord[]) {
 }
 
 export function getNextRecordId() {
-  let maxId = 0
-  Object.keys(state.records || {}).forEach((existingId) => {
-    const match = /^r_(\d+)$/.exec(existingId)
-    if (!match) return
-    const numeric = Number(match[1])
-    if (!Number.isNaN(numeric)) maxId = Math.max(maxId, numeric)
-  })
-  return `r_${maxId + 1}`
+  const random =
+    globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 12) ?? Math.random().toString(36).slice(2, 14)
+  return `r_${Date.now()}_${random}`
 }
 
 export async function ensureData() {
   if (!bridge.attendance) {
     throw new Error('Attendance service is not ready')
   }
-  await bridge.attendance.ensureLoaded()
+  const monthKeys = getWindowMonthKeys(state.calendarDate)
+  await bridge.attendance.ensureWindow(monthKeys)
   const applySnapshot = () => {
     const snapshot = bridge.attendance?.getSnapshot()
     state.employees = normalizeEmployees(snapshot?.employees || {})
     state.records = normalizeRecords(snapshot?.records || {})
   }
   applySnapshot()
+  bridge.attendance.watchWindow(monthKeys)
   bridge.attendance.subscribe(() => {
     applySnapshot()
     if (!state.loading) {
@@ -407,8 +424,6 @@ export async function seedDefaultAdmin() {
   try {
     const passwordRecord = await makePasswordRecord('123')
     const employee = { ...DEFAULT_ADMIN, ...passwordRecord }
-    state.employees = { [employee.id]: employee }
-    updateGlobalData()
     await bridge.attendance?.save({ [`attendanceEmployees/${employee.id}`]: employee })
   } catch (error) {
     console.warn('CheckIn: failed to seed default admin', error)

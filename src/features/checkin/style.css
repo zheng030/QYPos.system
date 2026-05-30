@@ -283,6 +283,13 @@
   color: var(--slate-500);
 }
 
+.checkin-dev-notice {
+  margin-top: 10px;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .checkin-title {
   margin: 0;
   font-size: 28px;

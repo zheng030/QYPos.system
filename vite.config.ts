@@ -7,9 +7,19 @@ export default defineConfig(({ command }) => ({
     host: '0.0.0.0',
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
+    alias: [
+      {
+        find: /^@\/shared\/auth-gate\.impl$/,
+        replacement: path.resolve(
+          __dirname,
+          command === 'build' ? 'src/shared/auth-gate.impl.prod.ts' : 'src/shared/auth-gate.impl.dev.ts'
+        ),
+      },
+      {
+        find: '@',
+        replacement: path.resolve(__dirname, 'src'),
+      },
+    ],
   },
   test: {
     environment: 'node',

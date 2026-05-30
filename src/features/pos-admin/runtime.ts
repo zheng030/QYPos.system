@@ -4,8 +4,9 @@ import { POS_DATA_SERVICE_KEY, type PosDataService } from '@/features/pos-data/s
 import { POS_KERNEL_SERVICE_KEY, type PosKernelService } from '@/features/pos-kernel/service'
 import { toggleAccordion } from '@/features/pos-reporting/ui'
 import { POS_UI_SERVICE_KEY, type PosUiService } from '@/features/pos-shell/service'
+import { authGate } from '@/shared/auth-gate'
 import { createOwnerFinanceModule } from './owner-finance'
-import { closeSummaryModal, downloadLocalStorage, downloadSyncLog, renderProductManagement } from './product-management'
+import { closeSummaryModal, downloadSyncLog, renderProductManagement } from './product-management'
 import { POS_ADMIN_SERVICE_KEY, type PosAdminService } from './service'
 
 let booted = false
@@ -29,29 +30,25 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       booted = true
 
       const ownerFinance = createOwnerFinanceModule({
-        ensureSubscriptions: data.ensureDataSubscriptions,
+        authGate,
+        ensureSubscriptions: async () => {
+          await Promise.all([data.ensureOwnerAuth(), data.ensureCatalog()])
+        },
         getBusinessDate: kernel.dates.getBusinessDate,
-        getCostByItemName: kernel.helpers.getCostByItemName,
         getDateFromOrder: kernel.dates.getDateFromOrder,
-        getHistoryOrders: () => kernel.state.historyOrders,
-        getHistoryViewDate: () => kernel.state.historyViewDate,
         getItemCategoryType: kernel.helpers.getItemCategoryType,
         getItemCosts: () => kernel.state.itemCosts,
         getItemPrices: () => kernel.state.itemPrices,
-        getOrdersByDate: data.getOrdersByDate,
+        listClosedOrdersByDay: data.listClosedOrdersByDay,
+        listClosedOrdersByRange: data.listClosedOrdersByRange,
+        loadDailySummariesRange: data.loadDailySummariesRange,
+        watchDailySummariesRange: data.watchDailySummariesRange,
+        readDailySummariesRange: data.readDailySummariesRange,
         getOwnerPasswords: () => kernel.state.ownerPasswords,
         hideAll: ui.hideAll,
-        initHistoryDate: () => {
-          const now = new Date()
-          if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-          kernel.state.historyViewDate = new Date(now)
-        },
         menuData: kernel.menuData,
         foodOptionVariants: kernel.foodOptionVariants,
-        saveAllToCloud: data.saveAllToCloud,
-        setHistoryViewDate(value) {
-          kernel.state.historyViewDate = value
-        },
+        saveOwnerPassword: data.setOwnerPassword,
         updateItemData: data.updateItemData,
       })
 
@@ -63,7 +60,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         void context.getService<{ openSettingsPage(): Promise<void> }>('pos-sales')?.openSettingsPage?.()
       })
       ui.on('click', 'open-product-page', async () => {
-        await data.ensureDataSubscriptions(['inventory'])
+        await data.ensureCatalog()
         ui.showPage('productPage')
         renderProductManagement({
           inventory: () => kernel.state.inventory,
@@ -74,7 +71,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       })
       ui.on('click', 'check-owner', (_event, element) => {
         const owner = element.dataset.owner
-        if (owner) ownerFinance.checkOwner(owner)
+        if (owner) void ownerFinance.checkOwner(owner)
       })
       ui.on('click', 'close-owner-modal', () => {
         ownerFinance.closeOwnerModal()
@@ -86,15 +83,15 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         void ownerFinance.confirmChangePassword()
       })
       ui.on('click', 'change-owner-month', (_event, element) => {
-        ownerFinance.changeOwnerMonth(Number(element.dataset.offset || 0))
+        void ownerFinance.changeOwnerMonth(Number(element.dataset.offset || 0))
       })
       ui.on('click', 'update-finance-stats', (_event, element) => {
         const range = element.dataset.range
-        if (range) ownerFinance.updateFinanceStats(range)
+        if (range) void ownerFinance.updateFinanceStats(range)
       })
       ui.on('click', 'open-revenue-modal', (_event, element) => {
         const type = element.dataset.type
-        if (type) ownerFinance.openRevenueModal(type)
+        if (type) void ownerFinance.openRevenueModal(type)
       })
       ui.on('click', 'open-change-password-modal', (_event, element) => {
         const owner = element.dataset.owner
@@ -123,7 +120,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
           specificBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`
           specificBtn.dataset.date = `${year}-${mm}-${dd}`
           specificBtn.style.display = 'inline-block'
-          ownerFinance.updateFinanceStats('specific', new Date(year, month, day, 5, 0, 0, 0))
+          void ownerFinance.updateFinanceStats('specific', new Date(year, month, day, 5, 0, 0, 0))
         }
       })
       ui.on('click', 'archived-order-readonly', () => {
@@ -133,7 +130,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         downloadSyncLog(kernel.state.syncLog)
       })
       ui.on('click', 'download-local-storage', () => {
-        downloadLocalStorage()
+        alert('localStorage 匯出已移除')
       })
       ui.on('click', 'fix-all-order-ids', () => {
         void data.fixAllOrderIds()
@@ -154,7 +151,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         if (id) toggleAccordion(id)
       })
       ui.on('change', 'finance-date-range', () => {
-        ownerFinance.updateFinanceStats('custom')
+        void ownerFinance.updateFinanceStats('custom')
       })
       ui.on('change', 'toggle-parent-with-options', (_event, element) => {
         if (!(element instanceof HTMLInputElement)) return
@@ -179,9 +176,14 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         if (name && type) void data.updateItemData(name, type, element.value)
       })
 
+      ui.registerHideHook(() => {
+        ownerFinance.stopAllWatches()
+      })
+
       const service: PosAdminService = {
         updateFinancialPage: ownerFinance.updateFinancialPage,
         renderConfidentialCalendar: ownerFinance.renderConfidentialCalendar,
+        stopAllWatches: ownerFinance.stopAllWatches,
         renderProductManagement() {
           renderProductManagement({
             inventory: () => kernel.state.inventory,
@@ -193,7 +195,9 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         downloadSyncLog() {
           downloadSyncLog(kernel.state.syncLog)
         },
-        downloadLocalStorage,
+        downloadLocalStorage() {
+          alert('localStorage 匯出已移除')
+        },
         closeSummaryModal,
       }
 

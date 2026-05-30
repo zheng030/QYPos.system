@@ -9,12 +9,13 @@ import {
   getNextRecordId,
   getRecordLabel,
   getRecordsArray,
+  getWindowMonthKeys,
   logout,
   makePasswordRecord,
   open,
   toDate,
-  updateGlobalData,
   verifyPassword,
+  verifyPasswordChangeCurrent,
   wrapHideAll,
 } from './utils'
 
@@ -55,10 +56,6 @@ async function handleClockAction(type: string) {
           ? EmployeeStatus.ON_BREAK
           : EmployeeStatus.WORKING
   const updatedUser = { ...user, status: nextStatus }
-  state.employees = { ...state.employees, [user.id]: updatedUser }
-  state.records = { ...state.records, [recordId]: record }
-  updateGlobalData()
-  render()
   await bridge.attendance?.save({
     [`attendanceEmployees/${user.id}`]: updatedUser,
     [`attendanceRecords/${recordId}`]: record,
@@ -103,10 +100,7 @@ async function handleAddEmployee(form: CheckinForm) {
   const id = getNextEmployeeId()
   const passwordRecord = await makePasswordRecord(password)
   const employee = { id, name, role, status: EmployeeStatus.OFF_DUTY, ...passwordRecord }
-  state.employees = { ...state.employees, [id]: employee }
-  state.modal = null
-  updateGlobalData()
-  render()
+  setState({ modal: null })
   await bridge.attendance?.save({ [`attendanceEmployees/${id}`]: employee })
 }
 
@@ -121,10 +115,7 @@ async function handleSaveEmployeeEdit(form: CheckinForm) {
   if (!name) return
   const passwordRecord = password ? await makePasswordRecord(password) : {}
   const updated = { ...employee, name, role, ...passwordRecord }
-  state.employees = { ...state.employees, [empId]: updated }
-  state.modal = null
-  updateGlobalData()
-  render()
+  setState({ modal: null })
   await bridge.attendance?.save({ [`attendanceEmployees/${empId}`]: updated })
 }
 
@@ -132,21 +123,11 @@ async function handleDeleteEmployee(empId: string) {
   const employee = getEmployeeById(empId)
   if (!employee) return
   if (!confirm('確定要刪除此員工嗎？此操作無法復原。')) return
-  const nextEmployees = { ...state.employees }
-  delete nextEmployees[empId]
-  state.employees = nextEmployees
-  updateGlobalData()
-  render()
   await bridge.attendance?.save({ [`attendanceEmployees/${empId}`]: null })
 }
 
 async function handleDeleteRecord(recordId: string) {
   if (!confirm('確定要刪除此筆記錄嗎？此操作無法復原。')) return
-  const nextRecords = { ...state.records }
-  delete nextRecords[recordId]
-  state.records = nextRecords
-  updateGlobalData()
-  render()
   await bridge.attendance?.save({ [`attendanceRecords/${recordId}`]: null })
 }
 
@@ -161,10 +142,7 @@ async function handleSaveRecord(form: CheckinForm) {
     ts: new Date(form.ts.value).getTime(),
     notes: form.notes.value.trim(),
   }
-  state.records = { ...state.records, [recordId]: updated }
-  state.modal = null
-  updateGlobalData()
-  render()
+  setState({ modal: null })
   await bridge.attendance?.save({ [`attendanceRecords/${recordId}`]: updated })
 }
 
@@ -174,7 +152,7 @@ async function handleChangePassword(form: CheckinForm) {
   const current = form.current.value
   const next = form.next.value
   const confirmPwd = form.confirm.value
-  if (!(await verifyPassword(current, user))) {
+  if (!(await verifyPasswordChangeCurrent(current, user))) {
     setState({ passwordError: '目前密碼不正確' })
     return
   }
@@ -188,16 +166,15 @@ async function handleChangePassword(form: CheckinForm) {
   }
   const passwordRecord = await makePasswordRecord(next)
   const updated = { ...user, ...passwordRecord }
-  state.employees = { ...state.employees, [user.id]: updated }
-  updateGlobalData()
   setState({ passwordError: '' })
   await bridge.attendance?.save({ [`attendanceEmployees/${user.id}`]: updated })
   alert('✅ 密碼已更新')
 }
 
-function handleExportCsv() {
+async function handleExportCsv() {
   const user = getEmployeeById(state.currentUserId)
   if (!user || user.role !== UserRole.ADMIN) return
+  await bridge.attendance?.ensureFullHistory()
   const selectedEmp = state.reportEmployeeId
   const filtered = getRecordsArray().filter((record) => {
     if (state.reportFilterType !== 'all' && record.type !== state.reportFilterType) return false
@@ -243,7 +220,15 @@ function handleRootClick(event: MouseEvent) {
     bridge.appShell?.showHome()
     return
   }
-  if (action === 'nav' && actionEl.dataset.view) return void setState({ currentView: actionEl.dataset.view })
+  if (action === 'nav' && actionEl.dataset.view) {
+    if (actionEl.dataset.view === 'reports') {
+      void bridge.attendance?.ensureFullHistory().then(() => {
+        setState({ currentView: actionEl.dataset.view || 'clock' })
+      })
+      return
+    }
+    return void setState({ currentView: actionEl.dataset.view })
+  }
   if (action === 'logout') return void logout()
   if (action === 'clock-action' && actionEl.dataset.type) return void handleClockAction(actionEl.dataset.type)
   if (action === 'set-view-mode' && actionEl.dataset.mode) return void setState({ viewMode: actionEl.dataset.mode })
@@ -251,11 +236,15 @@ function handleRootClick(event: MouseEvent) {
   if (action === 'calendar-prev') {
     const date = new Date(state.calendarDate)
     date.setMonth(date.getMonth() - 1)
+    void bridge.attendance?.ensureWindow(getWindowMonthKeys(date))
+    bridge.attendance?.watchWindow(getWindowMonthKeys(date))
     return void setState({ calendarDate: date })
   }
   if (action === 'calendar-next') {
     const date = new Date(state.calendarDate)
     date.setMonth(date.getMonth() + 1)
+    void bridge.attendance?.ensureWindow(getWindowMonthKeys(date))
+    bridge.attendance?.watchWindow(getWindowMonthKeys(date))
     return void setState({ calendarDate: date })
   }
   if (action === 'open-add-employee') return void setState({ modal: { type: 'addEmployee' } })

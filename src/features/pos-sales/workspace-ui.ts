@@ -23,17 +23,19 @@ type WorkspaceUiDeps = {
   tables: string[]
   categories: string[]
   menuData: PosMenuData
-  hideAllHooks: Set<() => void>
   hideAll: () => void
+  registerHideHook: (listener: () => void) => () => void
   showHome: () => void
   activatePage: (pageId: PosPageId, display?: 'grid' | 'block') => void
   renderQrCode: (container: HTMLElement, text: string, size?: number) => Promise<void>
   hasAvailableVariants: (itemName: string) => boolean
   shouldHideCustomerItemName: (name: string) => boolean
   getMergedItems: (items: CorePosState['cart']) => PosMergedCartItem[]
-  ensureDataSubscriptions: (roots: string[]) => Promise<void>
-  initRealtimeData: () => Promise<void>
-  saveAllToCloud: (updates: Record<string, unknown>) => Promise<void>
+  ensureCatalog: () => Promise<void>
+  ensureOwnerAuth: () => Promise<void>
+  startStaffLive: () => Promise<void>
+  startTableLiveSession: (mode: 'staff' | 'customer', table: string) => Promise<void>
+  stopTableLiveSession: () => void
   showToast: (message: string, options?: PosToastOptions) => void
   setCurrentCategory: (category: string | null) => void
 }
@@ -144,17 +146,15 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
     updateFlavorSelector()
   }
 
-  async function ensureSubscriptions(roots: string[]) {
-    await deps.ensureDataSubscriptions(roots)
-  }
-
-  async function showApp(options: { skipHome?: boolean } = {}) {
-    const { skipHome = false } = options
+  async function showApp(options: { skipHome?: boolean; skipStaffLive?: boolean } = {}) {
+    const { skipHome = false, skipStaffLive = false } = options
     const loginScreen = document.getElementById('login-screen')
     const appContainer = document.getElementById('app-container')
     if (loginScreen) loginScreen.style.display = 'none'
     if (appContainer) appContainer.style.display = 'block'
-    await deps.initRealtimeData()
+    if (!skipStaffLive) {
+      await deps.startStaffLive()
+    }
     if (!skipHome) deps.showHome()
   }
 
@@ -165,21 +165,13 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
   async function openTableSelect() {
     deps.hideAll()
     deps.setCurrentCategory(null)
-    await ensureSubscriptions([
-      'tableTimers',
-      'tableCarts',
-      'tableStatuses',
-      'tableCustomers',
-      'tableSplitCounters',
-      'tableBatchCounts',
-    ])
     deps.activatePage('tableSelect')
     await renderTableGrid()
   }
 
   async function openSettingsPage() {
     deps.hideAll()
-    await ensureSubscriptions(['ownerPasswords'])
+    await deps.ensureOwnerAuth()
     deps.activatePage('settingsPage')
   }
 
@@ -238,41 +230,10 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
     const grid = document.getElementById('tableSelectGrid')
     if (!grid) return
     grid.innerHTML = ''
-    const pendingSaves: Promise<void>[] = []
     deps.tables.forEach((table) => {
       const button = document.createElement('div')
       button.className = 'tableBtn btn-effect'
-      let status = deps.state.tableStatuses[table]
-      const cartData = deps.state.tableCarts[table]
-      let hasCart = false
-      if (Array.isArray(cartData)) {
-        hasCart = cartData.length > 0
-      } else if (cartData && typeof cartData === 'object') {
-        hasCart = Object.keys(cartData).length > 0
-      }
-      if (status !== 'yellow' && !hasCart && deps.state.tableTimers[table]) {
-        delete deps.state.tableTimers[table]
-        pendingSaves.push(deps.saveAllToCloud({ [`tableTimers/${table}`]: null }))
-      }
-      if (status === 'yellow' && !hasCart) {
-        delete deps.state.tableTimers[table]
-        delete deps.state.tableStatuses[table]
-        delete deps.state.tableCarts[table]
-        delete deps.state.tableCustomers[table]
-        delete deps.state.tableSplitCounters[table]
-        delete deps.state.tableBatchCounts[table]
-        pendingSaves.push(
-          deps.saveAllToCloud({
-            [`tableTimers/${table}`]: null,
-            [`tableStatuses/${table}`]: null,
-            [`tableCarts/${table}`]: null,
-            [`tableCustomers/${table}`]: null,
-            [`tableSplitCounters/${table}`]: null,
-            [`tableBatchCounts/${table}`]: null,
-          })
-        )
-        status = undefined
-      }
+      const status = deps.state.tableStatuses[table]
 
       if (status === 'red') {
         button.classList.add('status-red')
@@ -289,7 +250,6 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
       button.dataset.table = table
       grid.appendChild(button)
     })
-    await Promise.all(pendingSaves)
   }
 
   const openOrderPageLogic = async function openOrderPageLogic(table: string) {
@@ -298,15 +258,8 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
     requireElement('seatLabel').innerHTML = `（${table}）`
     deps.hideAll()
     deps.activatePage('orderPage')
-    await ensureSubscriptions(['inventory', 'itemPrices'])
-    await ensureSubscriptions([
-      'tableTimers',
-      'tableCarts',
-      'tableStatuses',
-      'tableCustomers',
-      'tableSplitCounters',
-      'tableBatchCounts',
-    ])
+    await deps.ensureCatalog()
+    await deps.startTableLiveSession(document.body.classList.contains('customer-mode') ? 'customer' : 'staff', table)
 
     if (deps.state.tableTimers[table]) {
       startSeatTimerDisplay()
@@ -339,6 +292,14 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
     resetFlavorSelection()
     renderCart()
   }
+
+  deps.registerHideHook(() => {
+    deps.stopTableLiveSession()
+    if (deps.state.seatTimerInterval) {
+      clearInterval(deps.state.seatTimerInterval)
+      deps.state.seatTimerInterval = null
+    }
+  })
 
   function startSeatTimerDisplay() {
     updateSeatTimerText()
@@ -615,9 +576,10 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
       document.body.classList.add('customer-mode')
       sessionStorage.setItem('customerMode', 'true')
       sessionStorage.setItem('isLoggedIn', 'true')
-      await ensureSubscriptions(['tableCarts', 'inventory', 'itemPrices'])
-      await showApp({ skipHome: true })
+      await showApp({ skipHome: true, skipStaffLive: true })
+      await deps.ensureCatalog()
       deps.state.selectedTable = decodeURIComponent(tableParam)
+      await deps.startTableLiveSession('customer', deps.state.selectedTable)
       deps.hideAll()
       deps.activatePage('orderPage')
       requireElement('seatLabel').innerText = `（${deps.state.selectedTable}）`
@@ -660,7 +622,6 @@ export function createWorkspaceUiModule(deps: WorkspaceUiDeps) {
     buildCategories,
     closeIncomingOrderModal,
     closeQrModal,
-    ensureSubscriptions,
     goHome,
     openItems,
     openOrderPageLogic,

@@ -28,6 +28,7 @@ export type PosUiService = {
   showHome(): void
   getActivePage(): PosPageId
   subscribePage(listener: (pageId: PosPageId) => void): () => void
+  registerHideHook(listener: () => void): () => void
 }
 
 export type PosShellFeatureService = PosUiService &

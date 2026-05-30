@@ -28,7 +28,9 @@ export type AttendanceSnapshot = {
 }
 
 export type AttendanceService = {
-  ensureLoaded(): Promise<void>
+  ensureWindow(monthKeys: string[]): Promise<void>
+  ensureFullHistory(): Promise<void>
+  watchWindow(monthKeys: string[]): () => void
   getSnapshot(): AttendanceSnapshot
   subscribe(listener: (snapshot: AttendanceSnapshot) => void): () => void
   save(updates: Record<string, unknown>): Promise<void>

@@ -1,3 +1,7 @@
+import { authGate } from '@/shared/auth-gate'
+
+const authNotice = authGate.getDevBypassNotice()
+
 export const appShellHtml = `
     <div id="receipt-print-area" class="print-area-hidden"></div>
 
@@ -7,6 +11,7 @@ export const appShellHtml = `
         <div class="login-box">
             <h1>🔐 系統登入</h1>
             <p>請輸入員工密碼</p>
+            ${authNotice ? `<p class="dev-auth-notice">${authNotice}</p>` : ''}
             <input type="password" id="loginPass" placeholder="密碼" data-action="login-password">
             <button class="btn-effect" data-action="check-login">進入系統</button>
             <p id="loginError" class="login-error-msg">❌ 密碼錯誤</p>
@@ -479,6 +484,7 @@ export const appShellHtml = `
             <div class="modal-header border-none pb-10">
                 <h2 class="text-28 text-dark">🔐 請選擇身分</h2>
                 <p class="text-muted text-14 mt-5">請點擊您的帳號並輸入密碼</p>
+                ${authNotice ? `<p class="dev-auth-notice">${authNotice}</p>` : ''}
             </div>
             <div class="modal-body pt-20">
                 <div class="owner-buttons d-flex flex-column gap-15">
@@ -501,6 +507,7 @@ export const appShellHtml = `
         <div class="modal-content">
             <h2>🔑 修改密碼 - <span id="pwdOwnerName"></span></h2>
             <div class="pwd-input-container">
+                ${authNotice ? `<p class="dev-auth-notice">${authNotice}</p>` : ''}
                 <input type="password" id="oldPwd" placeholder="輸入舊密碼" class="pwd-input modal-input">
                 <input type="password" id="newPwd" placeholder="輸入新密碼" class="pwd-input modal-input">
                 <input type="password" id="confirmPwd" placeholder="再次確認新密碼" class="pwd-input modal-input">

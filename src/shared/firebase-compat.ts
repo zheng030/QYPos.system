@@ -5,6 +5,10 @@ import {
   type DataSnapshot,
   get,
   getDatabase,
+  increment,
+  onChildAdded,
+  onChildChanged,
+  onChildRemoved,
   onValue,
   ref,
   runTransaction,
@@ -24,14 +28,19 @@ type FirebaseConfig = {
 
 export type DatabaseCompatSnapshot = {
   val(): unknown
+  key(): string | null
 }
 
 type ValueListener = (snapshot: DatabaseCompatSnapshot) => void
+type DatabaseCompatEventName = 'value' | 'child_added' | 'child_changed' | 'child_removed'
 
 function wrapSnapshot(snapshot: DataSnapshot): DatabaseCompatSnapshot {
   return {
     val() {
       return snapshot.val()
+    },
+    key() {
+      return snapshot.key
     },
   }
 }
@@ -51,14 +60,32 @@ export class DatabaseRefCompat {
     return wrapSnapshot(snapshot)
   }
 
-  on(eventName: 'value', listener: ValueListener) {
-    if (eventName !== 'value') {
-      throw new Error(`Unsupported event: ${eventName}`)
+  on(eventName: DatabaseCompatEventName, listener: ValueListener) {
+    if (eventName === 'value') {
+      return onValue(this.getRef(), (snapshot) => {
+        listener(wrapSnapshot(snapshot))
+      })
     }
 
-    return onValue(this.getRef(), (snapshot) => {
-      listener(wrapSnapshot(snapshot))
-    })
+    if (eventName === 'child_added') {
+      return onChildAdded(this.getRef(), (snapshot) => {
+        listener(wrapSnapshot(snapshot))
+      })
+    }
+
+    if (eventName === 'child_changed') {
+      return onChildChanged(this.getRef(), (snapshot) => {
+        listener(wrapSnapshot(snapshot))
+      })
+    }
+
+    if (eventName === 'child_removed') {
+      return onChildRemoved(this.getRef(), (snapshot) => {
+        listener(wrapSnapshot(snapshot))
+      })
+    }
+
+    throw new Error(`Unsupported event: ${eventName}`)
   }
 
   async update(payload: Record<string, unknown>) {
@@ -89,6 +116,10 @@ export class DatabaseCompat {
   ref(path = '/') {
     return new DatabaseRefCompat(this.database, path)
   }
+}
+
+export function dbIncrement(delta: number) {
+  return increment(delta)
 }
 
 function getOrCreateApp(config: FirebaseConfig): FirebaseApp {

@@ -1,5 +1,14 @@
-import type { PosOrder, PosRootName, SyncLogRecord } from '@/features/pos-kernel/types'
+import type { PosOrder, SyncLogRecord } from '@/features/pos-kernel/types'
 import type { AttendanceService } from '@/shared/attendance-service'
+import type {
+  V3CatalogRevisionEvent,
+  V3DailyItemStat,
+  V3DailySummary,
+  V3DailySummaryRangeEvent,
+  V3HistoryRangeEvent,
+  V3ItemStatsRangeEvent,
+  V3OwnerAuthRevisionEvent,
+} from './rtdb-v3-types'
 
 export const POS_DATA_SERVICE_KEY = 'pos-data'
 
@@ -9,16 +18,68 @@ export type PosDataChangeEvent = {
 
 export type PosDataService = {
   attendance: AttendanceService
-  ensureRoots(roots?: string[]): Promise<void>
-  ensureDataSubscriptions(roots: string[]): Promise<void>
-  initRealtimeData(): Promise<void>
-  saveAllToCloud(updates: Record<string, unknown>): Promise<void>
+  startStaffLive(): Promise<void>
+  startTableLiveSession(mode: 'staff' | 'customer', table: string): Promise<void>
+  stopTableLiveSession(): void
+  ensureCatalog(): Promise<void>
+  ensureOwnerAuth(): Promise<void>
+  listClosedOrdersByDay(targetDate: Date): Promise<PosOrder[]>
+  listClosedOrdersByRange(start: Date, endExclusive: Date): Promise<PosOrder[]>
+  loadDailySummariesRange(start: Date, endExclusive: Date): Promise<Record<string, V3DailySummary>>
+  loadItemStatsRange(start: Date, endExclusive: Date): Promise<Record<string, Record<string, V3DailyItemStat>>>
+  watchCatalogRevision(listener: (event: V3CatalogRevisionEvent) => void): () => void
+  watchOwnerAuthRevision(listener: (event: V3OwnerAuthRevisionEvent) => void): () => void
+  watchClosedOrdersRange(start: Date, endExclusive: Date, listener: (event: V3HistoryRangeEvent) => void): () => void
+  watchDailySummariesRange(
+    start: Date,
+    endExclusive: Date,
+    listener: (event: V3DailySummaryRangeEvent) => void
+  ): () => void
+  watchItemStatsRange(start: Date, endExclusive: Date, listener: (event: V3ItemStatsRangeEvent) => void): () => void
+  readDailySummariesRange(start: Date, endExclusive: Date): Record<string, V3DailySummary>
+  readItemStatsRange(start: Date, endExclusive: Date): Record<string, Record<string, V3DailyItemStat>>
+  saveTableDraft(
+    table: string,
+    cart: import('@/features/pos-kernel/types').PosCartItem[],
+    customer: import('@/features/pos-kernel/types').PosTableCustomer
+  ): Promise<{ displaySeqBase: number }>
+  submitIncomingOrder(
+    table: string,
+    cart: import('@/features/pos-kernel/types').PosCartItem[],
+    customer: import('@/features/pos-kernel/types').PosTableCustomer
+  ): Promise<void>
+  acceptIncomingOrder(
+    table: string,
+    requestId: string
+  ): Promise<{
+    customer: import('@/features/pos-kernel/types').PosTableCustomer
+    items: import('@/features/pos-kernel/types').PosCartItem[]
+    sentAt: number
+    displaySeqBase: number
+  } | null>
+  rejectIncomingOrder(table: string, requestId: string): Promise<void>
+  checkoutTable(payload: {
+    table: string
+    cart: import('@/features/pos-kernel/types').PosCartItem[]
+    customer: import('@/features/pos-kernel/types').PosTableCustomer | undefined
+    paidTotal: number
+    originalTotal: number
+    splitCounter: number | null
+  }): Promise<PosOrder>
+  checkoutSplit(payload: {
+    table: string
+    cart: import('@/features/pos-kernel/types').PosCartItem[]
+    customer: import('@/features/pos-kernel/types').PosTableCustomer | undefined
+    paidTotal: number
+    originalTotal: number
+    splitCounter: number | null
+    remainingCart: import('@/features/pos-kernel/types').PosCartItem[]
+    nextSplitCounter: number
+  }): Promise<PosOrder>
+  deleteClosedOrder(order: PosOrder): Promise<void>
+  setOwnerPassword(ownerName: string, record: import('@/features/pos-kernel/types').PosOwnerAuthRecord): Promise<void>
   subscribe(listener: (event: PosDataChangeEvent) => void): () => void
   emitChange(roots: string[]): void
-  getRootValue(root: PosRootName | string): unknown
-  getVisibleOrders(): PosOrder[]
-  getTodayMaxBaseSeq(): number
-  getOrdersByDate(targetDate: Date): PosOrder[]
   toggleStockStatus(name: string, checked: boolean): Promise<void>
   toggleParentWithOptions(name: string, checked: boolean): Promise<void>
   toggleOptionStock(name: string, option: string, checked: boolean): Promise<void>
@@ -27,6 +88,5 @@ export type PosDataService = {
   checkIncomingOrders(): void
   fixAllOrderIds(): Promise<void>
   downloadSyncLog(): void
-  downloadLocalStorage(): void
   getSyncLog(): SyncLogRecord[]
 }

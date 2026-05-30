@@ -6,6 +6,7 @@ import {
   formatDateKey,
   formatShortTime,
   formatTime,
+  getAuthNotice,
   getEmployeeById,
   getEmployeesArray,
   getRecordLabel,
@@ -32,12 +33,14 @@ type NavItem = {
 
 export function renderLogin() {
   const employees = getEmployeesArray()
+  const authNotice = getAuthNotice()
   if (!state.loginEmployeeId) {
     return `
       <div class="checkin-login checkin-login--select">
         <div class="checkin-login__intro">
           <h1 class="checkin-title">歡迎使用打卡系統</h1>
           <p class="checkin-muted">請選擇您的身份以繼續</p>
+          ${authNotice ? `<p class="checkin-dev-notice">${authNotice}</p>` : ''}
         </div>
         <div class="checkin-grid checkin-grid--cards">
           ${employees.map((emp) => `<button class="checkin-card checkin-card--select" data-action="select-employee" data-id="${emp.id}">${renderAvatar(emp.name, 'checkin-avatar--lg')}<div><div class="checkin-card__title">${emp.name}</div><div class="checkin-card__subtitle">${getRoleLabel(emp.role)}</div></div></button>`).join('')}
@@ -55,6 +58,7 @@ export function renderLogin() {
           ${renderAvatar(selectedName, 'checkin-avatar--xl')}
           <h2 class="checkin-title">早安，${selectedName}</h2>
           <p class="checkin-muted">請輸入密碼以登入系統</p>
+          ${authNotice ? `<p class="checkin-dev-notice">${authNotice}</p>` : ''}
         </div>
         <form class="checkin-form" data-action="login-submit">
           <label class="checkin-field"><span class="checkin-field__icon">${icon('lock', 18)}</span><input type="password" name="password" placeholder="請輸入密碼" required /></label>

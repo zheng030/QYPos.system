@@ -13,7 +13,6 @@ function readSentItems() {
 }
 
 export const state: CorePosState = {
-  historyOrders: [],
   tableTimers: {},
   tableCarts: {},
   tableStatuses: {},
@@ -43,12 +42,10 @@ export const state: CorePosState = {
   isQrMode: false,
   currentIncomingTable: null,
   entryCartSignature: '[]',
-  historyViewDate: new Date(),
   isCartSimpleMode: false,
   isHistorySimpleMode: false,
   currentCategory: null,
   currentFlavorSelection: { ...DEFAULT_FLAVOR_SELECTION },
-  latestVisibleOrders: null,
   reprintItemsForModal: null,
   syncLog: [],
 }

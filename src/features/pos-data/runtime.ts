@@ -2,11 +2,11 @@ import type { AppContext, FeatureRuntime } from '@/app/app-context'
 import { POS_KERNEL_SERVICE_KEY, type PosKernelService } from '@/features/pos-kernel/service'
 import { POS_UI_SERVICE_KEY, type PosUiService } from '@/features/pos-shell/service'
 import { ATTENDANCE_SERVICE_KEY } from '@/shared/attendance-service'
-import { pbkdf2Hash } from '@/shared/password'
+import { authGate } from '@/shared/auth-gate'
 import { createAttendanceService } from './attendance-service'
-import { createCoreSyncModule } from './core-sync'
-import { createDataSync } from './data-sync'
+import { createRtdbV3Repository } from './rtdb-v3-repository'
 import { POS_DATA_SERVICE_KEY, type PosDataService } from './service'
+import { createUiBridgeModule } from './ui-bridge'
 
 let booted = false
 
@@ -27,19 +27,13 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
 
       booted = true
       const listeners = new Set<(event: { roots: string[] }) => void>()
-
-      const coreSync = createCoreSyncModule({
+      const uiBridge = createUiBridgeModule({
         state: kernel.state,
-        dataSync: () => dataSync,
-        localDataPrefix: kernel.localDataPrefix,
-        customerDataRootKeys: [...kernel.customerDataRootKeys],
-        adminBaseRootKeys: [...kernel.adminBaseRootKeys],
         systemPassword: kernel.systemPassword,
-        foodOptionVariants: kernel.foodOptionVariants,
-        getBusinessDate: kernel.dates.getBusinessDate,
-        getDateFromOrder: kernel.dates.getDateFromOrder,
         getShowApp: () => async (options) => {
-          const sales = context.getService<{ showApp(options?: { skipHome?: boolean }): Promise<void> }>('pos-sales')
+          const sales = context.getService<{
+            showApp(options?: { skipHome?: boolean; skipStaffLive?: boolean }): Promise<void>
+          }>('pos-sales')
           if (!sales) {
             throw new Error('POS sales service is not ready')
           }
@@ -53,34 +47,6 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           const sales = context.getService<{ renderCart(): void }>('pos-sales')
           sales?.renderCart()
         },
-        showHistory: () => {
-          const reporting = context.getService<{ showHistory(): void }>('pos-reporting')
-          reporting?.showHistory()
-        },
-        generateReport: (type) => {
-          const reporting = context.getService<{ generateReport(type: string): void }>('pos-reporting')
-          reporting?.generateReport(type)
-        },
-        renderCalendar: () => {
-          const reporting = context.getService<{ renderCalendar(): void }>('pos-reporting')
-          reporting?.renderCalendar()
-        },
-        renderItemStats: (range) => {
-          const reporting = context.getService<{ renderItemStats(range: string): void }>('pos-reporting')
-          reporting?.renderItemStats(range)
-        },
-        renderPublicStats: () => {
-          const reporting = context.getService<{ renderPublicStats(): void }>('pos-reporting')
-          reporting?.renderPublicStats()
-        },
-        updateFinancialPage: (ownerName) => {
-          const admin = context.getService<{ updateFinancialPage(ownerName: string): void }>('pos-admin')
-          admin?.updateFinancialPage(ownerName)
-        },
-        renderConfidentialCalendar: (ownerName) => {
-          const admin = context.getService<{ renderConfidentialCalendar(ownerName: string): void }>('pos-admin')
-          admin?.renderConfidentialCalendar(ownerName)
-        },
         showIncomingOrderModal: (table, orderData) => {
           const sales = context.getService<{ showIncomingOrderModal(table: string, orderData: unknown): void }>(
             'pos-sales'
@@ -91,57 +57,150 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           const sales = context.getService<{ closeIncomingOrderModal(): void }>('pos-sales')
           sales?.closeIncomingOrderModal()
         },
-        pbkdf2Hash,
+        authGate,
       })
 
-      const dataSync = createDataSync({
-        cloneValue: coreSync.cloneValue,
+      const repository = createRtdbV3Repository({
         db: kernel.db,
-        getRootValue: coreSync.getRootValue,
-        incomingOrdersRoot: 'incomingOrders',
-        localDataPrefix: kernel.localDataPrefix,
-        localRevisionKey: kernel.localRevisionKey,
-        pushSyncRecord: coreSync.pushSyncRecord,
-        refreshUiAfterDataChange: async () => {
-          await coreSync.refreshUiAfterDataChange()
-          listeners.forEach((listener) => {
-            listener({ roots: [...kernel.refreshUiRoots] })
-          })
-        },
-        rootKeys: [...kernel.dataRootKeys],
-        serializeRoot: (root: string) => coreSync.getRootValue(root),
-        shouldRefreshUiForRoot: (root: string) => kernel.refreshUiRoots.has(root),
-        shouldProcessIncomingOrders: () => !document.body.classList.contains('customer-mode'),
-        applyRootValue: coreSync.applyRootValue,
-        onIncomingOrdersChanged() {
-          coreSync.checkIncomingOrders()
+        state: kernel.state,
+        onLiveStateChange(roots) {
+          emitDataChange(roots)
+          void uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+          if (roots.includes('incomingOrders')) {
+            uiBridge.checkIncomingOrders()
+          }
         },
       })
+
+      function emitDataChange(roots: string[]) {
+        listeners.forEach((listener) => {
+          listener({ roots })
+        })
+      }
 
       const attendanceService = createAttendanceService({
-        ensureDataSubscriptions: coreSync.ensureDataSubscriptions,
-        saveAllToCloud: coreSync.saveAllToCloud,
+        ensureWindow: async (monthKeys) => {
+          await repository.ensureAttendanceWindow(monthKeys)
+        },
+        ensureFullHistory: async () => {
+          await repository.ensureAttendanceFullHistory()
+        },
+        watchWindow: (monthKeys, onChange) => {
+          return repository.watchAttendanceWindow(monthKeys, () => {
+            onChange()
+          })
+        },
+        save: async (updates) => {
+          await repository.saveAttendanceUpdates(updates)
+        },
         getEmployees: () => kernel.state.attendanceEmployees,
         getRecords: () => kernel.state.attendanceRecords,
       })
 
       const service: PosDataService = {
         attendance: attendanceService,
-        ensureRoots: coreSync.ensureRoots,
-        ensureDataSubscriptions: coreSync.ensureDataSubscriptions,
-        initRealtimeData: coreSync.initRealtimeData,
-        saveAllToCloud: async (updates) => {
-          const roots = Array.from(
-            new Set(
-              Object.keys(updates)
-                .map((path) => path.split('/')[0])
-                .filter(Boolean)
-            )
-          )
-          await coreSync.saveAllToCloud(updates)
-          listeners.forEach((listener) => {
-            listener({ roots })
-          })
+        async startStaffLive() {
+          await repository.startStaffLive()
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+          uiBridge.checkIncomingOrders()
+        },
+        async startTableLiveSession(mode, table) {
+          await repository.startTableLiveSession(mode, table)
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        },
+        stopTableLiveSession() {
+          repository.stopTableLiveSession()
+        },
+        async ensureCatalog() {
+          await repository.ensureCatalog()
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        },
+        async ensureOwnerAuth() {
+          await repository.ensureOwnerAuth()
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        },
+        async listClosedOrdersByDay(targetDate) {
+          const orders = await repository.listClosedOrdersByDay(targetDate)
+          emitDataChange(['historyOrders'])
+          return orders
+        },
+        async listClosedOrdersByRange(start, endExclusive) {
+          const orders = await repository.listClosedOrdersByRange({ start, endExclusive })
+          emitDataChange(['historyOrders'])
+          return orders
+        },
+        async loadDailySummariesRange(start, endExclusive) {
+          return repository.loadDailySummariesRange(start, endExclusive)
+        },
+        async loadItemStatsRange(start, endExclusive) {
+          return repository.loadItemStatsRange(start, endExclusive)
+        },
+        watchCatalogRevision(listener) {
+          return repository.watchCatalogRevision(listener)
+        },
+        watchOwnerAuthRevision(listener) {
+          return repository.watchOwnerAuthRevision(listener)
+        },
+        watchClosedOrdersRange(start, endExclusive, listener) {
+          return repository.watchClosedOrdersRange(start, endExclusive, listener)
+        },
+        watchDailySummariesRange(start, endExclusive, listener) {
+          return repository.watchDailySummariesRange(start, endExclusive, listener)
+        },
+        watchItemStatsRange(start, endExclusive, listener) {
+          return repository.watchItemStatsRange(start, endExclusive, listener)
+        },
+        readDailySummariesRange(start, endExclusive) {
+          return repository.readDailySummariesRange(start, endExclusive)
+        },
+        readItemStatsRange(start, endExclusive) {
+          return repository.readItemStatsRange(start, endExclusive)
+        },
+        async saveTableDraft(table, cart, customer) {
+          const result = await repository.saveTableDraft(table, cart, customer)
+          emitDataChange(['live'])
+          await uiBridge.refreshUiAfterDataChange()
+          return result
+        },
+        async submitIncomingOrder(table, cart, customer) {
+          await repository.submitIncomingOrder(table, cart, customer)
+          emitDataChange(['incomingOrders'])
+          await uiBridge.refreshUiAfterDataChange()
+        },
+        async acceptIncomingOrder(table, requestId) {
+          const result = await repository.acceptIncomingOrder(table, requestId)
+          emitDataChange(['incomingOrders', 'tableCarts'])
+          await uiBridge.refreshUiAfterDataChange()
+          uiBridge.checkIncomingOrders()
+          return result
+        },
+        async rejectIncomingOrder(table, requestId) {
+          await repository.rejectIncomingOrder(table, requestId)
+          emitDataChange(['incomingOrders'])
+          await uiBridge.refreshUiAfterDataChange()
+          uiBridge.checkIncomingOrders()
+        },
+        async checkoutTable(payload) {
+          const order = await repository.checkoutTable(payload)
+          emitDataChange(['historyOrders', 'tableCarts'])
+          await uiBridge.refreshUiAfterDataChange()
+          return order
+        },
+        async checkoutSplit(payload) {
+          const order = await repository.checkoutSplit(payload)
+          emitDataChange(['historyOrders', 'tableCarts'])
+          await uiBridge.refreshUiAfterDataChange()
+          return order
+        },
+        async deleteClosedOrder(order) {
+          await repository.deleteClosedOrder(order)
+          emitDataChange(['historyOrders'])
+          await uiBridge.refreshUiAfterDataChange()
+        },
+        async setOwnerPassword(ownerName, record) {
+          await repository.setOwnerPassword(ownerName, record)
+          emitDataChange(['ownerPasswords'])
+          await uiBridge.refreshUiAfterDataChange()
         },
         subscribe(listener) {
           listeners.add(listener)
@@ -150,29 +209,41 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           }
         },
         emitChange(roots) {
-          listeners.forEach((listener) => {
-            listener({ roots })
-          })
+          emitDataChange(roots)
         },
-        getRootValue: coreSync.getRootValue,
-        getVisibleOrders: coreSync.getVisibleOrders,
-        getTodayMaxBaseSeq: coreSync.getTodayMaxBaseSeq,
-        getOrdersByDate(targetDate) {
-          const start = new Date(targetDate)
-          start.setHours(5, 0, 0, 0)
-          const end = new Date(start)
-          end.setDate(end.getDate() + 1)
-          return kernel.state.historyOrders.filter((order) => {
-            const time = kernel.dates.getDateFromOrder(order)
-            return time >= start && time < end
-          })
+        toggleStockStatus: async (name, checked) => {
+          await repository.updateInventory(name, checked)
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
         },
-        toggleStockStatus: coreSync.toggleStockStatus,
-        toggleParentWithOptions: coreSync.toggleParentWithOptions,
-        toggleOptionStock: coreSync.toggleOptionStock,
-        updateItemData: coreSync.updateItemData,
-        checkLogin: coreSync.checkLogin,
-        checkIncomingOrders: coreSync.checkIncomingOrders,
+        toggleParentWithOptions: async (name, checked) => {
+          const batch: Record<string, boolean> = { [name]: checked }
+          for (const option of kernel.foodOptionVariants[name] || []) {
+            batch[`${name}::${option}`] = checked
+          }
+          await repository.updateInventoryBatch(batch)
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        },
+        toggleOptionStock: async (name, option, checked) => {
+          kernel.state.inventory[`${name}::${option}`] = checked
+          await repository.updateInventory(`${name}::${option}`, checked)
+          if (kernel.foodOptionVariants[name]) {
+            const hasAny = kernel.foodOptionVariants[name].some(
+              (variant) => kernel.state.inventory[`${name}::${variant}`] !== false
+            )
+            kernel.state.inventory[name] = hasAny
+            await repository.updateInventory(name, hasAny)
+          }
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        },
+        updateItemData: async (name, type, value) => {
+          let numericValue = parseInt(value, 10)
+          if (Number.isNaN(numericValue)) numericValue = 0
+          if (type === 'cost') await repository.updateItemCost(name, numericValue)
+          else await repository.updateItemPrice(name, numericValue)
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        },
+        checkLogin: uiBridge.checkLogin,
+        checkIncomingOrders: uiBridge.checkIncomingOrders,
         fixAllOrderIds: async () => {
           const sales = context.getService<{ fixAllOrderIds(): Promise<void> }>('pos-sales')
           if (!sales) {
@@ -183,10 +254,6 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         downloadSyncLog() {
           const admin = context.getService<{ downloadSyncLog(): void }>('pos-admin')
           admin?.downloadSyncLog()
-        },
-        downloadLocalStorage() {
-          const admin = context.getService<{ downloadLocalStorage(): void }>('pos-admin')
-          admin?.downloadLocalStorage()
         },
         getSyncLog() {
           return kernel.state.syncLog

@@ -15,7 +15,20 @@ export const SYSTEM_PASSWORD = {
   passwordSalt: 'JfQ2P/jVlbY9HZW2dyJJ8A==',
   passwordHash: 'B4xRSlbbNDSdB/944ssKtHHfi9ckFD6lBhjwPQDvWM8=',
 }
-export const defaultOwnerPasswords = { 景偉: '0001', 小飛: '0002', 威志: '0003' }
+export const defaultOwnerPasswords = {
+  景偉: {
+    passwordSalt: 'c2FsdC1vd25lci0x',
+    passwordHash: 'n06NSuWUI7n7xaka9XHmx4z16FRw76ycRb7XyRWIh7o=',
+  },
+  小飛: {
+    passwordSalt: 'c2FsdC1vd25lci0y',
+    passwordHash: '0jrdJonzUKPrWUH6gwJEtO6D4bmi2ApEePUFTCZ0m6o=',
+  },
+  威志: {
+    passwordSalt: 'c2FsdC1vd25lci0z',
+    passwordHash: 'd9Z8FgD9HmrbiNnNnKKKJ8l5AAs6AUbLnV1cDas2VYk=',
+  },
+} as const
 
 export const tables = [
   '外帶1',

@@ -28,29 +28,26 @@ export function createPosReportingFeature(context: AppContext): FeatureRuntime {
       booted = true
 
       const reporting = createHistoryReportingModule({
-        getDateFromOrder: kernel.dates.getDateFromOrder,
-        getBusinessDate: kernel.dates.getBusinessDate,
-        getHistoryOrders: () => kernel.state.historyOrders,
-        getHistoryViewDate: () => kernel.state.historyViewDate,
         getIsHistorySimpleMode: () => kernel.state.isHistorySimpleMode,
         getItemCategoryType: kernel.helpers.getItemCategoryType,
-        getLatestVisibleOrders: () => kernel.state.latestVisibleOrders,
         getMergedItems: kernel.orderUtils.getMergedItems,
-        getVisibleOrders: data.getVisibleOrders,
+        listClosedOrdersByDay: data.listClosedOrdersByDay,
+        listClosedOrdersByRange: data.listClosedOrdersByRange,
+        loadDailySummariesRange: data.loadDailySummariesRange,
+        loadItemStatsRange: data.loadItemStatsRange,
+        watchClosedOrdersRange: data.watchClosedOrdersRange,
+        watchDailySummariesRange: data.watchDailySummariesRange,
+        watchItemStatsRange: data.watchItemStatsRange,
+        readDailySummariesRange: data.readDailySummariesRange,
+        readItemStatsRange: data.readItemStatsRange,
         moveSegmentHighlighter,
         openPage: (pageId) => ui.showPage(pageId as never),
         printReceipt: context.getService<{ printReceipt: (data: unknown, isTicket?: boolean) => Promise<void> }>(
           'pos-sales'
         )?.printReceipt as never,
-        saveAllToCloud: data.saveAllToCloud,
-        setHistoryViewDate(value) {
-          kernel.state.historyViewDate = value
-        },
+        deleteClosedOrder: data.deleteClosedOrder,
         setIsHistorySimpleMode(value) {
           kernel.state.isHistorySimpleMode = value
-        },
-        setLatestVisibleOrders(value) {
-          kernel.state.latestVisibleOrders = value
         },
       })
 
@@ -93,25 +90,29 @@ export function createPosReportingFeature(context: AppContext): FeatureRuntime {
         reporting.renderItemStats('custom')
       })
 
+      ui.registerHideHook(() => {
+        reporting.stopAllWatches()
+      })
+
       ui.subscribePage((pageId) => {
         if (pageId === 'historyPage') {
-          void data.ensureDataSubscriptions(['historyOrders']).then(() => reporting.showHistory())
+          const start = new Date()
+          start.setHours(5, 0, 0, 0)
+          const end = new Date(start)
+          end.setDate(end.getDate() + 1)
+          reporting.watchHistory(start, end)
+          void reporting.showHistory()
         }
         if (pageId === 'reportPage') {
-          void data.ensureDataSubscriptions(['historyOrders']).then(() => {
-            reporting.generateReport('day')
-            reporting.renderCalendar()
+          void Promise.all([reporting.generateReport('day'), reporting.renderCalendar()]).then(() => {
             moveSegmentHighlighter(0)
           })
         }
         if (pageId === 'pastHistoryPage') {
-          void data.ensureDataSubscriptions(['historyOrders']).then(() => {
-            kernel.state.historyViewDate = new Date()
-            reporting.renderPublicStats()
-          })
+          void reporting.renderPublicStats()
         }
         if (pageId === 'itemStatsPage') {
-          void data.ensureDataSubscriptions(['historyOrders'])
+          void reporting.renderItemStats('day')
         }
       })
 

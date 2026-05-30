@@ -1855,6 +1855,13 @@ body.customer-mode .del-btn {
     margin-top: 10px;
 }
 
+.dev-auth-notice {
+    margin-top: 10px;
+    color: #b45309;
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .menu-icon {
     font-size: 32px;
 }

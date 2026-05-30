@@ -3,8 +3,9 @@ import type { PosIncomingOrder } from '@/features/pos-kernel/types'
 export const POS_SALES_SERVICE_KEY = 'pos-sales'
 
 export type PosSalesService = {
-  showApp(options?: { skipHome?: boolean }): Promise<void>
+  showApp(options?: { skipHome?: boolean; skipStaffLive?: boolean }): Promise<void>
   openTableSelect(): Promise<void>
+  openSettingsPage(): Promise<void>
   goHome(): void
   renderCart(): void
   renderTableGrid(): Promise<void>

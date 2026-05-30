@@ -1,16 +1,17 @@
 import type { AttendanceService, AttendanceSnapshot } from '@/shared/attendance-service'
 
 type AttendanceServiceDeps = {
-  ensureDataSubscriptions: (roots: string[]) => Promise<void>
-  saveAllToCloud: (updates: Record<string, unknown>) => Promise<void>
+  ensureWindow: (monthKeys: string[]) => Promise<void>
+  ensureFullHistory: () => Promise<void>
+  watchWindow: (monthKeys: string[], onChange: () => void) => () => void
+  save: (updates: Record<string, unknown>) => Promise<void>
   getEmployees: () => Record<string, unknown>
   getRecords: () => Record<string, unknown>
 }
 
-const ATTENDANCE_ROOTS = ['attendanceEmployees', 'attendanceRecords']
-
 export function createAttendanceService(deps: AttendanceServiceDeps): AttendanceService {
   const listeners = new Set<(snapshot: AttendanceSnapshot) => void>()
+  let stopWatchingWindow: (() => void) | null = null
 
   function getSnapshot(): AttendanceSnapshot {
     return {
@@ -27,9 +28,21 @@ export function createAttendanceService(deps: AttendanceServiceDeps): Attendance
   }
 
   return {
-    async ensureLoaded() {
-      await deps.ensureDataSubscriptions(ATTENDANCE_ROOTS)
+    async ensureWindow(monthKeys) {
+      await deps.ensureWindow(monthKeys)
       emit()
+    },
+    async ensureFullHistory() {
+      await deps.ensureFullHistory()
+      emit()
+    },
+    watchWindow(monthKeys) {
+      stopWatchingWindow?.()
+      stopWatchingWindow = deps.watchWindow(monthKeys, emit)
+      return () => {
+        stopWatchingWindow?.()
+        stopWatchingWindow = null
+      }
     },
     getSnapshot,
     subscribe(listener) {
@@ -40,7 +53,7 @@ export function createAttendanceService(deps: AttendanceServiceDeps): Attendance
       }
     },
     async save(updates) {
-      await deps.saveAllToCloud(updates)
+      await deps.save(updates)
       emit()
     },
   }

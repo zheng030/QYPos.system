@@ -2,29 +2,56 @@ import type {
   AddToCartOptions,
   CorePosState,
   PosCartItem,
-  PosIncomingOrder,
   PosMenuData,
   PosOrder,
   PosReceiptData,
+  PosTableCustomer,
   PosToastOptions,
 } from '@/features/pos-kernel/types'
 import { findElement, requireElement, requireInput } from '@/shared/dom-helpers'
 import { getErrorMessage, toNumberValue } from '@/shared/errors'
-import type { DatabaseCompat, DatabaseCompatSnapshot } from '@/shared/firebase-compat'
 import { DEFAULT_FLAVOR_SELECTION, formatFlavorText, isFlavorCategory, normalizeFlavorSelection } from '@/shared/flavor'
 
 type ServiceFlowDeps = {
   state: CorePosState
-  db: DatabaseCompat
   menuData: PosMenuData
-  getBusinessDate: (value: Date | string | number) => number
-  getDateFromOrder: (order: PosOrder) => Date
   getDeltaItems: (currentCart: PosCartItem[], baseCart: PosCartItem[]) => PosCartItem[]
   getItemCategoryType: (name: string) => string
-  getTodayMaxBaseSeq: () => number
   stripHiddenTag: (name: string) => string
-  ensureRoots: (roots: string[]) => Promise<void>
-  saveAllToCloud: (updates: Record<string, unknown>) => Promise<void>
+  saveTableDraft: (
+    table: string,
+    cart: PosCartItem[],
+    customer: PosTableCustomer
+  ) => Promise<{ displaySeqBase: number }>
+  submitIncomingOrder: (table: string, cart: PosCartItem[], customer: PosTableCustomer) => Promise<void>
+  acceptIncomingOrder: (
+    table: string,
+    requestId: string
+  ) => Promise<{
+    customer: PosTableCustomer
+    items: PosCartItem[]
+    sentAt: number
+    displaySeqBase: number
+  } | null>
+  rejectIncomingOrder: (table: string, requestId: string) => Promise<void>
+  checkoutTable: (payload: {
+    table: string
+    cart: PosCartItem[]
+    customer: PosTableCustomer | undefined
+    paidTotal: number
+    originalTotal: number
+    splitCounter: number | null
+  }) => Promise<PosOrder>
+  checkoutSplit: (payload: {
+    table: string
+    cart: PosCartItem[]
+    customer: PosTableCustomer | undefined
+    paidTotal: number
+    originalTotal: number
+    splitCounter: number | null
+    remainingCart: PosCartItem[]
+    nextSplitCounter: number
+  }) => Promise<PosOrder>
   renderCart: () => void
   openTableSelect: () => Promise<void>
   goHome: () => void
@@ -47,18 +74,6 @@ function parseStoredCart(signature: string) {
   } catch {
     return []
   }
-}
-
-function normalizeIncomingQueue(queue: CorePosState['incomingOrders'][string]) {
-  if (Array.isArray(queue)) return [...queue]
-  if (queue && typeof queue === 'object') return Object.values(queue)
-  return []
-}
-
-function normalizeCartCollection(cart: CorePosState['tableCarts'][string]) {
-  if (Array.isArray(cart)) return [...cart]
-  if (cart && typeof cart === 'object') return Object.values(cart)
-  return []
 }
 
 function ensureSelectedTable(state: CorePosState) {
@@ -88,15 +103,6 @@ function buildProcessedItem(
     price = 0
   }
   return { ...item, name, price, type }
-}
-
-function getTodayOrderCount(
-  state: CorePosState,
-  getBusinessDate: ServiceFlowDeps['getBusinessDate'],
-  getDateFromOrder: ServiceFlowDeps['getDateFromOrder']
-) {
-  const currentBizDate = getBusinessDate(new Date())
-  return state.historyOrders.filter((order) => getBusinessDate(getDateFromOrder(order)) === currentBizDate).length
 }
 
 function readCustomerInfo() {
@@ -161,7 +167,6 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
 
   async function saveOrderManual() {
     try {
-      await deps.ensureRoots(['historyOrders'])
       if (deps.state.cart.length === 0) {
         deps.getShowToast()('購物車是空的，訂單未成立。')
         await saveAndExit()
@@ -173,7 +178,6 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
       if (!deps.state.tableTimers[table] || !customer.orderId) {
         deps.state.tableTimers[table] = Date.now()
         deps.state.tableSplitCounters[table] = 1
-        customer.orderId = getTodayOrderCount(deps.state, deps.getBusinessDate, deps.getDateFromOrder) + 1
       }
 
       const itemsToSave = deps.state.cart.map((item) => {
@@ -190,13 +194,8 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
       customer.name = info.name
       customer.phone = info.phone
 
-      await deps.saveAllToCloud({
-        [`tableCarts/${table}`]: itemsToSave,
-        [`tableStatuses/${table}`]: 'yellow',
-        [`tableCustomers/${table}`]: customer,
-        [`tableTimers/${table}`]: deps.state.tableTimers[table],
-        [`tableSplitCounters/${table}`]: deps.state.tableSplitCounters[table],
-      })
+      const draft = await deps.saveTableDraft(table, itemsToSave, customer)
+      customer.orderId = draft.displaySeqBase
 
       const shouldPrintItems = baseCart.length > 0 ? newItems : deps.state.cart
       if (shouldPrintItems.length > 0 && customer.orderId !== undefined) {
@@ -251,44 +250,8 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
     }
 
     const table = ensureSelectedTable(deps.state)
-    let nextBatch = 1
     try {
-      const txResult = await deps.db
-        .ref(`tableBatchCounts/${table}`)
-        .transaction<number>((current: number | null) => (current || 0) + 1)
-      if (!txResult.committed) throw new Error('批次編號更新失敗')
-      nextBatch = Number(txResult.snapshot.val()) || 1
-      deps.state.tableBatchCounts[table] = nextBatch
-    } catch (error) {
-      alert(`取得批次編號失敗，請稍後再試：${getErrorMessage(error)}`)
-      return
-    }
-
-    const batchColorIdx = (nextBatch - 1) % 3
-    const itemsToSend: PosCartItem[] = deps.state.cart.map((item, index) => ({
-      ...item,
-      isNew: true,
-      batchIdx: batchColorIdx,
-      incomingIdx: index,
-    }))
-    const pendingList = normalizeIncomingQueue(
-      await deps.db
-        .ref(`incomingOrders/${table}`)
-        .once('value')
-        .then((snapshot: DatabaseCompatSnapshot) => snapshot.val() as CorePosState['incomingOrders'][string])
-        .catch(() => undefined)
-    )
-    pendingList.push({
-      items: itemsToSend,
-      customer: readCustomerInfo(),
-      batchId: nextBatch,
-      timestamp: Date.now(),
-    })
-
-    try {
-      await deps.saveAllToCloud({
-        [`incomingOrders/${table}`]: pendingList,
-      })
+      await deps.submitIncomingOrder(table, deps.state.cart, readCustomerInfo())
       alert('✅ 點餐成功！\n\n您的訂單已傳送至櫃台，\n服務人員確認後將為您準備餐點。')
       const justSent = deps.state.cart.map((item) => ({ ...item, isSent: true }))
       deps.state.sentItems = [...deps.state.sentItems, ...justSent]
@@ -302,63 +265,34 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
 
   async function confirmIncomingOrder() {
     if (!deps.state.currentIncomingTable) return
-    await deps.ensureRoots([
-      'incomingOrders',
-      'tableBatchCounts',
-      'tableCarts',
-      'tableStatuses',
-      'tableCustomers',
-      'tableTimers',
-      'tableSplitCounters',
-      'historyOrders',
-    ])
 
     const table = deps.state.currentIncomingTable
-    const pendingQueue = normalizeIncomingQueue(deps.state.incomingOrders[table])
-    if (!pendingQueue.length) {
-      delete deps.state.incomingOrders[table]
-      await deps.saveAllToCloud({ [`incomingOrders/${table}`]: null })
+    const currentIncoming = Array.isArray(deps.state.incomingOrders[table])
+      ? deps.state.incomingOrders[table]?.[0]
+      : null
+    const requestId = String(currentIncoming?.requestId || '')
+    if (!requestId) {
       deps.closeIncomingOrderModal()
       deps.checkIncomingOrders()
       return
     }
 
-    const pendingData = pendingQueue.shift() as PosIncomingOrder
-    const sentAt = pendingData.timestamp || Date.now()
-    const batchId = pendingData.batchId || 0
-    const items = (Array.isArray(pendingData.items) ? pendingData.items : [])
-      .filter(Boolean)
-      .map((item, index) => ({
-        ...item,
-        batchId,
-        sentAt,
-        incomingIdx: item.incomingIdx !== undefined ? item.incomingIdx : index,
-      }))
-      .sort((left, right) => (left.incomingIdx || 0) - (right.incomingIdx || 0))
-    const customer = pendingData.customer || {}
-
-    deps.state.tableBatchCounts[table] = batchId
-    const currentCart = normalizeCartCollection(deps.state.tableCarts[table])
-    const newCart = currentCart.concat(items)
-    deps.state.tableCarts[table] = newCart
-    const isViewingSameTable = deps.state.selectedTable === table
-    if (isViewingSameTable) {
-      deps.state.cart = newCart
-      deps.state.entryCartSignature = JSON.stringify(deps.state.cart)
+    const accepted = await deps.acceptIncomingOrder(table, requestId)
+    if (!accepted) {
+      deps.closeIncomingOrderModal()
+      deps.checkIncomingOrders()
+      return
     }
 
-    deps.state.tableStatuses[table] = 'yellow'
     const targetCustomer = ensureTableCustomer(deps.state, table)
+    const { customer, items, sentAt, displaySeqBase } = accepted
     if (customer.name) targetCustomer.name = customer.name
-    if (!deps.state.tableTimers[table] || !targetCustomer.orderId) {
-      deps.state.tableTimers[table] = Date.now()
-      deps.state.tableSplitCounters[table] = 1
-      targetCustomer.orderId = getTodayOrderCount(deps.state, deps.getBusinessDate, deps.getDateFromOrder) + 1
-    }
+    if (customer.phone) targetCustomer.phone = customer.phone
+    targetCustomer.orderId = displaySeqBase
 
     await printReceipt(
       {
-        seq: targetCustomer.orderId || '?',
+        seq: displaySeqBase || '?',
         table,
         time: new Date(sentAt).toLocaleString('zh-TW', { hour12: false }),
         items,
@@ -368,72 +302,36 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
       true
     )
 
-    delete deps.state.incomingOrders[table]
-    if (pendingQueue.length > 0) {
-      deps.state.incomingOrders[table] = pendingQueue
-    }
-
-    await deps.saveAllToCloud({
-      [`incomingOrders/${table}`]: pendingQueue.length > 0 ? pendingQueue : null,
-      [`tableBatchCounts/${table}`]: batchId,
-      [`tableCarts/${table}`]: newCart,
-      [`tableStatuses/${table}`]: 'yellow',
-      [`tableCustomers/${table}`]: targetCustomer,
-      [`tableTimers/${table}`]: deps.state.tableTimers[table],
-      [`tableSplitCounters/${table}`]: deps.state.tableSplitCounters[table],
-    })
-
     deps.closeIncomingOrderModal()
     deps.checkIncomingOrders()
     deps.getShowToast()(`✅ 已接收 ${table} 的訂單`)
-    if (isViewingSameTable) deps.renderCart()
+    if (deps.state.selectedTable === table) deps.renderCart()
   }
 
   async function rejectIncomingOrder() {
     if (!deps.state.currentIncomingTable) return
     if (!confirm('確定要忽略這筆訂單嗎？')) return
     const table = deps.state.currentIncomingTable
-    const pendingQueue = normalizeIncomingQueue(deps.state.incomingOrders[table])
-    if (pendingQueue.length > 0) pendingQueue.shift()
-    if (pendingQueue.length === 0) delete deps.state.incomingOrders[table]
-    else deps.state.incomingOrders[table] = pendingQueue
-    await deps.saveAllToCloud({
-      [`incomingOrders/${table}`]: pendingQueue.length === 0 ? null : pendingQueue,
-    })
+    const currentIncoming = Array.isArray(deps.state.incomingOrders[table])
+      ? deps.state.incomingOrders[table]?.[0]
+      : null
+    const requestId = String(currentIncoming?.requestId || '')
+    if (!requestId) {
+      deps.closeIncomingOrderModal()
+      deps.checkIncomingOrders()
+      return
+    }
+    await deps.rejectIncomingOrder(table, requestId)
     deps.closeIncomingOrderModal()
     deps.checkIncomingOrders()
   }
 
   async function checkoutAll(manualFinal?: number) {
-    await deps.ensureRoots(['historyOrders'])
     const table = ensureSelectedTable(deps.state)
     const payingTotal = manualFinal !== undefined ? manualFinal : deps.state.discountedTotal
     const originalTotal = deps.state.currentOriginalTotal
     const info = ensureTableCustomer(deps.state, table)
-    if (!info.orderId || info.orderId === '?' || info.orderId === 'T') {
-      info.orderId = getTodayOrderCount(deps.state, deps.getBusinessDate, deps.getDateFromOrder) + 1
-    }
-
-    if (originalTotal > 0 || payingTotal > 0) {
-      const splitNum = deps.state.tableSplitCounters[table]
-      const displaySeq = splitNum && splitNum > 1 ? `${info.orderId}-${splitNum}` : info.orderId
-      const displaySeat = splitNum && splitNum > 1 ? `${table} (拆單)` : table
-      const processedItems = deps.state.cart.map((item) =>
-        buildProcessedItem(item, deps.stripHiddenTag, deps.getItemCategoryType)
-      )
-      deps.state.historyOrders.push({
-        seat: displaySeat,
-        formattedSeq: displaySeq,
-        time: new Date().toLocaleString('zh-TW', { hour12: false }),
-        timestamp: Date.now(),
-        items: processedItems,
-        total: payingTotal,
-        originalTotal,
-        customerName: info.name || '',
-        customerPhone: info.phone || '',
-        isClosed: false,
-      })
-    }
+    const currentSplitCounter = deps.state.tableSplitCounters[table] || 1
 
     delete deps.state.tableCarts[table]
     delete deps.state.tableTimers[table]
@@ -444,15 +342,19 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
     deps.state.sentItems = []
     sessionStorage.removeItem('sentItems')
 
-    await deps.saveAllToCloud({
-      historyOrders: deps.state.historyOrders,
-      [`tableCarts/${table}`]: null,
-      [`tableTimers/${table}`]: null,
-      [`tableStatuses/${table}`]: null,
-      [`tableCustomers/${table}`]: null,
-      [`tableSplitCounters/${table}`]: null,
-      [`tableBatchCounts/${table}`]: null,
-    })
+    if (originalTotal > 0 || payingTotal > 0) {
+      const processedItems = deps.state.cart.map((item) =>
+        buildProcessedItem(item, deps.stripHiddenTag, deps.getItemCategoryType)
+      )
+      await deps.checkoutTable({
+        table,
+        cart: processedItems,
+        customer: info,
+        paidTotal: payingTotal,
+        originalTotal,
+        splitCounter: currentSplitCounter > 1 ? currentSplitCounter : null,
+      })
+    }
     deps.state.cart = []
     deps.state.currentDiscount = { type: 'none', value: 0 }
     deps.state.isServiceFeeEnabled = false
@@ -482,64 +384,7 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
   }
 
   async function fixAllOrderIds() {
-    await deps.ensureRoots(['historyOrders', 'tableCustomers', 'tableStatuses'])
-    if (
-      !confirm(
-        '⚠️ 確定要執行「一鍵重整」嗎？\n\n1. 將所有歷史訂單依照日期重新編號 (#1, #2...)\n2. 修正目前桌上未結帳訂單的錯誤單號'
-      )
-    ) {
-      return
-    }
-
-    deps.state.historyOrders.sort((left, right) => new Date(left.time).getTime() - new Date(right.time).getTime())
-    const dateCounters: Record<string, number> = {}
-    deps.state.historyOrders.forEach((order) => {
-      const date = new Date(order.time)
-      if (date.getHours() < 5) date.setDate(date.getDate() - 1)
-      const dateKey = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
-      dateCounters[dateKey] = (dateCounters[dateKey] || 0) + 1
-      order.formattedSeq = dateCounters[dateKey]
-      order.seq = dateCounters[dateKey]
-    })
-
-    const now = new Date()
-    if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-    const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
-    let currentMaxSeq = dateCounters[todayKey] || 0
-    Object.keys(deps.state.tableCustomers).forEach((table) => {
-      const customer = deps.state.tableCustomers[table]
-      if (customer && deps.state.tableStatuses[table] === 'yellow') {
-        currentMaxSeq += 1
-        customer.orderId = currentMaxSeq
-      }
-    })
-
-    const updates: Record<string, unknown> = { historyOrders: deps.state.historyOrders }
-    Object.keys(deps.state.tableCustomers).forEach((table) => {
-      if (deps.state.tableCustomers[table] && deps.state.tableStatuses[table] === 'yellow') {
-        updates[`tableCustomers/${table}`] = deps.state.tableCustomers[table]
-      }
-    })
-    await deps.saveAllToCloud(updates)
-    alert('✅ 修復完成！\n歷史訂單已重整，目前桌位單號已校正。\n網頁將自動重新整理。')
-    location.reload()
-  }
-
-  function initHistoryDate() {
-    const now = new Date()
-    if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-    deps.state.historyViewDate = new Date(now)
-  }
-
-  function getOrdersByDate(targetDate: Date) {
-    const start = new Date(targetDate)
-    start.setHours(5, 0, 0, 0)
-    const end = new Date(start)
-    end.setDate(end.getDate() + 1)
-    return deps.state.historyOrders.filter((order) => {
-      const time = deps.getDateFromOrder(order)
-      return time >= start && time < end
-    })
+    alert('一鍵重整已停用，請改用 v3 單日重編流程')
   }
 
   function updateSystemTime() {
@@ -548,7 +393,6 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
   }
 
   async function confirmPayment() {
-    await deps.ensureRoots(['historyOrders'])
     if (deps.state.tempRightList.length === 0) {
       alert('請先將品項移至右側再結帳')
       return
@@ -559,10 +403,6 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
     if (!confirm(`確認收款 $${finalSplit} 嗎？`)) return
 
     const info = ensureTableCustomer(deps.state, table)
-    if (!info.orderId || info.orderId === '?' || info.orderId === 'T') {
-      info.orderId = deps.getTodayMaxBaseSeq() + 1
-    }
-
     const splitNum = deps.state.tableSplitCounters[table] || 1
     const processedItems = deps.state.tempRightList.map((item) =>
       buildProcessedItem(item, deps.stripHiddenTag, deps.getItemCategoryType)
@@ -571,19 +411,6 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
       (sum, item) => sum + (item.isTreat ? 0 : toNumberValue(item.price)),
       0
     )
-
-    deps.state.historyOrders.push({
-      seat: `${table} (拆單)`,
-      formattedSeq: `${info.orderId}-${splitNum}`,
-      time: new Date().toLocaleString('zh-TW', { hour12: false }),
-      timestamp: Date.now(),
-      items: processedItems,
-      total: finalSplit,
-      originalTotal: originalSplitTotal,
-      customerName: info.name || '',
-      customerPhone: info.phone || '',
-      isClosed: false,
-    })
 
     deps.state.cart = [...deps.state.tempLeftList]
     deps.state.tableCarts[table] = deps.state.cart
@@ -599,14 +426,15 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
       sessionStorage.removeItem('sentItems')
     }
 
-    await deps.saveAllToCloud({
-      historyOrders: deps.state.historyOrders,
-      [`tableCarts/${table}`]: deps.state.cart.length === 0 ? null : deps.state.cart,
-      [`tableTimers/${table}`]: deps.state.cart.length === 0 ? null : deps.state.tableTimers[table],
-      [`tableStatuses/${table}`]: deps.state.cart.length === 0 ? null : deps.state.tableStatuses[table] || 'yellow',
-      [`tableCustomers/${table}`]: deps.state.cart.length === 0 ? null : deps.state.tableCustomers[table],
-      [`tableSplitCounters/${table}`]: deps.state.cart.length === 0 ? null : deps.state.tableSplitCounters[table],
-      [`tableBatchCounts/${table}`]: deps.state.cart.length === 0 ? null : deps.state.tableBatchCounts[table],
+    await deps.checkoutSplit({
+      table,
+      cart: processedItems,
+      customer: info,
+      paidTotal: finalSplit,
+      originalTotal: originalSplitTotal,
+      splitCounter: splitNum,
+      remainingCart: deps.state.cart,
+      nextSplitCounter: splitNum + 1,
     })
     deps.renderCart()
     deps.closeCheckoutModal()
@@ -730,8 +558,6 @@ export function createServiceFlowModule(deps: ServiceFlowDeps) {
     confirmPayment,
     customerSubmitOrder,
     fixAllOrderIds,
-    getOrdersByDate,
-    initHistoryDate,
     printReceipt,
     rejectIncomingOrder,
     removeItem,

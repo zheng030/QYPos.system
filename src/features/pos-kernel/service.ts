@@ -1,6 +1,6 @@
 import type { DatabaseCompat } from '@/shared/firebase-compat'
 import type { getDeltaItems, getMergedItems, shouldHideCustomerItemName, stripHiddenTag } from './item-helpers'
-import type { CorePosState, PosMenuData, PosRootName, PosSystemPasswordConfig } from './types'
+import type { CorePosState, PosMenuData, PosSystemPasswordConfig } from './types'
 
 export const POS_KERNEL_SERVICE_KEY = 'pos-kernel'
 
@@ -19,12 +19,6 @@ export type PosKernelService = {
   categories: string[]
   foodOptionVariants: Record<string, string[]>
   systemPassword: PosSystemPasswordConfig
-  dataRootKeys: readonly PosRootName[]
-  customerDataRootKeys: readonly string[]
-  adminBaseRootKeys: readonly string[]
-  localDataPrefix: string
-  localRevisionKey: string
-  refreshUiRoots: ReadonlySet<string>
   helpers: PosCatalogHelpers
   dates: {
     getBusinessDate(value: Date | string | number): number

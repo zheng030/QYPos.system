@@ -141,6 +141,12 @@ export function createPosShellFeature(context: AppContext): FeatureRuntime {
             pageListeners.delete(listener)
           }
         },
+        registerHideHook(listener) {
+          hideAllHooks.add(listener)
+          return () => {
+            hideAllHooks.delete(listener)
+          }
+        },
       }
 
       const shellService: PosShellFeatureService = {

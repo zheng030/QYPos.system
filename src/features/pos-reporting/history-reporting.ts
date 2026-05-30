@@ -1,4 +1,11 @@
 import type {
+  V3DailyItemStat,
+  V3DailySummary,
+  V3DailySummaryRangeEvent,
+  V3HistoryRangeEvent,
+  V3ItemStatsRangeEvent,
+} from '@/features/pos-data/rtdb-v3-types'
+import type {
   PosCartItem,
   PosMergedCartItem,
   PosOrder,
@@ -10,22 +17,31 @@ import { getErrorMessage, toNumberValue } from '@/shared/errors'
 import { formatFlavorText } from '@/shared/flavor'
 
 type HistoryReportingDeps = {
-  getDateFromOrder: (order: PosOrder) => Date
-  getBusinessDate: (date: Date | string | number) => number
-  getHistoryOrders: () => PosOrder[]
-  getHistoryViewDate: () => Date
   getIsHistorySimpleMode: () => boolean
   getItemCategoryType: (name: string) => string
-  getLatestVisibleOrders: () => PosOrder[] | null
   getMergedItems: (items: PosCartItem[]) => PosMergedCartItem[]
-  getVisibleOrders: () => PosOrder[]
+  listClosedOrdersByDay: (targetDate: Date) => Promise<PosOrder[]>
+  listClosedOrdersByRange: (start: Date, endExclusive: Date) => Promise<PosOrder[]>
+  loadDailySummariesRange: (start: Date, endExclusive: Date) => Promise<Record<string, V3DailySummary>>
+  loadItemStatsRange: (start: Date, endExclusive: Date) => Promise<Record<string, Record<string, V3DailyItemStat>>>
+  watchClosedOrdersRange: (
+    start: Date,
+    endExclusive: Date,
+    listener: (event: V3HistoryRangeEvent) => void
+  ) => () => void
+  watchDailySummariesRange: (
+    start: Date,
+    endExclusive: Date,
+    listener: (event: V3DailySummaryRangeEvent) => void
+  ) => () => void
+  watchItemStatsRange: (start: Date, endExclusive: Date, listener: (event: V3ItemStatsRangeEvent) => void) => () => void
+  readDailySummariesRange: (start: Date, endExclusive: Date) => Record<string, V3DailySummary>
+  readItemStatsRange: (start: Date, endExclusive: Date) => Record<string, Record<string, V3DailyItemStat>>
   moveSegmentHighlighter: (index: number) => void
   openPage: (pageId: string) => void
   printReceipt: (data: PosReceiptData, isTicket?: boolean) => Promise<void> | void
-  saveAllToCloud: (updates: Record<string, unknown>) => Promise<void>
-  setHistoryViewDate: (date: Date) => void
+  deleteClosedOrder: (order: PosOrder) => Promise<void>
   setIsHistorySimpleMode: (value: boolean) => void
-  setLatestVisibleOrders: (orders: PosOrder[] | null) => void
 }
 
 type StatsRow = {
@@ -59,7 +75,94 @@ function toLocalIsoDate(date: Date) {
   return new Date(date.getTime() - offset).toISOString().split('T')[0]
 }
 
+function getSummaryTotalsByDay(range: Record<string, V3DailySummary>) {
+  const totals: Record<number, number> = {}
+  Object.entries(range).forEach(([bizDateKey, summary]) => {
+    const day = Number(bizDateKey.slice(-2))
+    totals[day] = summary.paidTotal || 0
+  })
+  return totals
+}
+
+function getRangeBounds(range: PosReportRange | string) {
+  const now = new Date()
+  if (now.getHours() < 5) now.setDate(now.getDate() - 1)
+  const start = new Date(now)
+  let end = new Date(now)
+
+  if (range === 'day') {
+    start.setHours(5, 0, 0, 0)
+    end = new Date(start)
+    end.setDate(end.getDate() + 1)
+  } else if (range === 'week') {
+    const day = start.getDay() || 7
+    start.setDate(start.getDate() - (day - 1))
+    start.setHours(5, 0, 0, 0)
+    end = new Date(start)
+    end.setDate(end.getDate() + 7)
+  } else if (range === 'month') {
+    start.setDate(1)
+    start.setHours(5, 0, 0, 0)
+    end = new Date(start)
+    end.setMonth(end.getMonth() + 1)
+  }
+
+  return { start, end }
+}
+
 export function createHistoryReportingModule(deps: HistoryReportingDeps) {
+  let stopHistoryWatch: (() => void) | null = null
+  let stopReportSummaryWatch: (() => void) | null = null
+  let stopCalendarSummaryWatch: (() => void) | null = null
+  let stopItemStatsWatch: (() => void) | null = null
+  let stopPublicItemStatsWatch: (() => void) | null = null
+  let historyViewDate = new Date()
+  let visibleOrders: PosOrder[] = []
+
+  if (historyViewDate.getHours() < 5) {
+    historyViewDate.setDate(historyViewDate.getDate() - 1)
+  }
+
+  function resetWatch(stop: (() => void) | null) {
+    stop?.()
+    return null
+  }
+
+  function watchHistory(start: Date, endExclusive: Date) {
+    stopHistoryWatch = resetWatch(stopHistoryWatch)
+    stopHistoryWatch = deps.watchClosedOrdersRange(start, endExclusive, () => {
+      void showHistory()
+    })
+  }
+
+  function watchReportSummaries(start: Date, endExclusive: Date, onChange: () => void) {
+    stopReportSummaryWatch = resetWatch(stopReportSummaryWatch)
+    stopReportSummaryWatch = deps.watchDailySummariesRange(start, endExclusive, onChange)
+  }
+
+  function watchCalendarSummaries(start: Date, endExclusive: Date, onChange: () => void) {
+    stopCalendarSummaryWatch = resetWatch(stopCalendarSummaryWatch)
+    stopCalendarSummaryWatch = deps.watchDailySummariesRange(start, endExclusive, onChange)
+  }
+
+  function watchItemStats(start: Date, endExclusive: Date, onChange: () => void) {
+    stopItemStatsWatch = resetWatch(stopItemStatsWatch)
+    stopItemStatsWatch = deps.watchItemStatsRange(start, endExclusive, onChange)
+  }
+
+  function watchPublicItemStats(start: Date, endExclusive: Date, onChange: () => void) {
+    stopPublicItemStatsWatch = resetWatch(stopPublicItemStatsWatch)
+    stopPublicItemStatsWatch = deps.watchItemStatsRange(start, endExclusive, onChange)
+  }
+
+  function stopAllWatches() {
+    stopHistoryWatch = resetWatch(stopHistoryWatch)
+    stopReportSummaryWatch = resetWatch(stopReportSummaryWatch)
+    stopCalendarSummaryWatch = resetWatch(stopCalendarSummaryWatch)
+    stopItemStatsWatch = resetWatch(stopItemStatsWatch)
+    stopPublicItemStatsWatch = resetWatch(stopPublicItemStatsWatch)
+  }
+
   function getOpenHistoryDetailIds() {
     const ids: string[] = []
     document.querySelectorAll<HTMLElement>('.history-detail').forEach((element) => {
@@ -86,29 +189,18 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
   }
 
   function getOrdersForActions() {
-    const latestVisibleOrders = deps.getLatestVisibleOrders()
-    return latestVisibleOrders && latestVisibleOrders.length > 0
-      ? latestVisibleOrders
-      : (latestVisibleOrders ?? deps.getVisibleOrders())
+    return visibleOrders
   }
 
-  function collectRankedStats(startBiz: number, endBiz: number) {
+  function collectRankedStatsFromCache(start: Date, endExclusive: Date) {
     const counts: Record<string, number> = {}
     const typeMap: Record<string, string> = {}
-
-    deps.getHistoryOrders().forEach((order) => {
-      const biz = deps.getBusinessDate(deps.getDateFromOrder(order))
-      if (biz < startBiz || biz >= endBiz || !Array.isArray(order.items)) {
-        return
-      }
-
-      order.items.forEach((item) => {
-        const name = normalizeItemName(item.name)
-        const qty = item.count ?? 1
-        if (!typeMap[name]) {
-          typeMap[name] = item.type || deps.getItemCategoryType(name)
-        }
-        counts[name] = (counts[name] || 0) + qty
+    const statsByDay = deps.readItemStatsRange(start, endExclusive)
+    Object.values(statsByDay).forEach((stats) => {
+      Object.values(stats).forEach((item) => {
+        const name = normalizeItemName(item.displayName)
+        counts[name] = (counts[name] || 0) + (item.qty || 0)
+        if (!typeMap[name]) typeMap[name] = item.type || deps.getItemCategoryType(name)
       })
     })
 
@@ -156,16 +248,16 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       .join('')
   }
 
-  function showHistory() {
+  async function showHistory() {
     try {
       const historyBox = findElement('history-box')
       if (!historyBox) return
 
+      const orders = await deps.listClosedOrdersByDay(new Date())
+      visibleOrders = orders
+
       const openIds = getOpenHistoryDetailIds()
       historyBox.innerHTML = ''
-
-      const orders = deps.getVisibleOrders()
-      deps.setLatestVisibleOrders(orders)
 
       if (orders.length === 0) {
         historyBox.innerHTML = "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單 (或已日結)</div>"
@@ -202,31 +294,24 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
 
   function toggleHistoryView() {
     deps.setIsHistorySimpleMode(!deps.getIsHistorySimpleMode())
-    showHistory()
+    void showHistory()
   }
 
-  function filterOrders(startTime: Date, endTime: Date | null, titleText: string) {
+  function filterOrdersFromCache(startTime: Date, endTime: Date | null, titleText: string) {
     let total = 0
     let count = 0
     let barTotal = 0
     let bbqTotal = 0
 
-    deps.getHistoryOrders().forEach((order) => {
-      const orderTime = deps.getDateFromOrder(order)
-      if (orderTime < startTime || (endTime && orderTime >= endTime)) {
-        return
-      }
-
-      total += order.total || 0
-      count += 1
-      order.items.forEach((item) => {
-        const itemType = item.type || deps.getItemCategoryType(item.name)
-        if (itemType === 'bbq') {
-          bbqTotal += toNumberValue(item.price)
-        } else {
-          barTotal += toNumberValue(item.price)
-        }
-      })
+    const summaries = deps.readDailySummariesRange(
+      startTime,
+      endTime || new Date(startTime.getTime() + 24 * 60 * 60 * 1000)
+    )
+    Object.values(summaries).forEach((summary) => {
+      total += summary.paidTotal || 0
+      count += summary.orderCount || 0
+      barTotal += summary.barRevenue || 0
+      bbqTotal += summary.bbqRevenue || 0
     })
 
     setText('rptTitle', titleText)
@@ -236,7 +321,34 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     setText('rptBBQ', `$${bbqTotal}`)
   }
 
-  function generateReport(type: PosReportRange | string) {
+  function renderCalendarGrid(year: number, month: number, dailyTotals: Record<number, number>) {
+    const firstDay = new Date(year, month, 1).getDay()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const grid = findElement('calendarGrid')
+    if (!grid) return
+
+    grid.innerHTML = ''
+    for (let index = 0; index < firstDay; index += 1) {
+      const empty = document.createElement('div')
+      empty.className = 'calendar-day empty'
+      grid.appendChild(empty)
+    }
+
+    const today = new Date()
+    if (today.getHours() < 5) today.setDate(today.getDate() - 1)
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const cell = document.createElement('div')
+      cell.className = 'calendar-day'
+      if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+        cell.classList.add('today')
+      }
+      const revenue = dailyTotals[day] ? `$${dailyTotals[day]}` : ''
+      cell.innerHTML = `<div class="day-num">${day}</div><div class="day-revenue">${revenue}</div>`
+      grid.appendChild(cell)
+    }
+  }
+
+  async function generateReport(type: PosReportRange | string) {
     try {
       const reportContent = findElement('reportContent')
       const reportPage = findElement('reportPage')
@@ -258,35 +370,37 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       }
       deps.moveSegmentHighlighter(index)
 
-      const now = new Date()
-      if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-      const start = new Date(now)
+      const { start, end } = getRangeBounds(type)
       let title = ''
 
       if (type === 'day') {
-        start.setHours(5, 0, 0, 0)
-        const end = new Date(start)
-        end.setDate(end.getDate() + 1)
         title = '💰 今日營業額 (即時)'
-        filterOrders(start, end, title)
+        await deps.loadDailySummariesRange(start, end)
+        watchReportSummaries(start, end, () => {
+          filterOrdersFromCache(start, end, title)
+        })
+        filterOrdersFromCache(start, end, title)
       } else if (type === 'week') {
-        const day = start.getDay() || 7
-        start.setDate(start.getDate() - (day - 1))
-        start.setHours(5, 0, 0, 0)
         title = '💰 本周營業額 (即時)'
-        filterOrders(start, new Date(), title)
+        await deps.loadDailySummariesRange(start, end)
+        watchReportSummaries(start, end, () => {
+          filterOrdersFromCache(start, end, title)
+        })
+        filterOrdersFromCache(start, end, title)
       } else if (type === 'month') {
-        start.setDate(1)
-        start.setHours(5, 0, 0, 0)
         title = '💰 當月營業額 (即時)'
-        filterOrders(start, new Date(), title)
+        await deps.loadDailySummariesRange(start, end)
+        watchReportSummaries(start, end, () => {
+          filterOrdersFromCache(start, end, title)
+        })
+        filterOrdersFromCache(start, end, title)
       }
     } catch (error) {
       alert(`generateReport 錯誤\n${getErrorMessage(error)}`)
     }
   }
 
-  function renderCalendar() {
+  async function renderCalendar() {
     try {
       const now = new Date()
       if (now.getHours() < 5) now.setDate(now.getDate() - 1)
@@ -294,40 +408,13 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       const month = now.getMonth()
       setText('calendarMonthTitle', `${year}年 ${month + 1}月`)
 
-      const dailyTotals: Record<number, number> = {}
-      deps.getHistoryOrders().forEach((order) => {
-        const date = deps.getDateFromOrder(order)
-        if (date.getHours() < 5) date.setDate(date.getDate() - 1)
-        if (date.getFullYear() === year && date.getMonth() === month) {
-          const dayKey = date.getDate()
-          dailyTotals[dayKey] = (dailyTotals[dayKey] || 0) + (order.total || 0)
-        }
+      const start = new Date(year, month, 1, 5, 0, 0, 0)
+      const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
+      await deps.loadDailySummariesRange(start, end)
+      watchCalendarSummaries(start, end, () => {
+        renderCalendarGrid(year, month, getSummaryTotalsByDay(deps.readDailySummariesRange(start, end)))
       })
-
-      const firstDay = new Date(year, month, 1).getDay()
-      const daysInMonth = new Date(year, month + 1, 0).getDate()
-      const grid = findElement('calendarGrid')
-      if (!grid) return
-
-      grid.innerHTML = ''
-      for (let index = 0; index < firstDay; index += 1) {
-        const empty = document.createElement('div')
-        empty.className = 'calendar-day empty'
-        grid.appendChild(empty)
-      }
-
-      const today = new Date()
-      if (today.getHours() < 5) today.setDate(today.getDate() - 1)
-      for (let day = 1; day <= daysInMonth; day += 1) {
-        const cell = document.createElement('div')
-        cell.className = 'calendar-day'
-        if (day === today.getDate() && month === today.getMonth()) {
-          cell.classList.add('today')
-        }
-        const revenue = dailyTotals[day] ? `$${dailyTotals[day]}` : ''
-        cell.innerHTML = `<div class="day-num">${day}</div><div class="day-revenue">${revenue}</div>`
-        grid.appendChild(cell)
-      }
+      renderCalendarGrid(year, month, getSummaryTotalsByDay(deps.readDailySummariesRange(start, end)))
     } catch (error) {
       alert(`renderCalendar 錯誤\n${getErrorMessage(error)}`)
     }
@@ -341,7 +428,7 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     }
   }
 
-  function renderItemStats(range: PosReportRange | string, button: HTMLElement | null = null) {
+  async function renderItemStats(range: PosReportRange | string, button: HTMLElement | null = null) {
     document.querySelectorAll('#itemStatsPage .segment-option').forEach((element) => {
       element.classList.remove('active')
     })
@@ -414,7 +501,21 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       end.setHours(5, 0, 0, 0)
     }
 
-    const { barList, bbqList } = collectRankedStats(deps.getBusinessDate(start), deps.getBusinessDate(end || start))
+    await deps.loadItemStatsRange(start, end || start)
+    watchItemStats(start, end || start, () => {
+      const { barList, bbqList } = collectRankedStatsFromCache(start, end || start)
+      renderRankedList(
+        barList,
+        'statsListBar',
+        "<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>"
+      )
+      renderRankedList(
+        bbqList,
+        'statsListBbq',
+        "<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>"
+      )
+    })
+    const { barList, bbqList } = collectRankedStatsFromCache(start, end || start)
 
     renderRankedList(
       barList,
@@ -429,35 +530,60 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
   }
 
   function changeStatsMonth(offset: number) {
-    const nextDate = new Date(deps.getHistoryViewDate())
+    const nextDate = new Date(historyViewDate)
     nextDate.setMonth(nextDate.getMonth() + offset)
-    deps.setHistoryViewDate(nextDate)
-    renderPublicStats()
+    historyViewDate = nextDate
+    void renderPublicStats()
   }
 
-  function renderPublicStats() {
-    const historyViewDate = deps.getHistoryViewDate()
+  async function renderPublicStats() {
     const year = historyViewDate.getFullYear()
     const month = historyViewDate.getMonth()
     setText('statsMonthTitle', `${year}年 ${month + 1}月`)
 
     const stats: Record<string, { count: number; type: string }> = {}
-    deps.getHistoryOrders().forEach((order) => {
-      const date = deps.getDateFromOrder(order)
-      if (date.getHours() < 5) date.setDate(date.getDate() - 1)
-      if (date.getFullYear() !== year || date.getMonth() !== month) {
-        return
-      }
+    const start = new Date(year, month, 1, 5, 0, 0, 0)
+    const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
+    await deps.loadItemStatsRange(start, end)
+    watchPublicItemStats(start, end, () => {
+      const stats: Record<string, { count: number; type: string }> = {}
+      Object.values(deps.readItemStatsRange(start, end)).forEach((dayStats) => {
+        Object.values(dayStats).forEach((item) => {
+          const name = normalizeItemName(item.displayName)
+          if (!stats[name]) {
+            stats[name] = {
+              count: 0,
+              type: item.type || deps.getItemCategoryType(name),
+            }
+          }
+          stats[name].count += item.qty || 0
+        })
+      })
 
-      order.items.forEach((item) => {
-        const name = normalizeItemName(item.name)
+      const barList: StatsRow[] = []
+      const bbqList: StatsRow[] = []
+
+      Object.entries(stats).forEach(([name, data]) => {
+        const target = data.type === 'bar' ? barList : bbqList
+        target.push({ name, count: data.count })
+      })
+
+      barList.sort((left, right) => right.count - left.count)
+      bbqList.sort((left, right) => right.count - left.count)
+
+      renderRankedList(barList, 'publicStatsBar', "<div style='padding:10px; color:#8d99ae;'>無資料</div>", false)
+      renderRankedList(bbqList, 'publicStatsBbq', "<div style='padding:10px; color:#8d99ae;'>無資料</div>", false)
+    })
+    Object.values(deps.readItemStatsRange(start, end)).forEach((dayStats) => {
+      Object.values(dayStats).forEach((item) => {
+        const name = normalizeItemName(item.displayName)
         if (!stats[name]) {
           stats[name] = {
             count: 0,
             type: item.type || deps.getItemCategoryType(name),
           }
         }
-        stats[name].count += item.count ?? 1
+        stats[name].count += item.qty || 0
       })
     })
 
@@ -521,15 +647,7 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
         return
       }
 
-      const historyOrders = deps.getHistoryOrders()
-      const idxInHistory = historyOrders.indexOf(target)
-      if (idxInHistory === -1) {
-        alert('刪除失敗：索引不存在')
-        return
-      }
-
-      historyOrders.splice(idxInHistory, 1)
-      await deps.saveAllToCloud({ historyOrders })
+      await deps.deleteClosedOrder(target)
       showHistory()
     } catch (error) {
       alert(`刪除失敗：${getErrorMessage(error)}`)
@@ -539,7 +657,7 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
   return {
     changeStatsMonth,
     deleteSingleOrder,
-    filterOrders,
+    filterOrders: filterOrdersFromCache,
     generateReport,
     openItemStatsPage,
     renderCalendar,
@@ -547,6 +665,8 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     renderPublicStats,
     reprintOrder,
     showHistory,
+    stopAllWatches,
     toggleHistoryView,
+    watchHistory,
   }
 }

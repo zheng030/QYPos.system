@@ -5,7 +5,13 @@ export type PosPrice = number | string
 export type PosInventoryMap = Record<string, boolean | undefined>
 export type PosItemCostsMap = Record<string, number | undefined>
 export type PosItemPricesMap = Record<string, PosPrice | undefined>
-export type PosOwnerPasswordsMap = Record<string, string>
+export type PosOwnerAuthRecord = {
+  passwordHash: string
+  passwordSalt: string
+  updatedAt?: number
+}
+export type PosOwnerAuthMap = Record<string, PosOwnerAuthRecord | undefined>
+export type PosOwnerPasswordLegacyMap = Record<string, string>
 export type PosTableStatusMap = Record<string, string | undefined>
 export type PosTableTimerMap = Record<string, number | undefined>
 export type PosTableSplitCounterMap = Record<string, number | undefined>
@@ -117,6 +123,7 @@ export type PosRevenueDetailItem = {
   name?: string
   price?: number
   cost?: number
+  qty?: number
   amount?: number
   seat?: string
   seq?: number | string
@@ -139,7 +146,6 @@ export type PosFinanceStats = {
 export type PosRevenueBucket = keyof PosRevenueDetails
 
 export type PosRootValueMap = {
-  historyOrders: PosOrder[]
   tableTimers: PosTableTimerMap
   tableCarts: PosTableCartsMap
   tableStatuses: PosTableStatusMap
@@ -152,7 +158,7 @@ export type PosRootValueMap = {
   attendanceRecords: AttendanceRecordsMap
   incomingOrders: PosIncomingOrdersMap
   tableBatchCounts: PosTableBatchCountMap
-  ownerPasswords: PosOwnerPasswordsMap
+  ownerPasswords: PosOwnerAuthMap
 }
 
 export type PosReceiptData = {
@@ -203,7 +209,6 @@ export type PosToastState = {
 }
 
 export type CorePosState = {
-  historyOrders: PosOrder[]
   tableTimers: PosTableTimerMap
   tableCarts: PosTableCartsMap
   tableStatuses: PosTableStatusMap
@@ -214,7 +219,7 @@ export type CorePosState = {
   inventory: PosInventoryMap
   attendanceEmployees: AttendanceEmployeesMap
   attendanceRecords: AttendanceRecordsMap
-  ownerPasswords: PosOwnerPasswordsMap
+  ownerPasswords: PosOwnerAuthMap
   incomingOrders: PosIncomingOrdersMap
   tableBatchCounts: PosTableBatchCountMap
   selectedTable: string | null
@@ -233,12 +238,10 @@ export type CorePosState = {
   isQrMode: boolean
   currentIncomingTable: string | null
   entryCartSignature: string
-  historyViewDate: Date
   isCartSimpleMode: boolean
   isHistorySimpleMode: boolean
   currentCategory: string | null
   currentFlavorSelection: FlavorSelection
-  latestVisibleOrders: PosOrder[] | null
   reprintItemsForModal: PosMergedCartItem[] | null
   syncLog: SyncLogRecord[]
 }

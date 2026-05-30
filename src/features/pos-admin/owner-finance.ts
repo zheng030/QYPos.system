@@ -1,3 +1,4 @@
+import type { V3DailySummary, V3DailySummaryRangeEvent } from '@/features/pos-data/rtdb-v3-types'
 import type {
   PosFinanceStats,
   PosItemCostsMap,
@@ -6,36 +7,43 @@ import type {
   PosMenuData,
   PosMenuItem,
   PosOrder,
+  PosOwnerAuthMap,
+  PosOwnerAuthRecord,
   PosOwnerMode,
   PosOwnerName,
-  PosOwnerPasswordsMap,
   PosReportRange,
   PosRevenueBucket,
   PosRevenueDetailItem,
   PosRevenueDetails,
 } from '@/features/pos-kernel/types'
+import type { AuthGate } from '@/shared/auth-gate'
 import { findElement, requireElement, requireInput } from '@/shared/dom-helpers'
 import { toNumberValue } from '@/shared/errors'
 import { getLegacyElement } from '@/shared/legacy-dom'
+import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
 
 type OwnerFinanceDeps = {
-  ensureSubscriptions: (roots: string[]) => Promise<void>
+  ensureSubscriptions: () => Promise<void>
+  authGate: AuthGate
   getBusinessDate: (date: Date | string | number) => number
-  getCostByItemName: (itemName: string, variant?: string) => number
   getDateFromOrder: (order: PosOrder) => Date
-  getHistoryOrders: () => PosOrder[]
-  getHistoryViewDate: () => Date
   getItemCategoryType: (name: string) => string
   getItemCosts: () => PosItemCostsMap
   getItemPrices: () => PosItemPricesMap
-  getOrdersByDate: (targetDate: Date) => PosOrder[]
-  getOwnerPasswords: () => PosOwnerPasswordsMap
+  listClosedOrdersByDay: (targetDate: Date) => Promise<PosOrder[]>
+  listClosedOrdersByRange: (start: Date, endExclusive: Date) => Promise<PosOrder[]>
+  loadDailySummariesRange: (start: Date, endExclusive: Date) => Promise<Record<string, V3DailySummary>>
+  watchDailySummariesRange: (
+    start: Date,
+    endExclusive: Date,
+    listener: (event: V3DailySummaryRangeEvent) => void
+  ) => () => void
+  readDailySummariesRange: (start: Date, endExclusive: Date) => Record<string, V3DailySummary>
+  getOwnerPasswords: () => PosOwnerAuthMap
   hideAll: () => void
-  initHistoryDate: () => void
   menuData: PosMenuData
   foodOptionVariants: Record<string, string[]>
-  saveAllToCloud: (updates: Record<string, unknown>) => Promise<void>
-  setHistoryViewDate: (date: Date) => void
+  saveOwnerPassword: (ownerName: string, record: PosOwnerAuthRecord) => Promise<void>
   updateItemData: (name: string, type: string, value: string) => Promise<void>
 }
 
@@ -44,6 +52,7 @@ type DailyFinanceEntry = {
   barCost: number
   bbqRev: number
   bbqCost: number
+  orderCount: number
 }
 
 type CostRowOptions = {
@@ -72,6 +81,16 @@ function setDisplay(id: string, display: string) {
   const element = findElement(id)
   if (element) {
     element.style.display = display
+  }
+}
+
+async function createOwnerPasswordRecord(password: string): Promise<PosOwnerAuthRecord> {
+  const passwordSalt = randomSaltBase64(16)
+  const passwordHash = await pbkdf2Hash(password, passwordSalt)
+  return {
+    passwordHash,
+    passwordSalt,
+    updatedAt: Date.now(),
   }
 }
 
@@ -163,7 +182,7 @@ function buildRevenueDetails() {
     bbq: [],
     unknown: [],
     extra: [],
-  } satisfies PosRevenueDetails
+  } as PosRevenueDetails
 }
 
 function setFinanceSummary(stats: PosFinanceStats, titleText: string) {
@@ -191,6 +210,29 @@ function setFinanceSummary(stats: PosFinanceStats, titleText: string) {
 export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
   let dailyFinancialData: Record<string, DailyFinanceEntry> = {}
   let revenueDetails: PosRevenueDetails = buildRevenueDetails()
+  let activeFinanceRange: { start: Date; end: Date; titleText: string } | null = null
+  let stopFinanceSummaryWatch: (() => void) | null = null
+  let stopFinanceCalendarWatch: (() => void) | null = null
+  let historyViewDate = new Date()
+
+  if (historyViewDate.getHours() < 5) {
+    historyViewDate.setDate(historyViewDate.getDate() - 1)
+  }
+
+  function resetFinanceWatch() {
+    stopFinanceSummaryWatch?.()
+    stopFinanceSummaryWatch = null
+  }
+
+  function resetFinanceCalendarWatch() {
+    stopFinanceCalendarWatch?.()
+    stopFinanceCalendarWatch = null
+  }
+
+  function stopAllWatches() {
+    resetFinanceWatch()
+    resetFinanceCalendarWatch()
+  }
 
   function openOwnerLogin(mode: PosOwnerMode | string) {
     sessionStorage.setItem('ownerMode', mode)
@@ -201,11 +243,13 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     getLegacyElement('ownerLoginModal').style.display = 'none'
   }
 
-  function checkOwner(name: string) {
+  async function checkOwner(name: string) {
     const password = prompt(`請輸入 ${name} 的密碼：`)
-    if (password === deps.getOwnerPasswords()[name]) {
+    const ownerName = name as PosOwnerName
+    const isValid = await deps.authGate.verifyOwnerLogin(ownerName, password ?? '', deps.getOwnerPasswords())
+    if (isValid) {
       closeOwnerModal()
-      void openConfidentialPage(name as PosOwnerName)
+      void openConfidentialPage(ownerName)
       return
     }
     alert('❌ 密碼錯誤！')
@@ -215,7 +259,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     deps.hideAll()
     setDisplay('confidentialPage', 'block')
     setText('ownerWelcome', ownerName)
-    await deps.ensureSubscriptions(['historyOrders', 'itemCosts', 'itemPrices'])
+    await deps.ensureSubscriptions()
     setDisplay('financeDashboard', 'none')
 
     const currentLoginMode = (sessionStorage.getItem('ownerMode') || 'finance') as PosOwnerMode
@@ -230,8 +274,10 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     setDisplay('costInputSection', 'none')
     setDisplay('financeCalendarSection', 'block')
     setText('confidentialTitle', '財務與詳細訂單')
-    deps.initHistoryDate()
-    renderConfidentialCalendar(ownerName)
+    const now = new Date()
+    if (now.getHours() < 5) now.setDate(now.getDate() - 1)
+    historyViewDate = new Date(now)
+    await renderConfidentialCalendar(ownerName)
   }
 
   function getTargetCategories(ownerName: PosOwnerName) {
@@ -337,63 +383,43 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     getLegacyElement('financeDetailModal').style.display = 'flex'
   }
 
-  function changeOwnerMonth(offset: number) {
-    const nextDate = new Date(deps.getHistoryViewDate())
-    nextDate.setMonth(nextDate.getMonth() + offset)
-    deps.setHistoryViewDate(nextDate)
-    const owner = findElement('ownerWelcome')?.innerText as PosOwnerName | undefined
-    if (!owner) return
-    renderConfidentialCalendar(owner)
-    setDisplay('ownerOrderListSection', 'none')
-    const specificBtn = findElement('finBtnSpecific')
-    if (specificBtn) {
-      specificBtn.style.display = 'none'
-      specificBtn.dataset.date = ''
+  function buildFinanceEntry(summary: V3DailySummary): DailyFinanceEntry {
+    return {
+      barRev: summary.barRevenue || 0,
+      barCost: summary.barCost || 0,
+      bbqRev: summary.bbqRevenue || 0,
+      bbqCost: summary.bbqCost || 0,
+      orderCount: summary.orderCount || 0,
     }
   }
 
-  function renderConfidentialCalendar(ownerName: PosOwnerName | string) {
-    document.querySelectorAll('.finance-controls button').forEach((button) => {
-      button.classList.remove('active')
+  function collectFinanceMonthState(start: Date, end: Date, year: number, month: number) {
+    const nextDailyFinancialData: Record<string, DailyFinanceEntry> = {}
+    const nextMonthStats = buildFinanceStats()
+    Object.entries(deps.readDailySummariesRange(start, end)).forEach(([bizDateKey, summary]) => {
+      const day = Number(bizDateKey.slice(-2))
+      const dateStr = `${year}/${month + 1}/${day}`
+      nextDailyFinancialData[dateStr] = buildFinanceEntry(summary)
+      nextMonthStats.barRev += summary.barRevenue || 0
+      nextMonthStats.barCost += summary.barCost || 0
+      nextMonthStats.bbqRev += summary.bbqRevenue || 0
+      nextMonthStats.bbqCost += summary.bbqCost || 0
+      nextMonthStats.unknownRev += summary.unknownRevenue || 0
+      nextMonthStats.unknownCost += summary.unknownCost || 0
+      nextMonthStats.extraRev += summary.extraRevenue || 0
+      nextMonthStats.totalRev += summary.paidTotal || 0
     })
-    findElement('finBtnMonth')?.classList.add('active')
-    setText('financeTitle', '🏠 全店總計 (該月)')
+    return { nextDailyFinancialData, nextMonthStats }
+  }
 
-    const historyViewDate = deps.getHistoryViewDate()
-    const year = historyViewDate.getFullYear()
-    const month = historyViewDate.getMonth()
-    setText('finCalendarTitle', `${year}年 ${month + 1}月`)
-
-    dailyFinancialData = {}
-    const dailyCounts: Record<number, number> = {}
-    const monthStats = buildFinanceStats()
-
-    deps.getHistoryOrders().forEach((order) => {
-      const date = deps.getDateFromOrder(order)
-      if (date.getHours() < 5) date.setDate(date.getDate() - 1)
-      if (date.getFullYear() !== year || date.getMonth() !== month) {
-        return
-      }
-
-      const dayKey = date.getDate()
-      const dateStr = `${year}/${month + 1}/${dayKey}`
-      if (!dailyFinancialData[dateStr]) {
-        dailyFinancialData[dateStr] = { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 }
-      }
-      dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1
-
-      const entry = dailyFinancialData[dateStr]
-      entry.barRev += order.total || 0
-      monthStats.barRev += order.total || 0
-      monthStats.totalRev += order.total || 0
-    })
-
-    setFinanceSummary(monthStats, '🏠 全店總計 (本月)')
-    renderSummaryCardVisibility(ownerName as PosOwnerName)
-
+  function renderConfidentialCalendarGrid(ownerName: PosOwnerName | string, year: number, month: number) {
     const firstDay = new Date(year, month, 1).getDay()
     const daysInMonth = new Date(year, month + 1, 0).getDate()
     const grid = requireElement('finCalendarGrid')
+    const selectedDateKey = Array.from(grid.querySelectorAll<HTMLElement>('.calendar-day.active'))
+      .map((cell) => cell.dataset.dateKey || '')
+      .find(Boolean)
+
     grid.innerHTML = ''
 
     for (let index = 0; index < firstDay; index += 1) {
@@ -407,20 +433,22 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     for (let day = 1; day <= daysInMonth; day += 1) {
       const cell = document.createElement('div')
       cell.className = 'calendar-day'
-      if (day === today.getDate() && month === today.getMonth()) {
+      const dateStr = `${year}/${month + 1}/${day}`
+      if (selectedDateKey && selectedDateKey === dateStr) {
+        cell.classList.add('active')
+      } else if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
         cell.classList.add('active')
       }
 
-      const dateStr = `${year}/${month + 1}/${day}`
-      const stats = dailyFinancialData[dateStr] || { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0 }
+      const stats = dailyFinancialData[dateStr] || { barRev: 0, barCost: 0, bbqRev: 0, bbqCost: 0, orderCount: 0 }
       const showRev =
         ownerName === '小飛' ? stats.barRev : ownerName === '威志' ? stats.bbqRev : stats.barRev + stats.bbqRev
 
       let htmlContent = `<div class="day-num">${day}</div>`
       if (showRev > 0) {
         htmlContent += `<div style="font-size:12px; color:#4361ee; font-weight:bold;">$${showRev}</div>`
-        if (dailyCounts[day]) {
-          htmlContent += `<div style="font-size:10px; color:#8d99ae;">(${dailyCounts[day]}單)</div>`
+        if (stats.orderCount > 0) {
+          htmlContent += `<div style="font-size:10px; color:#8d99ae;">(${stats.orderCount}單)</div>`
         }
         cell.style.backgroundColor = '#e0e7ff'
       }
@@ -433,6 +461,68 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       cell.innerHTML = htmlContent
       grid.appendChild(cell)
     }
+  }
+
+  function collectFinanceStatsFromCache(start: Date, end: Date) {
+    const stats = buildFinanceStats()
+    Object.values(deps.readDailySummariesRange(start, end)).forEach((summary) => {
+      stats.barRev += summary.barRevenue || 0
+      stats.barCost += summary.barCost || 0
+      stats.bbqRev += summary.bbqRevenue || 0
+      stats.bbqCost += summary.bbqCost || 0
+      stats.unknownRev += summary.unknownRevenue || 0
+      stats.unknownCost += summary.unknownCost || 0
+      stats.extraRev += summary.extraRevenue || 0
+      stats.totalRev += summary.paidTotal || 0
+    })
+    return stats
+  }
+
+  async function changeOwnerMonth(offset: number) {
+    const nextDate = new Date(historyViewDate)
+    nextDate.setMonth(nextDate.getMonth() + offset)
+    historyViewDate = nextDate
+    const owner = findElement('ownerWelcome')?.innerText as PosOwnerName | undefined
+    if (!owner) return
+    await renderConfidentialCalendar(owner)
+    setDisplay('ownerOrderListSection', 'none')
+    const specificBtn = findElement('finBtnSpecific')
+    if (specificBtn) {
+      specificBtn.style.display = 'none'
+      specificBtn.dataset.date = ''
+    }
+  }
+
+  async function renderConfidentialCalendar(ownerName: PosOwnerName | string) {
+    document.querySelectorAll('.finance-controls button').forEach((button) => {
+      button.classList.remove('active')
+    })
+    findElement('finBtnMonth')?.classList.add('active')
+    setText('financeTitle', '🏠 全店總計 (該月)')
+
+    const year = historyViewDate.getFullYear()
+    const month = historyViewDate.getMonth()
+    setText('finCalendarTitle', `${year}年 ${month + 1}月`)
+
+    const start = new Date(year, month, 1, 5, 0, 0, 0)
+    const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
+    activeFinanceRange = { start, end, titleText: '🏠 全店總計 (本月)' }
+    resetFinanceWatch()
+    await deps.loadDailySummariesRange(start, end)
+    const { nextDailyFinancialData, nextMonthStats } = collectFinanceMonthState(start, end, year, month)
+    dailyFinancialData = nextDailyFinancialData
+    setFinanceSummary(nextMonthStats, '🏠 全店總計 (本月)')
+    renderSummaryCardVisibility(ownerName as PosOwnerName)
+    renderConfidentialCalendarGrid(ownerName, year, month)
+    resetFinanceCalendarWatch()
+    stopFinanceCalendarWatch = deps.watchDailySummariesRange(start, end, () => {
+      const nextState = collectFinanceMonthState(start, end, year, month)
+      dailyFinancialData = nextState.nextDailyFinancialData
+      if (activeFinanceRange?.titleText === '🏠 全店總計 (本月)') {
+        setFinanceSummary(nextState.nextMonthStats, activeFinanceRange.titleText)
+      }
+      renderConfidentialCalendarGrid(ownerName, year, month)
+    })
   }
 
   function setActiveFinanceRange(range: PosReportRange | string) {
@@ -512,22 +602,12 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     return { start, end, titleText }
   }
 
-  function updateFinanceStats(range: PosReportRange | string, _targetDate: Date | null = null) {
-    setActiveFinanceRange(range)
-    const { start, end, titleText } = resolveFinanceRange(range)
-    const bizStart = deps.getBusinessDate(start)
-    const bizEnd = deps.getBusinessDate(end)
+  async function loadRevenueDetailsForRange(start: Date, end: Date) {
+    const orders = await deps.listClosedOrdersByRange(start, end)
+    const nextDetails = buildRevenueDetails()
 
-    const stats = buildFinanceStats()
-    revenueDetails = buildRevenueDetails()
-
-    deps.getHistoryOrders().forEach((order) => {
+    orders.forEach((order) => {
       const date = deps.getDateFromOrder(order)
-      const biz = deps.getBusinessDate(date)
-      if (biz < bizStart || biz >= bizEnd) {
-        return
-      }
-
       const total = order.total || 0
       let barSum = 0
       let bbqSum = 0
@@ -536,40 +616,33 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       order.items.forEach((item) => {
         const name = normalizeItemName(item.name)
         const type = item.type || deps.getItemCategoryType(name)
-        const itemPrice = toNumberValue(item.price)
-        const cost = deps.getCostByItemName(item.name, item.variant)
+        const qty = Math.max(1, toNumberValue(item.count ?? 1))
+        const itemPrice = toNumberValue(item.price) * qty
+        const cost = toNumberValue(typeof item.cost === 'number' ? item.cost : 0) * qty
         const detail: PosRevenueDetailItem = {
           name,
           price: itemPrice,
           cost,
+          qty,
           time: order.time || date.toLocaleString('zh-TW', { hour12: false }),
           seq: order.formattedSeq || order.seq || '',
         }
 
         if (type === 'bar') {
           barSum += itemPrice
-          stats.barCost += cost
-          revenueDetails.bar.push(detail)
+          nextDetails.bar.push(detail)
         } else if (type === 'bbq') {
           bbqSum += itemPrice
-          stats.bbqCost += cost
-          revenueDetails.bbq.push(detail)
+          nextDetails.bbq.push(detail)
         } else {
           unknownSum += itemPrice
-          stats.unknownCost += cost
-          revenueDetails.unknown.push(detail)
+          nextDetails.unknown.push(detail)
         }
       })
 
       const adjustment = total - (barSum + bbqSum + unknownSum)
-      stats.barRev += barSum
-      stats.bbqRev += bbqSum
-      stats.unknownRev += unknownSum
-      stats.extraRev += adjustment
-      stats.totalRev += total
-
       if (adjustment !== 0) {
-        revenueDetails.extra.push({
+        nextDetails.extra.push({
           amount: adjustment,
           seat: order.seat || '',
           time: order.time || date.toLocaleString('zh-TW', { hour12: false }),
@@ -578,10 +651,24 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       }
     })
 
-    setFinanceSummary(stats, titleText)
+    revenueDetails = nextDetails
   }
 
-  function openRevenueModal(type: string) {
+  async function updateFinanceStats(range: PosReportRange | string, _targetDate: Date | null = null) {
+    setActiveFinanceRange(range)
+    const { start, end, titleText } = resolveFinanceRange(range)
+    activeFinanceRange = { start, end, titleText }
+    await deps.loadDailySummariesRange(start, end)
+    resetFinanceWatch()
+    stopFinanceSummaryWatch = deps.watchDailySummariesRange(start, end, () => {
+      setFinanceSummary(collectFinanceStatsFromCache(start, end), titleText)
+    })
+
+    revenueDetails = buildRevenueDetails()
+    setFinanceSummary(collectFinanceStatsFromCache(start, end), titleText)
+  }
+
+  async function openRevenueModal(type: string) {
     const bucket = (['bar', 'bbq', 'unknown', 'extra'].includes(type) ? type : 'bar') as PosRevenueBucket
     const map: Record<PosRevenueBucket, string> = {
       bar: '🍺 酒吧明細',
@@ -591,6 +678,9 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     }
 
     setText('revenueDetailTitle', map[bucket])
+    if (activeFinanceRange) {
+      await loadRevenueDetailsForRange(activeFinanceRange.start, activeFinanceRange.end)
+    }
     const data = revenueDetails[bucket]
     if (data.length === 0) {
       setHtml('revenueDetailList', "<div class='empty-hint'>目前區間沒有此類品項</div>")
@@ -618,7 +708,8 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
                 typeof item.cost === 'number' && item.cost > 0
                   ? `<span class="detail-price" style="color:#ef476f;">成本 $${item.cost}</span>`
                   : ''
-              return `<div class="detail-item-row"><span class="detail-price">#${item.seq}</span><div class="detail-name">${item.name}</div><div class="detail-info"><span class="detail-price">$${item.price}</span>${costText}<span class="detail-time">${item.time || '--:--'}</span></div></div>`
+              const qtyText = item.qty && item.qty > 1 ? ` x${item.qty}` : ''
+              return `<div class="detail-item-row"><span class="detail-price">#${item.seq}</span><div class="detail-name">${item.name}${qtyText}</div><div class="detail-info"><span class="detail-price">$${item.price}</span>${costText}<span class="detail-time">${item.time || '--:--'}</span></div></div>`
             })
             .join('')
 
@@ -630,11 +721,11 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     getLegacyElement('revenueDetailModal').style.display = 'none'
   }
 
-  function showOwnerDetailedOrders(year: number, month: number, day: number) {
+  async function showOwnerDetailedOrders(year: number, month: number, day: number) {
     const targetDate = new Date(year, month, day)
     setDisplay('ownerOrderListSection', 'block')
 
-    const targetOrders = [...deps.getOrdersByDate(targetDate)].reverse()
+    const targetOrders = [...(await deps.listClosedOrdersByDay(targetDate))].reverse()
     if (targetOrders.length === 0) {
       setHtml('ownerOrderList', "<div style='padding:20px; text-align:center;'>無資料</div>")
       return
@@ -693,7 +784,8 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       alert('找不到該帳號')
       return
     }
-    if (oldPwd !== ownerPasswords[ownerName]) {
+    const isValid = await deps.authGate.verifyOwnerPasswordChange(ownerName as PosOwnerName, oldPwd, ownerPasswords)
+    if (!isValid) {
       alert('舊密碼錯誤')
       return
     }
@@ -706,8 +798,9 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       return
     }
 
-    ownerPasswords[ownerName] = newPwd
-    await deps.saveAllToCloud({ [`ownerPasswords/${ownerName}`]: newPwd })
+    const nextRecord = await createOwnerPasswordRecord(newPwd)
+    ownerPasswords[ownerName] = nextRecord
+    await deps.saveOwnerPassword(ownerName, nextRecord)
     alert('✅ 密碼已更新')
     closeChangePasswordModal()
   }
@@ -727,6 +820,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     openRevenueModal,
     renderConfidentialCalendar,
     showOwnerDetailedOrders,
+    stopAllWatches,
     updateFinancialPage,
     updateFinanceStats,
   }
