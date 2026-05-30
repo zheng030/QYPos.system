@@ -43,19 +43,25 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           const sales = context.getService<{ renderTableGrid(): Promise<void> }>('pos-sales')
           await sales?.renderTableGrid()
         },
+        renderMenu: () => {
+          const sales = context.getService<{ renderMenu(): void }>('pos-sales')
+          sales?.renderMenu()
+        },
         renderCart: () => {
           const sales = context.getService<{ renderCart(): void }>('pos-sales')
           sales?.renderCart()
         },
-        showIncomingOrderModal: (table, orderData) => {
-          const sales = context.getService<{ showIncomingOrderModal(table: string, orderData: unknown): void }>(
-            'pos-sales'
-          )
-          sales?.showIncomingOrderModal(table, orderData)
+        renderProductManagement: () => {
+          const admin = context.getService<{ renderProductManagement(): void }>('pos-admin')
+          admin?.renderProductManagement()
         },
-        closeIncomingOrderModal: () => {
-          const sales = context.getService<{ closeIncomingOrderModal(): void }>('pos-sales')
-          sales?.closeIncomingOrderModal()
+        showPendingBatchOverlay: () => {
+          const sales = context.getService<{ showPendingBatchOverlay(): void }>('pos-sales')
+          sales?.showPendingBatchOverlay()
+        },
+        closePendingBatchOverlay: () => {
+          const sales = context.getService<{ closePendingBatchOverlay(): void }>('pos-sales')
+          sales?.closePendingBatchOverlay()
         },
         authGate,
       })
@@ -65,9 +71,9 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         state: kernel.state,
         onLiveStateChange(roots) {
           emitDataChange(roots)
-          void uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
-          if (roots.includes('incomingOrders')) {
-            uiBridge.checkIncomingOrders()
+          void uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
+          if (roots.includes('pendingBatches')) {
+            uiBridge.checkPendingBatches()
           }
         },
       })
@@ -101,23 +107,23 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         attendance: attendanceService,
         async startStaffLive() {
           await repository.startStaffLive()
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
-          uiBridge.checkIncomingOrders()
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
+          uiBridge.checkPendingBatches()
         },
         async startTableLiveSession(mode, table) {
           await repository.startTableLiveSession(mode, table)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
         stopTableLiveSession() {
           repository.stopTableLiveSession()
         },
         async ensureCatalog() {
           await repository.ensureCatalog()
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
         async ensureOwnerAuth() {
           await repository.ensureOwnerAuth()
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
         async listClosedOrdersByDay(targetDate) {
           const orders = await repository.listClosedOrdersByDay(targetDate)
@@ -156,39 +162,57 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         readItemStatsRange(start, endExclusive) {
           return repository.readItemStatsRange(start, endExclusive)
         },
-        async saveTableDraft(table, cart, customer) {
-          const result = await repository.saveTableDraft(table, cart, customer)
-          emitDataChange(['live'])
+        async saveCustomerDraft(table, entries, customer) {
+          const result = await repository.saveCustomerDraft(table, entries, customer)
+          emitDataChange(['tableDrafts'])
           await uiBridge.refreshUiAfterDataChange()
           return result
         },
-        async submitIncomingOrder(table, cart, customer) {
-          await repository.submitIncomingOrder(table, cart, customer)
-          emitDataChange(['incomingOrders'])
+        async submitCustomerDraft(table, entries, customer) {
+          const batch = await repository.submitCustomerDraft(table, entries, customer)
+          emitDataChange(['tableDrafts', 'pendingBatches'])
+          await uiBridge.refreshUiAfterDataChange()
+          uiBridge.checkPendingBatches()
+          return batch
+        },
+        async discardCustomerDraft(table) {
+          await repository.discardCustomerDraft(table)
+          emitDataChange(['tableDrafts'])
           await uiBridge.refreshUiAfterDataChange()
         },
-        async acceptIncomingOrder(table, requestId) {
-          const result = await repository.acceptIncomingOrder(table, requestId)
-          emitDataChange(['incomingOrders', 'tableCarts'])
+        async acceptPendingBatch(table, batchId) {
+          const batch = await repository.acceptPendingBatch(table, batchId)
+          emitDataChange(['pendingBatches', 'submittedBatches'])
           await uiBridge.refreshUiAfterDataChange()
-          uiBridge.checkIncomingOrders()
-          return result
+          uiBridge.checkPendingBatches()
+          return batch
         },
-        async rejectIncomingOrder(table, requestId) {
-          await repository.rejectIncomingOrder(table, requestId)
-          emitDataChange(['incomingOrders'])
+        async rejectPendingBatch(table, batchId) {
+          await repository.rejectPendingBatch(table, batchId)
+          emitDataChange(['tableDrafts', 'pendingBatches'])
           await uiBridge.refreshUiAfterDataChange()
-          uiBridge.checkIncomingOrders()
+          uiBridge.checkPendingBatches()
         },
-        async checkoutTable(payload) {
-          const order = await repository.checkoutTable(payload)
-          emitDataChange(['historyOrders', 'tableCarts'])
+        async saveStaffDraft(table, entries) {
+          await repository.saveStaffDraft(table, entries)
+          emitDataChange(['staffDrafts'])
           await uiBridge.refreshUiAfterDataChange()
-          return order
         },
-        async checkoutSplit(payload) {
-          const order = await repository.checkoutSplit(payload)
-          emitDataChange(['historyOrders', 'tableCarts'])
+        async createStaffBatch(table, entries, customer) {
+          const batch = await repository.createStaffBatch(table, entries, customer)
+          emitDataChange(['submittedBatches', 'staffDrafts'])
+          await uiBridge.refreshUiAfterDataChange()
+          return batch
+        },
+        async updateSubmittedBatch(table, batchId, entries) {
+          const batch = await repository.updateSubmittedBatch(table, batchId, entries)
+          emitDataChange(['submittedBatches'])
+          await uiBridge.refreshUiAfterDataChange()
+          return batch
+        },
+        async checkoutSubmittedBatches(payload) {
+          const order = await repository.checkoutSubmittedBatches(payload)
+          emitDataChange(['historyOrders', 'tableDrafts', 'pendingBatches', 'submittedBatches'])
           await uiBridge.refreshUiAfterDataChange()
           return order
         },
@@ -211,46 +235,39 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         emitChange(roots) {
           emitDataChange(roots)
         },
-        toggleStockStatus: async (name, checked) => {
-          await repository.updateInventory(name, checked)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+        toggleStockStatus: async (itemId, checked) => {
+          const item = kernel.helpers.getItemById(itemId)
+          if (!item) {
+            return
+          }
+          const childKeys = kernel.helpers.getOwnedSelectionInventoryKeys(itemId)
+          const batch = Object.fromEntries([item.inventoryKey, ...childKeys].map((key) => [key, checked]))
+          await repository.updateInventoryBatch(batch)
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
-        toggleParentWithOptions: async (name, checked) => {
-          const batch: Record<string, boolean> = { [name]: checked }
-          for (const option of kernel.foodOptionVariants[name] || []) {
-            batch[`${name}::${option}`] = checked
+        toggleInventoryBatch: async (batch) => {
+          if (Object.keys(batch).length === 0) {
+            return
           }
           await repository.updateInventoryBatch(batch)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
-        toggleOptionStock: async (name, option, checked) => {
-          kernel.state.inventory[`${name}::${option}`] = checked
-          await repository.updateInventory(`${name}::${option}`, checked)
-          if (kernel.foodOptionVariants[name]) {
-            const hasAny = kernel.foodOptionVariants[name].some(
-              (variant) => kernel.state.inventory[`${name}::${variant}`] !== false
-            )
-            kernel.state.inventory[name] = hasAny
-            await repository.updateInventory(name, hasAny)
+        toggleOptionStock: async (_itemId, optionKey, checked) => {
+          await repository.updateInventory(optionKey, checked)
+          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
+        },
+        updateItemData: async (itemId, type, value) => {
+          const numericValue = Number.parseInt(value, 10)
+          const safeValue = Number.isFinite(numericValue) ? numericValue : 0
+          if (type === 'cost') {
+            await repository.updateItemCost(itemId, safeValue)
+          } else {
+            await repository.updateItemPrice(itemId, safeValue)
           }
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
-        },
-        updateItemData: async (name, type, value) => {
-          let numericValue = parseInt(value, 10)
-          if (Number.isNaN(numericValue)) numericValue = 0
-          if (type === 'cost') await repository.updateItemCost(name, numericValue)
-          else await repository.updateItemPrice(name, numericValue)
           await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
         },
         checkLogin: uiBridge.checkLogin,
-        checkIncomingOrders: uiBridge.checkIncomingOrders,
-        fixAllOrderIds: async () => {
-          const sales = context.getService<{ fixAllOrderIds(): Promise<void> }>('pos-sales')
-          if (!sales) {
-            throw new Error('POS sales service is not ready')
-          }
-          await sales.fixAllOrderIds()
-        },
+        checkPendingBatches: uiBridge.checkPendingBatches,
         downloadSyncLog() {
           const admin = context.getService<{ downloadSyncLog(): void }>('pos-admin')
           admin?.downloadSyncLog()
@@ -262,6 +279,7 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
 
       context.registerService(POS_DATA_SERVICE_KEY, service)
       context.registerService(ATTENDANCE_SERVICE_KEY, attendanceService)
+      context.registerService('pos-data', service)
     },
   }
 }

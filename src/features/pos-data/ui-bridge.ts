@@ -1,4 +1,4 @@
-import type { CorePosState, PosIncomingOrder, PosSystemPasswordConfig } from '@/features/pos-kernel/types'
+import type { CorePosState, PosSystemPasswordConfig } from '@/features/pos-kernel/types'
 import type { AuthGate } from '@/shared/auth-gate'
 import { findElement, requireInput } from '@/shared/dom-helpers'
 import { getErrorMessage } from '@/shared/errors'
@@ -8,27 +8,17 @@ type UiBridgeDeps = {
   systemPassword: PosSystemPasswordConfig
   getShowApp: () => (options?: { skipHome?: boolean; skipStaffLive?: boolean }) => Promise<void>
   renderTableGrid: () => Promise<void> | void
+  renderMenu: () => void
   renderCart: () => void
-  showIncomingOrderModal: (table: string, orderData: PosIncomingOrder) => void
-  closeIncomingOrderModal: () => void
+  renderProductManagement: () => void
+  showPendingBatchOverlay: () => void
+  closePendingBatchOverlay: () => void
   authGate: AuthGate
 }
 
 type RefreshUiOptions = {
   includeAnalytics?: boolean
   includeAdmin?: boolean
-}
-
-function normalizeCartCollection(cart: CorePosState['tableCarts'][string]) {
-  if (Array.isArray(cart)) return [...cart]
-  if (cart && typeof cart === 'object') return Object.values(cart)
-  return []
-}
-
-function normalizeIncomingQueue(queue: CorePosState['incomingOrders'][string]) {
-  if (Array.isArray(queue)) return [...queue]
-  if (queue && typeof queue === 'object') return Object.values(queue)
-  return []
 }
 
 function isVisible(element: HTMLElement | null, display: string) {
@@ -55,40 +45,44 @@ export function createUiBridgeModule(deps: UiBridgeDeps) {
       return
     }
 
-    const table = deps.state.selectedTable
-    const currentCart = normalizeCartCollection(deps.state.tableCarts[table])
+    deps.renderMenu()
+
     if (document.body.classList.contains('customer-mode')) {
-      deps.state.sentItems = currentCart.map((item) => ({ ...item, isSent: true }))
-      sessionStorage.setItem('sentItems', JSON.stringify(deps.state.sentItems))
-      deps.state.entryCartSignature = JSON.stringify(deps.state.cart || [])
       deps.renderCart()
       return
     }
 
-    deps.state.cart = currentCart
-    deps.state.entryCartSignature = JSON.stringify(deps.state.cart || [])
     syncCurrentTableInputs()
     deps.renderCart()
   }
 
-  async function refreshUiAfterDataChange(_options: RefreshUiOptions = {}) {
+  function refreshAdminState(options: RefreshUiOptions) {
+    if (options.includeAdmin === false) return
+    const productPage = findElement('productPage')
+    if (isVisible(productPage, 'block')) {
+      deps.renderProductManagement()
+    }
+  }
+
+  async function refreshUiAfterDataChange(options: RefreshUiOptions = {}) {
     const tableSelect = findElement('tableSelect')
     if (isVisible(tableSelect, 'block')) {
       await deps.renderTableGrid()
     }
 
     refreshOrderPageState()
+    refreshAdminState(options)
   }
 
-  function checkIncomingOrders() {
-    for (const [table, queue] of Object.entries(deps.state.incomingOrders)) {
-      const items = normalizeIncomingQueue(queue)
-      if (items.length > 0) {
-        deps.showIncomingOrderModal(table, items[0])
+  function checkPendingBatches() {
+    for (const [_table, batches] of Object.entries(deps.state.pendingBatches)) {
+      const firstBatch = batches?.[0]
+      if (firstBatch) {
+        deps.showPendingBatchOverlay()
         return
       }
     }
-    deps.closeIncomingOrderModal()
+    deps.closePendingBatchOverlay()
   }
 
   async function checkLogin() {
@@ -113,7 +107,7 @@ export function createUiBridgeModule(deps: UiBridgeDeps) {
 
   return {
     refreshUiAfterDataChange,
-    checkIncomingOrders,
+    checkPendingBatches,
     checkLogin,
   }
 }

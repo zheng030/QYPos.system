@@ -1,116 +1,44 @@
-import type { FlavorSelection } from '@/shared/flavor'
+import { groupOrderLines } from '@/shared/grouped-order-lines'
 import type {
-  PosCartItem,
+  PosBuilderSelectionMap,
+  PosCategoryKey,
+  PosFinanceStats,
   PosInventoryMap,
   PosItemCostsMap,
-  PosMenuData,
-  PosMenuItem,
-  PosMenuSection,
-  PosMergedCartItem,
+  PosMenuMeta,
   PosOrder,
+  PosOrderEntry,
+  PosOrderLine,
+  PosRevenueDetails,
+  PosSelectionRule,
 } from './types'
 
 type CatalogHelpersDeps = {
-  foodOptionVariants: Record<string, string[]>
   getInventory: () => PosInventoryMap
   getItemCosts: () => PosItemCostsMap
-  menuData: PosMenuData
+  getItemPrices: () => Record<string, number | undefined>
+  menuMeta: PosMenuMeta
 }
 
-type ItemWithFlavor = {
-  name?: string
-  price?: number | string
-  flavor?: FlavorSelection | null
-  isTreat?: boolean
-  batchIdx?: number
-  batchId?: number | string
-  sentAt?: number | string
-  incomingIdx?: number
-  isSent?: boolean
-  count?: number
+function stableStringify(value: unknown): string {
+  if (!value || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+    .join(',')}}`
 }
 
-function isMenuItem(value: unknown): value is PosMenuItem {
-  return Boolean(value && typeof value === 'object' && 'name' in value)
+function getSelectionRuleMap(rules: PosSelectionRule[] | undefined) {
+  return Object.fromEntries((rules || []).map((rule) => [rule.id, rule]))
 }
 
-export function getMergedItems(items: ItemWithFlavor[]): PosMergedCartItem[] {
-  if (!items || !Array.isArray(items)) return []
-
-  const merged: PosMergedCartItem[] = []
-  items.forEach((item) => {
-    if (!item?.name || item.price === undefined) return
-
-    const existing = merged.find(
-      (candidate) =>
-        candidate.name === item.name &&
-        candidate.price === item.price &&
-        JSON.stringify(candidate.flavor ?? null) === JSON.stringify(item.flavor ?? null) &&
-        candidate.isTreat === item.isTreat &&
-        candidate.batchIdx === item.batchIdx &&
-        candidate.isSent === item.isSent
-    )
-
-    if (existing) {
-      existing.count = (existing.count || 1) + 1
-      return
-    }
-
-    const sentAt =
-      typeof item.sentAt === 'number'
-        ? item.sentAt
-        : Number.isFinite(Number(item.sentAt))
-          ? Number(item.sentAt)
-          : undefined
-
-    merged.push({
-      ...item,
-      name: item.name,
-      price: item.price,
-      sentAt,
-      count: 1,
-    })
-  })
-
-  return merged
-}
-
-export function getItemSignature(item: ItemWithFlavor) {
-  const name = item?.name ? item.name : ''
-  const price = item && item.price !== undefined ? item.price : ''
-  const flavor = item?.flavor ? JSON.stringify(item.flavor) : ''
-  const isTreat = item?.isTreat ? 1 : 0
-  const batchIdx = item && item.batchIdx !== undefined ? item.batchIdx : ''
-  const batchId = item && item.batchId !== undefined ? item.batchId : ''
-  const sentAt = item && item.sentAt !== undefined ? item.sentAt : ''
-  const incomingIdx = item && item.incomingIdx !== undefined ? item.incomingIdx : ''
-  const isSent = item?.isSent ? 1 : 0
-
-  return [name, price, flavor, isTreat, batchIdx, batchId, sentAt, incomingIdx, isSent].join('||')
-}
-
-export function getDeltaItems(currentCart: PosCartItem[], baseCart: PosCartItem[]) {
-  const baseCounts = new Map<string, number>()
-
-  baseCart.forEach((item) => {
-    const key = getItemSignature(item)
-    baseCounts.set(key, (baseCounts.get(key) || 0) + 1)
-  })
-
-  const delta: PosCartItem[] = []
-  currentCart.forEach((item) => {
-    const key = getItemSignature(item)
-    const count = baseCounts.get(key) || 0
-
-    if (count > 0) {
-      baseCounts.set(key, count - 1)
-      return
-    }
-
-    delta.push(item)
-  })
-
-  return delta
+export function getBusinessDate(dateObj: Date | string | number) {
+  let date = new Date(dateObj)
+  if (Number.isNaN(date.getTime())) date = new Date()
+  if (date.getHours() < 5) date.setDate(date.getDate() - 1)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
 }
 
 export function getDateFromOrder(order: Partial<PosOrder> | null | undefined) {
@@ -123,115 +51,247 @@ export function getDateFromOrder(order: Partial<PosOrder> | null | undefined) {
   return new Date()
 }
 
-export function getBusinessDate(dateObj: Date | string | number) {
-  let date = new Date(dateObj)
-  if (Number.isNaN(date.getTime())) date = new Date()
-  if (date.getHours() < 5) date.setDate(date.getDate() - 1)
-  date.setHours(0, 0, 0, 0)
-  return date.getTime()
+export function getEntrySignature(entry: PosOrderEntry): string {
+  return [
+    entry.itemId,
+    entry.quantity,
+    stableStringify(entry.selections),
+    stableStringify(entry.includeSelections),
+    stableStringify(entry.upgradeSelections),
+    entry.status,
+    entry.source,
+  ].join('||')
 }
 
-export function normalizeItemNameForMatch(name: string) {
-  if (!name) return ''
-  return name.replace(' (招待)', '').trim()
+export function getDeltaEntries(currentEntries: PosOrderEntry[], baseEntries: PosOrderEntry[]) {
+  const baseCounts = new Map<string, number>()
+  baseEntries.forEach((entry) => {
+    const key = getEntrySignature(entry)
+    baseCounts.set(key, (baseCounts.get(key) || 0) + 1)
+  })
+
+  const delta: PosOrderEntry[] = []
+  currentEntries.forEach((entry) => {
+    const key = getEntrySignature(entry)
+    const count = baseCounts.get(key) || 0
+    if (count > 0) {
+      baseCounts.set(key, count - 1)
+      return
+    }
+    delta.push(entry)
+  })
+
+  return delta
 }
 
-export function stripHiddenTag(name: string) {
-  if (!name) return ''
-  const cleaned = name.replace(/\s*[(（]隱藏[)）]\s*/g, '').trim()
-  return cleaned || name
+export function getMergedEntries(entries: PosOrderEntry[]) {
+  const merged = new Map<string, PosOrderEntry>()
+  entries.forEach((entry) => {
+    const key = [
+      entry.itemId,
+      stableStringify(entry.selections),
+      stableStringify(entry.includeSelections),
+      stableStringify(entry.upgradeSelections),
+      entry.status,
+      entry.source,
+    ].join('||')
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, { ...entry })
+      return
+    }
+    existing.quantity += entry.quantity
+    existing.subtotal += entry.subtotal
+    existing.updatedAt = Math.max(existing.updatedAt, entry.updatedAt)
+    existing.summary = {
+      ...existing.summary,
+      quantityLabel: `${existing.quantity} 份`,
+      totalLabel: `$${existing.subtotal}`,
+    }
+    existing.lines = existing.lines.map((line) => ({
+      ...line,
+      quantity: line.quantity + (entry.lines.find((candidate) => candidate.lineId === line.lineId)?.quantity || 0),
+      lineTotal: line.lineTotal + (entry.lines.find((candidate) => candidate.lineId === line.lineId)?.lineTotal || 0),
+    }))
+  })
+  return [...merged.values()]
 }
 
-export function shouldHideCustomerItemName(name: string) {
-  return name.includes('(隱藏)')
-}
+export function buildSelectionSummary(
+  selections: PosBuilderSelectionMap,
+  selectionRules: PosSelectionRule[] | undefined,
+  includeSelections: Record<string, PosBuilderSelectionMap>,
+  upgradeSelections: Record<string, string>
+) {
+  const ruleMap = getSelectionRuleMap(selectionRules)
+  const parts: string[] = []
 
-export function createCatalogHelpers({ foodOptionVariants, getInventory, getItemCosts, menuData }: CatalogHelpersDeps) {
-  function getItemCategoryType(itemName: string) {
-    const normalizedName = itemName.trim()
-    if (!normalizedName) return 'unknown'
-    if (normalizedName === '奶茶') return 'bbq'
+  Object.entries(selections || {}).forEach(([ruleId, value]) => {
+    if (!value) return
+    const rule = ruleMap[ruleId]
+    if (!rule) return
+    const summaryLabel = rule.summaryLabel || rule.label
+    if (rule.kind === 'single') {
+      const option = rule.options.find((candidate) => candidate.value === value)
+      if (option) parts.push(`${summaryLabel}：${option.label}`)
+      return
+    }
+    parts.push(`${summaryLabel}：${value}`)
+  })
 
-    const barCats = ['調酒', '純飲', 'shot', '啤酒', '咖啡', '飲料', '厚片', '甜點', '其他']
-    const bbqCats = ['燒烤', '主餐', '炸物']
-
-    for (const [category, content] of Object.entries(menuData)) {
-      if (Array.isArray(content)) {
-        if (content.some((item) => isMenuItem(item) && normalizedName.includes(item.name))) {
-          if (barCats.includes(category)) return 'bar'
-          if (bbqCats.includes(category)) return 'bbq'
-        }
-        continue
+  Object.entries(includeSelections || {}).forEach(([includeId, includeValues]) => {
+    Object.entries(includeValues || {}).forEach(([ruleId, value]) => {
+      if (!value) return
+      parts.push(`${includeId}：${value}`)
+      if (ruleId === 'temperature') {
+        parts[parts.length - 1] = `${includeId}：${value === 'ice' ? '冰' : '熱'}`
       }
+    })
+  })
 
-      for (const subContent of Object.values(content as Record<string, PosMenuSection>)) {
-        if (subContent.some((item) => isMenuItem(item) && normalizedName.includes(item.name))) {
-          if (barCats.includes(category)) return 'bar'
-          if (bbqCats.includes(category)) return 'bbq'
-        }
+  Object.entries(upgradeSelections || {}).forEach(([groupId, value]) => {
+    if (!value) return
+    parts.push(`${groupId}：${value}`)
+  })
+
+  return parts.join(' / ')
+}
+
+export function buildRevenueDetailsTemplate(categoryKeys: PosCategoryKey[]): PosRevenueDetails {
+  const details = Object.fromEntries([...categoryKeys, 'total'].map((key) => [key, []])) as unknown as PosRevenueDetails
+
+  return details
+}
+
+export function buildFinanceStatsTemplate(categoryKeys: PosCategoryKey[]): PosFinanceStats {
+  return {
+    totalRevenue: 0,
+    totalCost: 0,
+    byCategory: Object.fromEntries(
+      categoryKeys.map((key) => [key, { revenue: 0, cost: 0 }])
+    ) as PosFinanceStats['byCategory'],
+  }
+}
+
+export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices, menuMeta }: CatalogHelpersDeps) {
+  function getItemById(itemId: string) {
+    return menuMeta.itemsById[itemId] || null
+  }
+
+  function getMenuItemsByMode(mode: 'customer' | 'staff') {
+    return Object.values(menuMeta.itemsById).filter((item) => !item.menuModes || item.menuModes.includes(mode))
+  }
+
+  function getItemCategoryType(itemIdOrName: string) {
+    const direct = menuMeta.itemsById[itemIdOrName]
+    if (direct) return direct.categoryKey
+    const match = Object.values(menuMeta.itemsById).find(
+      (item) => item.name === itemIdOrName || item.shortName === itemIdOrName
+    )
+    return match?.categoryKey || 'other'
+  }
+
+  function getItemDisplayPrice(itemId: string) {
+    const item = getItemById(itemId)
+    if (!item) return 0
+    return getItemPrice(itemId) ?? item.basePrice
+  }
+
+  function getItemPrice(itemId: string) {
+    const item = menuMeta.itemsById[itemId]
+    if (!item) return null
+    return Number(getItemPrices()[itemId] ?? item.basePrice)
+  }
+
+  function getOwnedSelectionInventoryKeys(itemId: string) {
+    const item = getItemById(itemId)
+    if (!item) return []
+    return [
+      ...new Set(
+        (item.selections || [])
+          .filter((rule) => rule.kind === 'single')
+          .flatMap((rule) => rule.options)
+          .filter((option) => !option.targetItemId)
+          .map((option) => option.inventoryKey)
+          .filter(Boolean)
+      ),
+    ]
+  }
+
+  function getCostByItemId(itemId: string) {
+    return Number(getItemCosts()[itemId] ?? 0)
+  }
+
+  function isInventoryKeySoldOut(inventoryKey: string) {
+    if (!inventoryKey) return false
+    const inventory = getInventory()
+    return inventory[inventoryKey] === false
+  }
+
+  function isItemSoldOut(itemId: string) {
+    const item = getItemById(itemId)
+    if (!item) return true
+    const soldOutKey = item.soldOutKey || item.id
+    return isInventoryKeySoldOut(soldOutKey)
+  }
+
+  function validateSelections(itemId: string, selections: PosBuilderSelectionMap) {
+    const item = getItemById(itemId)
+    if (!item) return ['找不到商品']
+    const errors: string[] = []
+    ;(item.selections || []).forEach((rule) => {
+      const value = selections[rule.id]
+      if (rule.required && !value) {
+        errors.push(rule.id)
+        return
       }
-    }
-
-    if (
-      normalizedName.includes('雞') ||
-      normalizedName.includes('豬') ||
-      normalizedName.includes('牛') ||
-      normalizedName.includes('飯') ||
-      normalizedName.includes('麵')
-    ) {
-      return 'bbq'
-    }
-
-    return 'unknown'
+      if (rule.kind === 'single' && value && !rule.options.some((option) => option.value === value)) {
+        errors.push(rule.id)
+      }
+    })
+    return errors
   }
 
-  function getCostByItemName(itemName: string, variant?: string) {
-    const rawName = itemName || ''
-    const variantMatch = rawName.match(/[（(]([^（）()]+)[)）]/)
-    const variantFromName = variantMatch ? variantMatch[1].trim() : ''
-    const normalizedName = rawName.trim()
-    if (!normalizedName) return 0
-
-    const cleanName = normalizedName.replace(' (招待)', '').trim()
-    const finalVariant = (variant || variantFromName || '').trim()
-    const allowedVariants = foodOptionVariants?.[cleanName] || null
-    const itemCosts = getItemCosts()
-
-    if (finalVariant && (!allowedVariants || allowedVariants.includes(finalVariant))) {
-      const variantKey = `${cleanName}::${finalVariant}`
-      if (itemCosts[variantKey] !== undefined) return itemCosts[variantKey]
-    }
-
-    if (itemCosts[cleanName] !== undefined) return itemCosts[cleanName]
-
-    const baseName = cleanName.replace(/\s*[(（].*?[)）]$/, '').trim()
-    if (itemCosts[baseName] !== undefined) return itemCosts[baseName]
-    if (cleanName.includes('隱藏特調') && itemCosts.隱藏特調 !== undefined) {
-      return itemCosts.隱藏特調
-    }
-
-    return 0
+  function resolveSelectionLabel(itemId: string, ruleId: string, value: string) {
+    const item = getItemById(itemId)
+    const rule = item?.selections?.find((candidate) => candidate.id === ruleId)
+    if (!rule) return value
+    if (rule.kind === 'text') return value
+    return rule.options.find((option) => option.value === value)?.label || value
   }
 
-  function getAvailableVariants(name: string) {
-    const variants = foodOptionVariants[name]
-    if (!variants) return null
-    const inventory = getInventory()
-    return variants.filter((option) => inventory[`${name}::${option}`] !== false)
+  function flattenEntryLines(entry: PosOrderEntry) {
+    return [...entry.lines]
   }
 
-  function hasAvailableVariants(name: string) {
-    const variants = foodOptionVariants[name]
-    const inventory = getInventory()
-    if (!variants) return inventory[name] !== false
-    if (inventory[name] === false) return false
-    return (getAvailableVariants(name)?.length || 0) > 0
+  function getEntrySubtotal(entry: PosOrderEntry) {
+    return entry.lines.reduce((sum, line) => sum + line.lineTotal, 0)
+  }
+
+  function sumLines(lines: PosOrderLine[]) {
+    return lines.reduce((sum, line) => sum + line.lineTotal, 0)
   }
 
   return {
-    getAvailableVariants,
-    getCostByItemName,
+    buildFinanceStatsTemplate,
+    buildRevenueDetailsTemplate,
+    buildSelectionSummary,
+    flattenEntryLines,
+    groupOrderLines,
+    getCostByItemId,
+    getDeltaEntries,
+    getEntrySubtotal,
+    getItemById,
+    getMenuItemsByMode,
     getItemCategoryType,
-    hasAvailableVariants,
+    getItemDisplayPrice,
+    getItemPrice,
+    getMergedEntries,
+    getOwnedSelectionInventoryKeys,
+    isInventoryKeySoldOut,
+    isItemSoldOut,
+    resolveSelectionLabel,
+    sumLines,
+    validateSelections,
   }
 }

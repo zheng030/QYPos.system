@@ -1,15 +1,13 @@
 import type { AppContext, FeatureRuntime } from '@/app/app-context'
 import { createDatabaseCompat } from '@/shared/firebase-compat'
 
-import { categories, FOOD_OPTION_VARIANTS, firebaseConfig, menuData, SYSTEM_PASSWORD, tables } from './data'
+import { firebaseConfig, menuMeta, SYSTEM_PASSWORD, tables } from './data'
 import {
   createCatalogHelpers,
   getBusinessDate,
   getDateFromOrder,
-  getDeltaItems,
-  getMergedItems,
-  shouldHideCustomerItemName,
-  stripHiddenTag,
+  getDeltaEntries,
+  getMergedEntries,
 } from './item-helpers'
 import { POS_KERNEL_SERVICE_KEY, type PosKernelService } from './service'
 import { state } from './state'
@@ -20,26 +18,24 @@ export function createPosKernelFeature(context: AppContext): FeatureRuntime {
   return {
     id: 'pos-kernel',
     async boot() {
-      if (booted) {
-        return
-      }
-
+      if (booted) return
       booted = true
+
       const db = createDatabaseCompat(firebaseConfig)
       const helpers = createCatalogHelpers({
-        foodOptionVariants: FOOD_OPTION_VARIANTS,
         getInventory: () => state.inventory,
         getItemCosts: () => state.itemCosts,
-        menuData,
+        getItemPrices: () => state.itemPrices,
+        menuMeta,
       })
 
       const service: PosKernelService = {
         state,
         db,
-        menuData,
+        menuData: menuMeta.categories,
+        menuMeta,
         tables: [...tables],
-        categories: [...categories],
-        foodOptionVariants: FOOD_OPTION_VARIANTS,
+        categories: [...menuMeta.orderedCategoryKeys],
         systemPassword: SYSTEM_PASSWORD,
         helpers,
         dates: {
@@ -47,10 +43,9 @@ export function createPosKernelFeature(context: AppContext): FeatureRuntime {
           getDateFromOrder,
         },
         orderUtils: {
-          getDeltaItems,
-          getMergedItems,
-          shouldHideCustomerItemName,
-          stripHiddenTag,
+          getDeltaEntries,
+          getMergedEntries,
+          getMergedItems: getMergedEntries,
         },
       }
 

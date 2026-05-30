@@ -5,6 +5,7 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/QYPos.system/' : '/',
   server: {
     host: '0.0.0.0',
+    allowedHosts: true
   },
   resolve: {
     alias: [

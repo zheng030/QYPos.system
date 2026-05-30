@@ -1,0 +1,690 @@
+import type { PosCatalogHelpers } from '@/features/pos-kernel/service'
+import type {
+  PosBuilderSelectionMap,
+  PosBuilderState,
+  PosBundleUpgradeGroup,
+  PosMenuItem,
+  PosOrderEntry,
+  PosOrderLine,
+  PosSelectionRule,
+} from '@/features/pos-kernel/types'
+
+type BuilderHelpers = Pick<
+  PosCatalogHelpers,
+  'getItemById' | 'getItemDisplayPrice' | 'isInventoryKeySoldOut' | 'isItemSoldOut' | 'sumLines'
+>
+
+type SelectionRuleValue = string
+
+export type BuilderIssue = {
+  kind: 'missing' | 'sold-out'
+  groupId: string
+  label: string
+}
+
+export type BuilderOptionView = {
+  value: string
+  label: string
+  priceDelta: number
+  disabled: boolean
+  selected: boolean
+}
+
+export type BuilderRuleView = {
+  id: string
+  label: string
+  summaryLabel?: string
+  kind: 'single' | 'text'
+  required: boolean
+  value: string
+  placeholder?: string
+  options?: BuilderOptionView[]
+}
+
+export type BuilderIncludeView = {
+  id: string
+  label: string
+  itemId: string
+  itemName: string
+  itemShortName: string
+  priceDelta: number
+  categoryKey: PosMenuItem['categoryKey']
+  rules: BuilderRuleView[]
+}
+
+export type BuilderUpgradeGroupView = {
+  id: string
+  label: string
+  summaryLabel?: string
+  required: boolean
+  selectedValue: string
+  options: BuilderOptionView[]
+}
+
+export type BuilderChildBlockView = {
+  includeId: string
+  label: string
+  itemId: string
+  itemName: string
+  itemShortName: string
+  priceDelta: number
+  categoryKey: PosMenuItem['categoryKey']
+  optionGroup?: BuilderUpgradeGroupView
+  rules: BuilderRuleView[]
+}
+
+export type BuilderPresentation = {
+  item: PosMenuItem
+  disabled: boolean
+  canConfirm: boolean
+  quantity: number
+  title: string
+  basePrice: number
+  subtotal: number
+  subtitle: string
+  missingIssues: BuilderIssue[]
+  soldOutIssues: BuilderIssue[]
+  mainRules: BuilderRuleView[]
+  childBlocks: BuilderChildBlockView[]
+  upgradeGroups: BuilderUpgradeGroupView[]
+}
+
+export type BuilderFinalizeResult =
+  | {
+      ok: true
+      entry: PosOrderEntry
+    }
+  | {
+      ok: false
+      issues: BuilderIssue[]
+    }
+
+type FinalizeParams = {
+  state: PosBuilderState
+  helpers: BuilderHelpers
+  source: PosOrderEntry['source']
+  status: PosOrderEntry['status']
+  entryId?: string
+  createdAt?: number
+  updatedAt?: number
+}
+
+type IncludeResolution = {
+  includeId: string
+  label: string
+  item: PosMenuItem | null
+  priceDelta: number
+  childSelections: PosBuilderSelectionMap
+}
+
+function cloneSelections(input: PosBuilderSelectionMap | undefined): PosBuilderSelectionMap {
+  return { ...(input || {}) }
+}
+
+function cloneIncludeSelections(input: Record<string, PosBuilderSelectionMap> | undefined) {
+  return Object.fromEntries(Object.entries(input || {}).map(([key, value]) => [key, cloneSelections(value)]))
+}
+
+function buildIssue(kind: BuilderIssue['kind'], groupId: string, label: string): BuilderIssue {
+  return { kind, groupId, label }
+}
+
+function buildLineId(groupId: string, suffix: string) {
+  return `${groupId}_${suffix}`
+}
+
+function buildEntryId(now: number) {
+  const random =
+    globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
+  return `entry_${now}_${random}`
+}
+
+function resolveSingleOptionLabel(rule: PosSelectionRule | undefined, value: string) {
+  if (!rule || !value) return ''
+  if (rule.kind === 'text') return value.trim()
+  return rule.options.find((option) => option.value === value)?.label || value
+}
+
+function resolveMainSelectionValue(_item: PosMenuItem, state: PosBuilderState, ruleId: string, fallback?: string) {
+  return state.selections[ruleId] || fallback || ''
+}
+
+function getSelectedUpgradeOption(item: PosMenuItem, groupId: string, value: string) {
+  const group = item.upgradeGroups?.find((candidate) => candidate.id === groupId)
+  return group?.options.find((option) => option.value === value) || null
+}
+
+function isOptionDisabled(option: { inventoryKey: string; targetItemId?: string }, helpers: BuilderHelpers) {
+  if (helpers.isInventoryKeySoldOut(option.inventoryKey)) {
+    return true
+  }
+  return option.targetItemId ? helpers.isItemSoldOut(option.targetItemId) : false
+}
+
+function isAutoOptionalDrinkGroup(group: PosBundleUpgradeGroup, helpers: BuilderHelpers) {
+  if (group.id !== 'bundle-drink-upgrade') return false
+  const freeDrinkOptions = group.options.filter((option) => option.priceDelta === 0)
+  return freeDrinkOptions.length > 0 && freeDrinkOptions.every((option) => isOptionDisabled(option, helpers))
+}
+
+function getResolvedIncludeSelections(
+  includeId: string,
+  childItem: PosMenuItem,
+  state: PosBuilderState,
+  defaultSelections: PosBuilderSelectionMap | undefined
+) {
+  const fromInclude = cloneSelections(state.includeSelections[includeId])
+  const resolved: PosBuilderSelectionMap = {}
+  for (const rule of childItem.selections || []) {
+    const explicitValue = fromInclude[rule.id]
+    if (explicitValue) {
+      resolved[rule.id] = explicitValue
+      continue
+    }
+
+    const defaultValue = defaultSelections?.[rule.id]
+    if (defaultValue) {
+      resolved[rule.id] = defaultValue
+      continue
+    }
+
+    if (rule.required && rule.kind === 'single') {
+      const matchingDefault = rule.options.find((option) => option.value === defaultSelections?.[rule.id])?.value
+      if (matchingDefault) {
+        resolved[rule.id] = matchingDefault
+      }
+    }
+  }
+  return resolved
+}
+
+function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHelpers): BuilderRuleView {
+  if (rule.kind === 'text') {
+    return {
+      id: rule.id,
+      label: rule.label,
+      summaryLabel: rule.summaryLabel,
+      kind: 'text',
+      required: rule.required,
+      value,
+      placeholder: rule.placeholder,
+    }
+  }
+
+  return {
+    id: rule.id,
+    label: rule.label,
+    summaryLabel: rule.summaryLabel,
+    kind: 'single',
+    required: rule.required,
+    value,
+    options: rule.options.map((option) => ({
+      value: option.value,
+      label: option.label,
+      priceDelta: option.priceDelta || 0,
+      disabled: isOptionDisabled(option, helpers),
+      selected: option.value === value,
+    })),
+  }
+}
+
+function buildSummary(item: PosMenuItem, state: PosBuilderState): string {
+  const parts: string[] = []
+
+  for (const rule of item.selections || []) {
+    const value = state.selections[rule.id] || ''
+    if (!value.trim()) continue
+    const label = rule.summaryLabel || rule.label
+    const displayValue = resolveSingleOptionLabel(rule, value)
+    if (displayValue) {
+      parts.push(`${label}：${displayValue}`)
+    }
+  }
+
+  for (const group of item.upgradeGroups || []) {
+    const value = state.upgradeSelections[group.id] || ''
+    if (!value) continue
+    const option = group.options.find((candidate) => candidate.value === value)
+    if (!option) continue
+    parts.push(`${group.summaryLabel || group.label}：${option.label}`)
+  }
+
+  return parts.join(' / ')
+}
+
+function resolveIncludes(item: PosMenuItem, state: PosBuilderState, helpers: BuilderHelpers) {
+  const resolutions: IncludeResolution[] = []
+  const soldOutIssues: BuilderIssue[] = []
+  const missingIssues: BuilderIssue[] = []
+
+  for (const includeRule of item.includes || []) {
+    let targetItemId = includeRule.itemId
+    let priceDelta = 0
+
+    if (includeRule.upgradeGroupId) {
+      const selectedValue = state.upgradeSelections[includeRule.upgradeGroupId] || ''
+      if (!selectedValue) {
+        resolutions.push({
+          includeId: includeRule.id,
+          label: includeRule.label,
+          item: null,
+          priceDelta: 0,
+          childSelections: cloneSelections(state.includeSelections[includeRule.id]),
+        })
+        continue
+      }
+      const selectedOption = getSelectedUpgradeOption(item, includeRule.upgradeGroupId, selectedValue)
+      if (selectedOption?.targetItemId) {
+        targetItemId = selectedOption.targetItemId
+        priceDelta = selectedOption.priceDelta || 0
+      }
+    }
+
+    const childItem = helpers.getItemById(targetItemId)
+    if (!childItem) {
+      soldOutIssues.push(buildIssue('sold-out', includeRule.id, includeRule.label))
+      continue
+    }
+    if (helpers.isItemSoldOut(childItem.id)) {
+      soldOutIssues.push(buildIssue('sold-out', includeRule.id, includeRule.label))
+    }
+
+    const childSelections = getResolvedIncludeSelections(
+      includeRule.id,
+      childItem,
+      state,
+      includeRule.defaultSelections
+    )
+    for (const rule of childItem.selections || []) {
+      const value = childSelections[rule.id] || ''
+      if (rule.required && !value.trim()) {
+        missingIssues.push(buildIssue('missing', `${includeRule.id}.${rule.id}`, `${includeRule.label} ${rule.label}`))
+      }
+    }
+
+    resolutions.push({
+      includeId: includeRule.id,
+      label: includeRule.label,
+      item: childItem,
+      priceDelta,
+      childSelections,
+    })
+  }
+
+  return { resolutions, soldOutIssues, missingIssues }
+}
+
+function calculateSubtotal(item: PosMenuItem, quantity: number, state: PosBuilderState, helpers: BuilderHelpers) {
+  let subtotal = helpers.getItemDisplayPrice(item.id) * quantity
+  for (const group of item.upgradeGroups || []) {
+    const value = state.upgradeSelections[group.id] || ''
+    const option = group.options.find((candidate) => candidate.value === value)
+    if (option?.priceDelta) {
+      subtotal += option.priceDelta * quantity
+    }
+  }
+  return subtotal
+}
+
+export function createBuilderState(
+  itemId: string,
+  target: PosBuilderState['target'],
+  batchId?: string
+): PosBuilderState {
+  return {
+    itemId,
+    quantity: 1,
+    selections: {},
+    includeSelections: {},
+    upgradeSelections: {},
+    editingEntryId: null,
+    target,
+    batchId,
+  }
+}
+
+export function hydrateBuilderState(
+  entry: PosOrderEntry,
+  target: PosBuilderState['target'],
+  batchId?: string
+): PosBuilderState {
+  const selections = cloneSelections(entry.selections)
+  const includeSelections = cloneIncludeSelections(entry.includeSelections)
+  const legacyTemperature = selections.temperature
+  if (legacyTemperature && !includeSelections['included-drink']?.temperature) {
+    includeSelections['included-drink'] = {
+      ...(includeSelections['included-drink'] || {}),
+      temperature: legacyTemperature,
+    }
+    delete selections.temperature
+  }
+
+  return {
+    itemId: entry.itemId,
+    quantity: entry.quantity,
+    selections,
+    includeSelections,
+    upgradeSelections: { ...(entry.upgradeSelections || {}) },
+    editingEntryId: entry.entryId,
+    target,
+    batchId,
+  }
+}
+
+export function updateBuilderQuantity(state: PosBuilderState, quantity: number): PosBuilderState {
+  return {
+    ...state,
+    quantity: Math.max(1, quantity || 1),
+  }
+}
+
+export function updateBuilderSelection(
+  state: PosBuilderState,
+  scope: 'main' | 'include' | 'upgrade',
+  key: string,
+  value: string,
+  nestedKey?: string
+): PosBuilderState {
+  if (scope === 'main') {
+    return {
+      ...state,
+      selections: {
+        ...state.selections,
+        [key]: value,
+      },
+    }
+  }
+
+  if (scope === 'upgrade') {
+    return {
+      ...state,
+      upgradeSelections: {
+        ...state.upgradeSelections,
+        [key]: value,
+      },
+    }
+  }
+
+  if (!nestedKey) {
+    return state
+  }
+
+  return {
+    ...state,
+    includeSelections: {
+      ...state.includeSelections,
+      [key]: {
+        ...(state.includeSelections[key] || {}),
+        [nestedKey]: value,
+      },
+    },
+  }
+}
+
+export function buildBuilderPresentation(args: {
+  state: PosBuilderState
+  helpers: BuilderHelpers
+}): BuilderPresentation | null {
+  const { state, helpers } = args
+  const item = helpers.getItemById(state.itemId)
+  if (!item) return null
+
+  const missingIssues: BuilderIssue[] = []
+  const soldOutIssues: BuilderIssue[] = []
+  const quantity = Math.max(1, state.quantity || 1)
+  const mainRules = (item.selections || []).map((rule) => {
+    const value = resolveMainSelectionValue(item, state, rule.id)
+    if (rule.required && !value.trim()) {
+      missingIssues.push(buildIssue('missing', rule.id, rule.label))
+    }
+    if (rule.kind === 'single' && value) {
+      const option = rule.options.find((candidate) => candidate.value === value)
+      if (option?.targetItemId && helpers.isItemSoldOut(option.targetItemId)) {
+        soldOutIssues.push(buildIssue('sold-out', rule.id, rule.label))
+      }
+    }
+    return buildRuleView(rule, value, helpers)
+  })
+
+  if (helpers.isItemSoldOut(item.id)) {
+    soldOutIssues.push(buildIssue('sold-out', item.id, item.name))
+  }
+
+  const upgradeGroups = (item.upgradeGroups || []).map((group) => {
+    const selectedValue = state.upgradeSelections[group.id] || ''
+    const required = group.required && !isAutoOptionalDrinkGroup(group, helpers)
+    const options = group.options.map((option) => ({
+      value: option.value,
+      label: option.label,
+      priceDelta: option.priceDelta || 0,
+      disabled: isOptionDisabled(option, helpers),
+      selected: selectedValue === option.value,
+    }))
+    const availableCount = options.filter((option) => !option.disabled).length
+    if (required && availableCount === 0) {
+      soldOutIssues.push(buildIssue('sold-out', group.id, group.label))
+    }
+    if (required && !selectedValue) {
+      missingIssues.push(buildIssue('missing', group.id, group.label))
+    }
+    if (selectedValue && options.find((option) => option.value === selectedValue)?.disabled) {
+      soldOutIssues.push(buildIssue('sold-out', group.id, group.label))
+    }
+    return {
+      id: group.id,
+      label: group.label,
+      summaryLabel: group.summaryLabel,
+      required,
+      selectedValue,
+      options,
+    } satisfies BuilderUpgradeGroupView
+  })
+
+  const includeResolution = resolveIncludes(item, state, helpers)
+  soldOutIssues.push(...includeResolution.soldOutIssues)
+  missingIssues.push(...includeResolution.missingIssues)
+  const childBlocks = includeResolution.resolutions.map((resolution) => {
+    const optionGroup = (item.upgradeGroups || []).find(
+      (group) => group.id === item.includes?.find((candidate) => candidate.id === resolution.includeId)?.upgradeGroupId
+    )
+    const selectedValue = optionGroup ? state.upgradeSelections[optionGroup.id] || '' : ''
+    return {
+      includeId: resolution.includeId,
+      label: resolution.label,
+      itemId: resolution.item?.id || '',
+      itemName: resolution.item?.name || '',
+      itemShortName: resolution.item?.shortName || resolution.item?.name || '',
+      priceDelta: resolution.priceDelta,
+      categoryKey: resolution.item?.categoryKey || 'other',
+      optionGroup: optionGroup
+        ? {
+            id: optionGroup.id,
+            label: optionGroup.label,
+            summaryLabel: optionGroup.summaryLabel,
+            required: optionGroup.required && !isAutoOptionalDrinkGroup(optionGroup, helpers),
+            selectedValue,
+            options: optionGroup.options.map((option) => ({
+              value: option.value,
+              label: option.label,
+              priceDelta: option.priceDelta || 0,
+              disabled: isOptionDisabled(option, helpers),
+              selected: selectedValue === option.value,
+            })),
+          }
+        : undefined,
+      rules: (resolution.item?.selections || []).map((rule) =>
+        buildRuleView(rule, resolution.childSelections[rule.id] || '', helpers)
+      ),
+    } satisfies BuilderChildBlockView
+  })
+
+  const childLinkedUpgradeGroupIds = new Set(
+    (item.includes || []).map((includeRule) => includeRule.upgradeGroupId).filter(Boolean)
+  )
+  const standaloneUpgradeGroups = upgradeGroups.filter((group) => !childLinkedUpgradeGroupIds.has(group.id))
+
+  return {
+    item,
+    disabled: soldOutIssues.length > 0,
+    canConfirm: missingIssues.length === 0 && soldOutIssues.length === 0,
+    quantity,
+    title: item.name,
+    basePrice: helpers.getItemDisplayPrice(item.id),
+    subtotal: calculateSubtotal(item, quantity, state, helpers),
+    subtitle: buildSummary(item, state),
+    missingIssues,
+    soldOutIssues,
+    mainRules,
+    childBlocks,
+    upgradeGroups: standaloneUpgradeGroups,
+  }
+}
+
+export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeResult {
+  const { state, helpers, source, status, entryId, createdAt, updatedAt } = params
+  const item = helpers.getItemById(state.itemId)
+  if (!item) {
+    return {
+      ok: false,
+      issues: [buildIssue('sold-out', state.itemId, '找不到商品')],
+    }
+  }
+
+  const presentation = buildBuilderPresentation({ state, helpers })
+  if (!presentation) {
+    return {
+      ok: false,
+      issues: [buildIssue('sold-out', state.itemId, '找不到商品')],
+    }
+  }
+
+  const issues = [...presentation.missingIssues, ...presentation.soldOutIssues]
+  if (issues.length > 0) {
+    return { ok: false, issues }
+  }
+
+  const now = updatedAt || Date.now()
+  const resolvedEntryId = entryId || state.editingEntryId || buildEntryId(now)
+  const groupId = resolvedEntryId
+  const quantity = Math.max(1, state.quantity || 1)
+  const mainLineId = buildLineId(groupId, 'main')
+  const lines: PosOrderLine[] = []
+  const summary = buildSummary(item, state)
+  const includeResolution = resolveIncludes(item, state, helpers)
+  const resolvedIncludeSelections = Object.fromEntries(
+    includeResolution.resolutions
+      .filter((resolution) => resolution.item)
+      .map((resolution) => [resolution.includeId, cloneSelections(resolution.childSelections)])
+  )
+
+  lines.push({
+    lineId: mainLineId,
+    groupId,
+    role: 'main',
+    catalogKey: item.productKey,
+    inventoryKey: item.inventoryKey,
+    displayName: item.name,
+    shortName: item.shortName || item.name,
+    categoryKey: item.categoryKey,
+    station: item.station,
+    courseKind: item.courseKind,
+    quantity,
+    unitPrice: helpers.getItemDisplayPrice(item.id),
+    priceDelta: 0,
+    lineTotal: helpers.getItemDisplayPrice(item.id) * quantity,
+    selections: cloneSelections(state.selections),
+    selectionSummary: summary,
+    isTreat: false,
+    sourceEntryId: resolvedEntryId,
+  })
+
+  includeResolution.resolutions.forEach((resolution, index) => {
+    if (!resolution.item) {
+      return
+    }
+    lines.push({
+      lineId: buildLineId(groupId, `child_${index}`),
+      groupId,
+      parentLineId: mainLineId,
+      role: resolution.priceDelta > 0 ? 'upgrade' : 'included',
+      catalogKey: resolution.item.productKey,
+      inventoryKey: resolution.item.inventoryKey,
+      displayName: resolution.item.name,
+      shortName: resolution.item.shortName || resolution.item.name,
+      categoryKey: resolution.item.categoryKey,
+      station: resolution.item.station,
+      courseKind: resolution.item.courseKind,
+      quantity,
+      unitPrice: resolution.priceDelta,
+      priceDelta: resolution.priceDelta,
+      lineTotal: resolution.priceDelta * quantity,
+      selections: resolution.childSelections,
+      selectionSummary: (resolution.item.selections || [])
+        .map((rule) => {
+          const value = resolution.childSelections[rule.id] || ''
+          if (!value.trim()) return ''
+          const label = rule.summaryLabel || rule.label
+          const displayValue = resolveSingleOptionLabel(rule, value)
+          return displayValue ? `${label}：${displayValue}` : ''
+        })
+        .filter(Boolean)
+        .join(' / '),
+      isTreat: false,
+      sourceEntryId: resolvedEntryId,
+    })
+  })
+
+  const subtotal = helpers.sumLines(lines)
+
+  return {
+    ok: true,
+    entry: {
+      entryId: resolvedEntryId,
+      groupId,
+      itemId: item.id,
+      catalogKey: item.productKey,
+      inventoryKey: item.inventoryKey,
+      itemName: item.name,
+      shortName: item.shortName || item.name,
+      categoryKey: item.categoryKey,
+      quantity,
+      status,
+      source,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      selections: cloneSelections(state.selections),
+      includeSelections: resolvedIncludeSelections,
+      upgradeSelections: { ...(state.upgradeSelections || {}) },
+      lines,
+      subtotal,
+      summary: {
+        title: item.name,
+        subtitle: summary,
+        quantityLabel: `${quantity} 份`,
+        totalLabel: `$${subtotal}`,
+      },
+    },
+  }
+}
+
+export function getFirstBuilderIssue(issues: BuilderIssue[]) {
+  return issues[0] || null
+}
+
+export function getBuilderSelectionValue(
+  state: PosBuilderState,
+  scope: 'main' | 'include' | 'upgrade',
+  key: string,
+  nestedKey?: string
+): SelectionRuleValue {
+  if (scope === 'main') {
+    return state.selections[key] || ''
+  }
+  if (scope === 'upgrade') {
+    return state.upgradeSelections[key] || ''
+  }
+  if (!nestedKey) {
+    return ''
+  }
+  return state.includeSelections[key]?.[nestedKey] || ''
+}

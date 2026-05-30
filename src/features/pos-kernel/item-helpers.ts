@@ -1,11 +1,12 @@
+export { groupOrderLines } from '@/shared/grouped-order-lines'
 export {
+  buildFinanceStatsTemplate,
+  buildRevenueDetailsTemplate,
+  buildSelectionSummary,
   createCatalogHelpers,
   getBusinessDate,
   getDateFromOrder,
-  getDeltaItems,
-  getItemSignature,
-  getMergedItems,
-  normalizeItemNameForMatch,
-  shouldHideCustomerItemName,
-  stripHiddenTag,
+  getDeltaEntries,
+  getEntrySignature,
+  getMergedEntries,
 } from './catalog'

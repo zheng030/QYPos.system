@@ -1,4 +1,11 @@
-import type { PosOrder, SyncLogRecord } from '@/features/pos-kernel/types'
+import type {
+  PosOrder,
+  PosOrderBatch,
+  PosOrderEntry,
+  PosOwnerAuthRecord,
+  PosTableCustomer,
+  SyncLogRecord,
+} from '@/features/pos-kernel/types'
 import type { AttendanceService } from '@/shared/attendance-service'
 import type {
   V3CatalogRevisionEvent,
@@ -38,55 +45,36 @@ export type PosDataService = {
   watchItemStatsRange(start: Date, endExclusive: Date, listener: (event: V3ItemStatsRangeEvent) => void): () => void
   readDailySummariesRange(start: Date, endExclusive: Date): Record<string, V3DailySummary>
   readItemStatsRange(start: Date, endExclusive: Date): Record<string, Record<string, V3DailyItemStat>>
-  saveTableDraft(
+  saveCustomerDraft(
     table: string,
-    cart: import('@/features/pos-kernel/types').PosCartItem[],
-    customer: import('@/features/pos-kernel/types').PosTableCustomer
+    entries: PosOrderEntry[],
+    customer: PosTableCustomer
   ): Promise<{ displaySeqBase: number }>
-  submitIncomingOrder(
-    table: string,
-    cart: import('@/features/pos-kernel/types').PosCartItem[],
-    customer: import('@/features/pos-kernel/types').PosTableCustomer
-  ): Promise<void>
-  acceptIncomingOrder(
-    table: string,
-    requestId: string
-  ): Promise<{
-    customer: import('@/features/pos-kernel/types').PosTableCustomer
-    items: import('@/features/pos-kernel/types').PosCartItem[]
-    sentAt: number
-    displaySeqBase: number
-  } | null>
-  rejectIncomingOrder(table: string, requestId: string): Promise<void>
-  checkoutTable(payload: {
+  submitCustomerDraft(table: string, entries: PosOrderEntry[], customer: PosTableCustomer): Promise<PosOrderBatch>
+  discardCustomerDraft(table: string): Promise<void>
+  acceptPendingBatch(table: string, batchId: string): Promise<PosOrderBatch | null>
+  rejectPendingBatch(table: string, batchId: string): Promise<void>
+  saveStaffDraft(table: string, entries: PosOrderEntry[]): Promise<void>
+  createStaffBatch(table: string, entries: PosOrderEntry[], customer?: PosTableCustomer): Promise<PosOrderBatch>
+  updateSubmittedBatch(table: string, batchId: string, entries: PosOrderEntry[]): Promise<PosOrderBatch | null>
+  checkoutSubmittedBatches(payload: {
     table: string
-    cart: import('@/features/pos-kernel/types').PosCartItem[]
-    customer: import('@/features/pos-kernel/types').PosTableCustomer | undefined
+    entryIds?: string[]
+    entries?: PosOrderEntry[]
+    customer: PosTableCustomer | undefined
     paidTotal: number
     originalTotal: number
-    splitCounter: number | null
-  }): Promise<PosOrder>
-  checkoutSplit(payload: {
-    table: string
-    cart: import('@/features/pos-kernel/types').PosCartItem[]
-    customer: import('@/features/pos-kernel/types').PosTableCustomer | undefined
-    paidTotal: number
-    originalTotal: number
-    splitCounter: number | null
-    remainingCart: import('@/features/pos-kernel/types').PosCartItem[]
-    nextSplitCounter: number
   }): Promise<PosOrder>
   deleteClosedOrder(order: PosOrder): Promise<void>
-  setOwnerPassword(ownerName: string, record: import('@/features/pos-kernel/types').PosOwnerAuthRecord): Promise<void>
+  setOwnerPassword(ownerName: string, record: PosOwnerAuthRecord): Promise<void>
   subscribe(listener: (event: PosDataChangeEvent) => void): () => void
   emitChange(roots: string[]): void
-  toggleStockStatus(name: string, checked: boolean): Promise<void>
-  toggleParentWithOptions(name: string, checked: boolean): Promise<void>
-  toggleOptionStock(name: string, option: string, checked: boolean): Promise<void>
-  updateItemData(name: string, type: string, value: string): Promise<void>
+  toggleStockStatus(itemId: string, checked: boolean): Promise<void>
+  toggleInventoryBatch(batch: Record<string, boolean>): Promise<void>
+  toggleOptionStock(itemId: string, option: string, checked: boolean): Promise<void>
+  updateItemData(itemId: string, type: string, value: string): Promise<void>
   checkLogin(): Promise<void>
-  checkIncomingOrders(): void
-  fixAllOrderIds(): Promise<void>
+  checkPendingBatches(): void
   downloadSyncLog(): void
   getSyncLog(): SyncLogRecord[]
 }

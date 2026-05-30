@@ -30,7 +30,6 @@ export function createPosReportingFeature(context: AppContext): FeatureRuntime {
       const reporting = createHistoryReportingModule({
         getIsHistorySimpleMode: () => kernel.state.isHistorySimpleMode,
         getItemCategoryType: kernel.helpers.getItemCategoryType,
-        getMergedItems: kernel.orderUtils.getMergedItems,
         listClosedOrdersByDay: data.listClosedOrdersByDay,
         listClosedOrdersByRange: data.listClosedOrdersByRange,
         loadDailySummariesRange: data.loadDailySummariesRange,
@@ -71,7 +70,7 @@ export function createPosReportingFeature(context: AppContext): FeatureRuntime {
         const index = Number(element.dataset.index || '')
         if (!Number.isNaN(index)) void reporting.reprintOrder(index)
       })
-      ui.on('click', 'delete-single-order', (_event, element) => {
+      ui.on('click', 'delete-order', (_event, element) => {
         const index = Number(element.dataset.index || '')
         if (!Number.isNaN(index)) void reporting.deleteSingleOrder(index)
       })

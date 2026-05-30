@@ -20,12 +20,15 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         return
       }
 
-      const kernel = context.getService<PosKernelService>(POS_KERNEL_SERVICE_KEY)
-      const data = context.getService<PosDataService>(POS_DATA_SERVICE_KEY)
-      const ui = context.getService<PosUiService>(POS_UI_SERVICE_KEY)
-      if (!kernel || !data || !ui) {
+      const maybeKernel = context.getService<PosKernelService>(POS_KERNEL_SERVICE_KEY)
+      const maybeData = context.getService<PosDataService>(POS_DATA_SERVICE_KEY)
+      const maybeUi = context.getService<PosUiService>(POS_UI_SERVICE_KEY)
+      if (!maybeKernel || !maybeData || !maybeUi) {
         throw new Error('POS admin dependencies are not ready')
       }
+      const kernel = maybeKernel
+      const data = maybeData
+      const ui = maybeUi
 
       booted = true
 
@@ -47,10 +50,18 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         getOwnerPasswords: () => kernel.state.ownerPasswords,
         hideAll: ui.hideAll,
         menuData: kernel.menuData,
-        foodOptionVariants: kernel.foodOptionVariants,
         saveOwnerPassword: data.setOwnerPassword,
         updateItemData: data.updateItemData,
       })
+
+      async function openProductPage() {
+        await data.ensureCatalog()
+        ui.showPage('productPage')
+        renderProductManagement({
+          inventory: () => kernel.state.inventory,
+          menuData: kernel.menuData,
+        })
+      }
 
       ui.on('click', 'open-owner-login', (_event, element) => {
         const mode = element.dataset.mode
@@ -60,14 +71,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         void context.getService<{ openSettingsPage(): Promise<void> }>('pos-sales')?.openSettingsPage?.()
       })
       ui.on('click', 'open-product-page', async () => {
-        await data.ensureCatalog()
-        ui.showPage('productPage')
-        renderProductManagement({
-          inventory: () => kernel.state.inventory,
-          menuData: kernel.menuData,
-          foodOptionVariants: kernel.foodOptionVariants,
-          hasAvailableVariants: kernel.helpers.hasAvailableVariants,
-        })
+        await openProductPage()
       })
       ui.on('click', 'check-owner', (_event, element) => {
         const owner = element.dataset.owner
@@ -96,9 +100,6 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       ui.on('click', 'open-change-password-modal', (_event, element) => {
         const owner = element.dataset.owner
         if (owner) ownerFinance.openChangePasswordModal(owner)
-      })
-      ui.on('click', 'close-finance-detail-modal', () => {
-        ownerFinance.closeFinanceDetailModal()
       })
       ui.on('click', 'close-revenue-modal', () => {
         ownerFinance.closeRevenueModal()
@@ -132,9 +133,6 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       ui.on('click', 'download-local-storage', () => {
         alert('localStorage 匯出已移除')
       })
-      ui.on('click', 'fix-all-order-ids', () => {
-        void data.fixAllOrderIds()
-      })
       ui.on('click', 'clear-all-data', () => {
         const modal = document.getElementById('summaryModal')
         if (modal) modal.style.display = 'flex'
@@ -153,15 +151,19 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       ui.on('change', 'finance-date-range', () => {
         void ownerFinance.updateFinanceStats('custom')
       })
-      ui.on('change', 'toggle-parent-with-options', (_event, element) => {
-        if (!(element instanceof HTMLInputElement)) return
-        const name = element.dataset.name
-        if (name) void data.toggleParentWithOptions(name, element.checked)
-      })
       ui.on('change', 'toggle-stock-status', (_event, element) => {
         if (!(element instanceof HTMLInputElement)) return
-        const name = element.dataset.name
-        if (name) void data.toggleStockStatus(name, element.checked)
+        const itemId = element.dataset.name
+        if (itemId) void data.toggleStockStatus(itemId, element.checked)
+      })
+      ui.on('change', 'toggle-inventory-batch', (_event, element) => {
+        if (!(element instanceof HTMLInputElement)) return
+        const keys = (element.dataset.batchKeys || '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+        if (keys.length === 0) return
+        void data.toggleInventoryBatch(Object.fromEntries(keys.map((key) => [key, element.checked])))
       })
       ui.on('change', 'toggle-option-stock', (_event, element) => {
         if (!(element instanceof HTMLInputElement)) return
@@ -188,8 +190,6 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
           renderProductManagement({
             inventory: () => kernel.state.inventory,
             menuData: kernel.menuData,
-            foodOptionVariants: kernel.foodOptionVariants,
-            hasAvailableVariants: kernel.helpers.hasAvailableVariants,
           })
         },
         downloadSyncLog() {

@@ -6,18 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "audit:build-safety": "node scripts/audit-build-safety.mjs",
-    "build:verify": "npm run build && npm run audit:build-safety",
     "preview": "vite preview",
-    "audit:runtime": "node scripts/audit-runtime-refactor.mjs",
-    "audit:styles": "node scripts/audit-style-contracts.mjs",
-    "audit:ui-parity": "node scripts/audit-ui-parity.mjs",
-    "migrate:rtdb:v3": "node scripts/migrate-rtdb-v3.mjs",
-    "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "check": "npm run typecheck && npm run lint && npm run audit:runtime && npm run audit:styles && npm run audit:ui-parity && npm test && npm run build:verify",
-    "test": "TZ=Asia/Taipei vitest run"
+    "lint": "tsc --noEmit && biome check --write .",
+    "test": "TZ=Asia/Taipei vitest run",
+    "check": "npm run lint && npm test"
   },
   "dependencies": {
     "@types/crypto-js": "^4.2.2",

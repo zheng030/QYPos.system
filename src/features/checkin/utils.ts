@@ -437,13 +437,38 @@ export function ensureContainer(mountId?: string) {
   if (!page) {
     page = document.createElement('div')
     page.id = CHECKIN_PAGE_ID
-    page.style.display = 'none'
-    page.className = 'checkin-page'
-    page.innerHTML = `<div class="checkin-shell"><button class="back btn-effect checkin-back-btn" data-action="checkin-back">⬅ 返回主畫面</button></div><div id="${CHECKIN_ROOT_ID}"></div>`
     mount.appendChild(page)
   }
+  if (!(page instanceof HTMLElement)) return null
+
+  page.style.display = page.style.display || 'none'
+  page.classList.add('checkin-page')
+
+  let shell = page.querySelector('.checkin-shell')
+  if (!shell) {
+    shell = document.createElement('div')
+    shell.className = 'checkin-shell'
+    page.prepend(shell)
+  }
+
+  let backButton = shell.querySelector('[data-action="checkin-back"]')
+  if (!backButton) {
+    backButton = document.createElement('button')
+    backButton.className = 'back btn-effect checkin-back-btn'
+    backButton.setAttribute('data-action', 'checkin-back')
+    backButton.textContent = '⬅ 返回主畫面'
+    shell.prepend(backButton)
+  }
+
+  let root = page.querySelector(`#${CHECKIN_ROOT_ID}`)
+  if (!root) {
+    root = document.createElement('div')
+    root.id = CHECKIN_ROOT_ID
+    page.appendChild(root)
+  }
+
   runtime.pageEl = page as HTMLElement
-  runtime.rootEl = page.querySelector(`#${CHECKIN_ROOT_ID}`)
+  runtime.rootEl = root as HTMLElement
   return page
 }
 

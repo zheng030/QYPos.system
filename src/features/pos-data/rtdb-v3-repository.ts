@@ -1,31 +1,31 @@
 import type {
   CorePosState,
-  PosCartItem,
   PosOrder,
+  PosOrderBatch,
+  PosOrderEntry,
   PosOwnerAuthMap,
   PosOwnerAuthRecord,
   PosTableCustomer,
 } from '@/features/pos-kernel/types'
 import type { AttendanceEmployee, AttendanceRecord } from '@/shared/attendance-service'
-import { type DatabaseCompat, dbIncrement } from '@/shared/firebase-compat'
+import type { DatabaseCompat } from '@/shared/firebase-compat'
+import { decodeRtdbKeySegment, encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import {
   buildLiveTable,
   buildPendingSummary,
   buildSummaryFromClosedOrders,
-  createDailySummary,
   createEmptyLiveTable,
   getBizDateKey,
   getBizDateKeysBetween,
   getMonthKey,
   getMonthKeyFromBizDate,
-  incomingHeadToPreviewOrder,
-  incomingOrderRecordToHead,
-  mapCartLinesToItems,
+  mapBatchToStored,
+  mapStoredBatch,
+  mapStoredEntry,
   orderRecordToPosOrder,
   toClosedOrderRecord,
 } from './rtdb-v3-mapper'
 import type {
-  V3IncomingOrder as StoredIncomingOrder,
   V3AttendanceWindowEvent,
   V3BizDateKey,
   V3CatalogRevisionEvent,
@@ -38,7 +38,7 @@ import type {
   V3ItemStatsRangeEvent,
   V3LiveTable,
   V3MonthKey,
-  V3OwnerAuthRecord,
+  V3OrderBatch,
   V3OwnerAuthRevisionEvent,
   V3PendingSummary,
   V3RevisionValue,
@@ -47,18 +47,6 @@ import type {
 import { RTDB_V3_ROOT } from './rtdb-v3-types'
 
 type LiveMode = 'staff' | 'customer'
-
-type CheckoutPayload = {
-  table: string
-  cart: PosCartItem[]
-  customer: PosTableCustomer | undefined
-  paidTotal: number
-  originalTotal: number
-  splitCounter: number | null
-  clearTable: boolean
-  remainingCart?: PosCartItem[]
-  nextSplitCounter?: number
-}
 
 type HistoryRange = {
   start: Date
@@ -72,12 +60,14 @@ type RepositoryDeps = {
 }
 
 type AttendanceMonthMap = Record<string, AttendanceRecord>
-type WritableIncomingOrder = {
-  requestId: string
-  items: PosCartItem[]
-  customer: { name: string; phone: string }
-  batchId: number
-  timestamp: number
+
+function toRevValue(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function toBatchId(prefix: 'pending' | 'submitted') {
+  const random = globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
+  return `${prefix}_${Date.now()}_${random}`
 }
 
 function toOrderId() {
@@ -85,18 +75,83 @@ function toOrderId() {
   return `ord_${Date.now()}_${random}`
 }
 
-function toRequestId() {
-  const random = globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
-  return `req_${Date.now()}_${random}`
+function readDisplaySeqBase(summary: V3TableSummary | null | undefined) {
+  return Number(summary?.displaySeqBase || 0) || 0
 }
 
-function toRevValue(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+function cloneCustomer(customer: PosTableCustomer | undefined): PosTableCustomer {
+  return {
+    name: customer?.name || '',
+    phone: customer?.phone || '',
+    orderId: customer?.orderId,
+  }
+}
+
+function sortEntries(entries: PosOrderEntry[]) {
+  return [...entries].sort(
+    (left, right) => left.createdAt - right.createdAt || left.entryId.localeCompare(right.entryId)
+  )
+}
+
+function sumEntries(entries: PosOrderEntry[]) {
+  return entries.reduce((sum, entry) => sum + entry.subtotal, 0)
+}
+
+function readSplitCounter(value: unknown) {
+  const counter = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : 0
+  return Number.isFinite(counter) && counter > 0 ? counter : 1
+}
+
+function normalizeLiveTable(value: V3LiveTable | null | undefined) {
+  if (!value) {
+    return createEmptyLiveTable()
+  }
+  return {
+    summary: value.summary || null,
+    draft: { ...(value.draft || {}) },
+    pendingBatches: { ...(value.pendingBatches || {}) },
+    submittedBatches: { ...(value.submittedBatches || {}) },
+  } satisfies V3LiveTable
+}
+
+function encodeTableKey(table: string) {
+  return encodeRtdbKeySegment(table)
+}
+
+function decodeTableKey(table: string) {
+  return decodeRtdbKeySegment(table)
+}
+
+function encodeCatalogKey(key: string) {
+  return encodeRtdbKeySegment(key)
+}
+
+function decodeCatalogRecord<T>(value: Record<string, T> | null | undefined) {
+  return Object.fromEntries(
+    Object.entries(value || {}).map(([key, entry]) => [decodeRtdbKeySegment(key), entry])
+  ) as Record<string, T>
+}
+
+function decodeItemStatsRecord(value: Record<string, V3DailyItemStat> | null | undefined) {
+  return Object.fromEntries(
+    Object.entries(value || {}).map(([key, entry]) => [decodeRtdbKeySegment(key), entry])
+  ) as Record<string, V3DailyItemStat>
+}
+
+function encodeBatchMapKey(id: string) {
+  return encodeRtdbKeySegment(id)
+}
+
+function encodeItemStatsRecord(value: Record<string, V3DailyItemStat> | null | undefined) {
+  if (!value) return null
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [encodeRtdbKeySegment(key), entry])) as Record<
+    string,
+    V3DailyItemStat
+  >
 }
 
 export function createRtdbV3Repository({ db, state, onLiveStateChange }: RepositoryDeps) {
   const unsubs = new Map<string, () => void>()
-
   const revisionCache = new Map<string, V3RevisionValue>()
   const dailySummaryDayCache = new Map<V3BizDateKey, V3DailySummary>()
   const itemStatsDayCache = new Map<V3BizDateKey, Record<string, V3DailyItemStat>>()
@@ -111,10 +166,11 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
   let ownerAuthLoaded = false
   let ownerAuthLoad: Promise<void> | null = null
   let staffLiveStarted = false
-  let staffLiveLoad: Promise<void> | null = null
   let currentTableSession: { table: string; mode: LiveMode } | null = null
-  let tableSessionLoad: Promise<void> | null = null
-  let tableSessionLoadKey = ''
+
+  function notifyLiveStateChange(roots: string[]) {
+    onLiveStateChange?.(roots)
+  }
 
   function clearSubscription(key: string) {
     unsubs.get(key)?.()
@@ -128,15 +184,13 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     }
   }
 
-  function notifyLiveStateChange(roots: string[]) {
-    onLiveStateChange?.(roots)
-  }
-
   function touchRevision(path: string, payload: Record<string, unknown>) {
     payload[`${RTDB_V3_ROOT}/meta/revisions/${path}`] = Date.now()
   }
 
-  function syncWrittenRevisionBaselines(payload: Record<string, unknown>) {
+  async function updateRoot(payload: Record<string, unknown>) {
+    if (Object.keys(payload).length === 0) return
+    await db.ref('/').update(payload)
     const prefix = `${RTDB_V3_ROOT}/meta/revisions/`
     Object.entries(payload).forEach(([path, value]) => {
       if (path.startsWith(prefix)) {
@@ -145,122 +199,63 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     })
   }
 
-  async function updateRoot(payload: Record<string, unknown>) {
-    await db.ref('/').update(payload)
-    syncWrittenRevisionBaselines(payload)
+  async function readLiveTable(table: string) {
+    const snapshot = await db.ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`).once('value')
+    return normalizeLiveTable(snapshot.val() as V3LiveTable | null | undefined)
   }
 
-  async function syncRevisionBaselines(paths: string[], shouldRefreshCachedPath: (path: string) => boolean) {
-    const changedPaths: string[] = []
-    await Promise.all(
-      [...new Set(paths)].map(async (path) => {
-        const snapshot = await db.ref(`${RTDB_V3_ROOT}/meta/revisions/${path}`).once('value')
-        const next = toRevValue(snapshot.val())
-        const previous = revisionCache.get(path)
-        revisionCache.set(path, next)
-        if (
-          (previous !== undefined && previous !== next) ||
-          (previous === undefined && shouldRefreshCachedPath(path))
-        ) {
-          changedPaths.push(path)
-        }
-      })
-    )
-    return changedPaths
+  function toDraftEntries(liveTable: V3LiveTable | null | undefined) {
+    return Object.values(liveTable?.draft || {})
+      .map((entry) => mapStoredEntry(entry))
+      .sort((left, right) => left.createdAt - right.createdAt)
   }
 
-  function watchRevision(path: string, onInvalidate: () => void) {
-    const unsubscribe = db.ref(`${RTDB_V3_ROOT}/meta/revisions/${path}`).on('value', (snapshot) => {
-      const next = toRevValue(snapshot.val())
-      const previous = revisionCache.get(path)
-      revisionCache.set(path, next)
-      if (previous !== undefined && previous !== next) {
-        onInvalidate()
-      }
-    }) as () => void
-    return unsubscribe
+  function toBatchList(value: Record<string, V3OrderBatch> | undefined) {
+    return Object.values(value || {})
+      .map((batch) => mapStoredBatch(batch))
+      .sort((left, right) => left.createdAt - right.createdAt)
   }
 
-  function watchMappedRevisions(paths: string[], onInvalidate: (path: string) => void) {
-    const stops = [...new Set(paths)].map((path) => watchRevision(path, () => onInvalidate(path)))
-    return () => {
-      stops.forEach((stop) => {
-        stop()
-      })
+  function getPreviewBatch(summary: V3PendingSummary | null | undefined): PosOrderBatch | null {
+    if (!summary?.firstBatch) return null
+    const firstBatch = summary.firstBatch
+    return {
+      batchId: firstBatch.batchId,
+      source: 'customer',
+      status: 'pending',
+      table: '',
+      customer: {},
+      createdAt: firstBatch.createdAt,
+      updatedAt: firstBatch.createdAt,
+      requestLabel: firstBatch.requestLabel,
+      entries: firstBatch.itemPreview.map((name, index) => ({
+        entryId: `preview_${firstBatch.batchId}_${index}`,
+        groupId: `preview_${firstBatch.batchId}_${index}`,
+        itemId: `preview_${index}`,
+        catalogKey: `preview_${index}`,
+        inventoryKey: `preview_${index}`,
+        itemName: name,
+        shortName: name,
+        categoryKey: 'a_la_carte',
+        quantity: 1,
+        status: 'pending',
+        source: 'customer',
+        createdAt: firstBatch.createdAt,
+        updatedAt: firstBatch.createdAt,
+        selections: {},
+        includeSelections: {},
+        upgradeSelections: {},
+        lines: [],
+        subtotal: 0,
+        summary: {
+          title: name,
+          subtitle: '',
+          quantityLabel: '1 份',
+          totalLabel: '$0',
+        },
+      })),
+      subtotal: 0,
     }
-  }
-
-  function getBizDateFromRevisionPath(path: string) {
-    return path.split('/').at(-1) as V3BizDateKey | undefined
-  }
-
-  async function syncHistoryRevisionBaselines(bizDateKeys: V3BizDateKey[]) {
-    const changedPaths = await syncRevisionBaselines(
-      bizDateKeys.map((bizDate) => `history/ordersByDay/${bizDate}`),
-      (path) => {
-        const bizDate = getBizDateFromRevisionPath(path)
-        return Boolean(bizDate && historyDayCache.has(bizDate))
-      }
-    )
-    changedPaths.forEach((path) => {
-      const bizDate = getBizDateFromRevisionPath(path)
-      if (bizDate) historyDayCache.delete(bizDate)
-    })
-  }
-
-  async function syncDailySummaryRevisionBaselines(bizDateKeys: V3BizDateKey[]) {
-    const changedPaths = await syncRevisionBaselines(
-      bizDateKeys.map((bizDate) => `reports/dailyByDay/${bizDate}`),
-      (path) => {
-        const bizDate = getBizDateFromRevisionPath(path)
-        return Boolean(bizDate && dailySummaryDayCache.has(bizDate))
-      }
-    )
-    changedPaths.forEach((path) => {
-      const bizDate = getBizDateFromRevisionPath(path)
-      if (bizDate) dailySummaryDayCache.delete(bizDate)
-    })
-  }
-
-  async function syncItemStatsRevisionBaselines(bizDateKeys: V3BizDateKey[]) {
-    const changedPaths = await syncRevisionBaselines(
-      bizDateKeys.map((bizDate) => `reports/itemStatsByDay/${bizDate}`),
-      (path) => {
-        const bizDate = getBizDateFromRevisionPath(path)
-        return Boolean(bizDate && itemStatsDayCache.has(bizDate))
-      }
-    )
-    changedPaths.forEach((path) => {
-      const bizDate = getBizDateFromRevisionPath(path)
-      if (bizDate) itemStatsDayCache.delete(bizDate)
-    })
-  }
-
-  async function refreshHistoryBizDates(bizDateKeys: V3BizDateKey[]) {
-    await Promise.all(
-      bizDateKeys.map(async (bizDate) => {
-        historyDayCache.delete(bizDate)
-        await ensureHistoryBizDate(bizDate)
-      })
-    )
-  }
-
-  async function refreshDailySummaryBizDates(bizDateKeys: V3BizDateKey[]) {
-    await Promise.all(
-      bizDateKeys.map(async (bizDate) => {
-        dailySummaryDayCache.delete(bizDate)
-        await ensureDailySummaryDay(bizDate)
-      })
-    )
-  }
-
-  async function refreshItemStatsBizDates(bizDateKeys: V3BizDateKey[]) {
-    await Promise.all(
-      bizDateKeys.map(async (bizDate) => {
-        itemStatsDayCache.delete(bizDate)
-        await ensureItemStatsDay(bizDate)
-      })
-    )
   }
 
   function applyTableSummary(tableId: string, summary: V3TableSummary | null | undefined) {
@@ -268,8 +263,8 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       delete state.tableTimers[tableId]
       delete state.tableStatuses[tableId]
       delete state.tableCustomers[tableId]
-      delete state.tableSplitCounters[tableId]
       delete state.tableBatchCounts[tableId]
+      delete state.tableSplitCounters[tableId]
       return
     }
 
@@ -282,40 +277,36 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       phone: summary.customer?.phone || '',
       orderId: summary.displaySeqBase ?? undefined,
     }
-    state.tableSplitCounters[tableId] = summary.splitCounter ?? 1
     state.tableBatchCounts[tableId] = summary.batchCount ?? 0
-  }
-
-  function toIncomingOrderQueue(liveTable: V3LiveTable | null | undefined) {
-    return Object.values(liveTable?.incomingOrders || {})
-      .sort((left, right) => left.createdAt - right.createdAt)
-      .map((order) => incomingHeadToPreviewOrder(incomingOrderRecordToHead(order)))
-  }
-
-  function toPendingQueue(summary: V3PendingSummary | null | undefined) {
-    if (!summary?.firstOrder) {
-      return []
-    }
-    return [incomingHeadToPreviewOrder(summary.firstOrder)]
+    state.tableSplitCounters[tableId] = readSplitCounter(
+      (summary as V3TableSummary & { nextSplitCounter?: unknown }).nextSplitCounter
+    )
   }
 
   function applyLiveTable(tableId: string, liveTable: V3LiveTable | null | undefined, mode?: LiveMode) {
-    const summary = liveTable?.summary || null
-    applyTableSummary(tableId, summary)
+    applyTableSummary(tableId, liveTable?.summary || null)
 
-    const cart = mapCartLinesToItems(liveTable?.cart || {})
-    if (cart.length > 0) state.tableCarts[tableId] = cart
-    else delete state.tableCarts[tableId]
+    const draft = toDraftEntries(liveTable)
+    const pending = toBatchList(liveTable?.pendingBatches)
+    const submitted = toBatchList(liveTable?.submittedBatches)
 
-    const incomingQueue = toIncomingOrderQueue(liveTable)
-    if (incomingQueue.length > 0) state.incomingOrders[tableId] = incomingQueue
-    else delete state.incomingOrders[tableId]
+    if (draft.length > 0) state.tableDrafts[tableId] = draft
+    else delete state.tableDrafts[tableId]
+    if (pending.length > 0) state.pendingBatches[tableId] = pending
+    else delete state.pendingBatches[tableId]
+    if (submitted.length > 0) state.submittedBatches[tableId] = submitted
+    else delete state.submittedBatches[tableId]
 
-    if (state.selectedTable === tableId && mode === 'staff') {
-      state.cart = [...cart]
-    }
-    if (state.selectedTable === tableId && mode === 'customer') {
-      state.sentItems = cart.map((item) => ({ ...item, isSent: true }))
+    if (currentTableSession?.table === tableId) {
+      if (mode === 'customer') {
+        state.activeDraftEntries = draft
+        state.activePendingBatches = pending
+        state.activeSubmittedBatches = submitted
+      } else {
+        state.activeDraftEntries = [...(state.staffDrafts[tableId] || [])]
+        state.activePendingBatches = pending
+        state.activeSubmittedBatches = submitted
+      }
     }
   }
 
@@ -324,131 +315,104 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     if (currentTableSession?.table === tableId) {
       return
     }
-    const incomingQueue = toPendingQueue(summary)
-    if (incomingQueue.length > 0) state.incomingOrders[tableId] = incomingQueue
-    else delete state.incomingOrders[tableId]
+    const preview = getPreviewBatch(summary)
+    if (preview) state.pendingBatches[tableId] = [preview]
+    else if (!state.submittedBatches[tableId]) delete state.pendingBatches[tableId]
   }
 
-  function replaceAllLiveSummaries(value: Record<string, V3TableSummary> | undefined) {
-    state.tableTimers = {}
-    state.tableStatuses = {}
-    state.tableCustomers = {}
-    state.tableSplitCounters = {}
-    state.tableBatchCounts = {}
-    state.tableCarts = {}
-    for (const [tableId, summary] of Object.entries(value || {})) {
-      applyTableSummary(tableId, summary || null)
+  async function _persistLiveTable(table: string, liveTable: V3LiveTable | null) {
+    const encodedTable = encodeTableKey(table)
+    const payload: Record<string, unknown> = {
+      [`${RTDB_V3_ROOT}/live/tables/${encodedTable}`]: liveTable,
+      [`${RTDB_V3_ROOT}/live/tableSummaries/${encodedTable}`]: liveTable?.summary || null,
+      [`${RTDB_V3_ROOT}/live/pendingSummaries/${encodedTable}`]: buildPendingSummary(liveTable?.pendingBatches) || null,
     }
-  }
-
-  function replaceAllPendingSummaries(value: Record<string, V3PendingSummary> | undefined) {
-    pendingSummaryCache.clear()
-    state.incomingOrders = {}
-    for (const [tableId, summary] of Object.entries(value || {})) {
-      applyPendingSummary(tableId, summary || null)
-    }
-  }
-
-  function applyAuthorityState(tableId: string, liveTable: V3LiveTable | null | undefined) {
-    const mode = currentTableSession?.table === tableId ? currentTableSession.mode : undefined
-    if (mode) {
-      applyLiveTable(tableId, liveTable, mode)
-      return
-    }
-    applyTableSummary(tableId, liveTable?.summary || null)
-    delete state.tableCarts[tableId]
-    applyPendingSummary(tableId, buildPendingSummary(liveTable?.incomingOrders) || null)
-  }
-
-  function writeLiveTableAuthority(
-    table: string,
-    liveTable: V3LiveTable | null,
-    payload: Record<string, unknown>,
-    options: { writeAuthority?: boolean; writeSummaryIndex?: boolean; writePendingSummaryIndex?: boolean } = {}
-  ) {
-    const summary = liveTable?.summary || null
-    const pendingSummary = buildPendingSummary(liveTable?.incomingOrders)
-
-    if (options.writeAuthority !== false) {
-      payload[`${RTDB_V3_ROOT}/live/tables/${table}`] = liveTable
-    }
-    if (options.writeSummaryIndex !== false) {
-      payload[`${RTDB_V3_ROOT}/live/tableSummaries/${table}`] = summary
-    }
-    if (options.writePendingSummaryIndex !== false) {
-      payload[`${RTDB_V3_ROOT}/live/pendingSummaries/${table}`] = pendingSummary
-    }
-  }
-
-  function mapStoredIncomingOrders(value: Record<string, StoredIncomingOrder> | undefined) {
-    return Object.values(value || {})
-      .sort((left, right) => left.createdAt - right.createdAt)
-      .map((entry) => ({
-        requestId: entry.requestId,
-        items: mapCartLinesToItems(entry.items),
-        customer: {
-          name: entry.customer?.name || '',
-          phone: entry.customer?.phone || '',
-        },
-        batchId: entry.batchId,
-        timestamp: entry.createdAt,
-      }))
-  }
-
-  function getLiveSummaryCustomer(summary: V3TableSummary | null | undefined): PosTableCustomer {
-    return {
-      name: summary?.customer?.name || '',
-      phone: summary?.customer?.phone || '',
-      orderId: summary?.displaySeqBase ?? undefined,
-    }
-  }
-
-  function normalizeLiveTable(value: V3LiveTable | null | undefined) {
-    if (!value) return createEmptyLiveTable()
-    return {
-      summary: value.summary || null,
-      cart: { ...(value.cart || {}) },
-      incomingOrders: { ...(value.incomingOrders || {}) },
-    } satisfies V3LiveTable
-  }
-
-  async function persistDerivedLiveIndexes(table: string, liveTable: V3LiveTable | null) {
-    const payload: Record<string, unknown> = {}
-    writeLiveTableAuthority(table, liveTable, payload, { writeAuthority: false })
     await updateRoot(payload)
+    applyLiveTable(table, liveTable, currentTableSession?.table === table ? currentTableSession.mode : undefined)
   }
 
-  async function replaceLiveTable(table: string, liveTable: V3LiveTable | null) {
-    const payload: Record<string, unknown> = {}
-    writeLiveTableAuthority(table, liveTable, payload)
+  async function syncLiveTableDerivedState(table: string) {
+    const liveTable = await readLiveTable(table)
+    const encodedTable = encodeTableKey(table)
+    const payload: Record<string, unknown> = {
+      [`${RTDB_V3_ROOT}/live/tableSummaries/${encodedTable}`]: liveTable.summary || null,
+      [`${RTDB_V3_ROOT}/live/pendingSummaries/${encodedTable}`]: buildPendingSummary(liveTable.pendingBatches) || null,
+    }
     await updateRoot(payload)
+    applyLiveTable(table, liveTable, currentTableSession?.table === table ? currentTableSession.mode : undefined)
     return liveTable
   }
 
-  async function transactLiveTable(
-    table: string,
-    updater: (current: V3LiveTable) => V3LiveTable | null,
-    options: { persistDerivedIndexes?: boolean } = {}
-  ): Promise<V3LiveTable | null> {
-    const tx = await db
-      .ref(`${RTDB_V3_ROOT}/live/tables/${table}`)
-      .transaction<V3LiveTable | null>((current) => updater(normalizeLiveTable(current || null)))
-    const next = tx.snapshot.val() ? (tx.snapshot.val() as V3LiveTable) : null
-    if (options.persistDerivedIndexes !== false) {
-      await persistDerivedLiveIndexes(table, next)
+  async function transactLiveTable(table: string, updater: (current: V3LiveTable) => V3LiveTable) {
+    await db
+      .ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`)
+      .transaction<V3LiveTable>((currentValue) =>
+        updater(normalizeLiveTable(currentValue as V3LiveTable | null | undefined))
+      )
+    return syncLiveTableDerivedState(table)
+  }
+
+  async function reserveDisplaySeqBase(value = Date.now()) {
+    const bizDate = getBizDateKey(value)
+    const ref = db.ref(`${RTDB_V3_ROOT}/history/sequenceByDate/${bizDate}/nextDisplaySeq`)
+    const tx = await ref.transaction<number>((current) => (current || 1) + 1)
+    const next = Number(tx.snapshot.val()) || 2
+    return {
+      bizDate,
+      displaySeqBase: Math.max(1, next - 1),
     }
-    return next
+  }
+
+  async function ensureDisplaySeqBase(table: string, customer: PosTableCustomer | undefined) {
+    const candidate =
+      typeof customer?.orderId === 'number'
+        ? customer.orderId
+        : typeof customer?.orderId === 'string'
+          ? Number.parseInt(customer.orderId, 10) || 0
+          : 0
+    if (candidate > 0) {
+      state.tableCustomers[table] = { ...cloneCustomer(customer), orderId: candidate }
+      return candidate
+    }
+
+    const cached = state.tableCustomers[table]
+    const cachedValue =
+      typeof cached?.orderId === 'number'
+        ? cached.orderId
+        : typeof cached?.orderId === 'string'
+          ? Number.parseInt(cached.orderId, 10) || 0
+          : 0
+    if (cachedValue > 0) {
+      state.tableCustomers[table] = { ...cloneCustomer(customer), orderId: cachedValue }
+      return cachedValue
+    }
+
+    const liveTable = await readLiveTable(table)
+    const remote = readDisplaySeqBase(liveTable.summary)
+    if (remote > 0) {
+      state.tableCustomers[table] = { ...cloneCustomer(customer), orderId: remote }
+      return remote
+    }
+
+    const reserved = await reserveDisplaySeqBase()
+    state.tableCustomers[table] = { ...cloneCustomer(customer), orderId: reserved.displaySeqBase }
+    return reserved.displaySeqBase
   }
 
   async function fetchCatalogSegment(segment: V3CatalogSegment) {
     const snapshot = await db.ref(`${RTDB_V3_ROOT}/catalog/${segment}`).once('value')
     const value = snapshot.val() || {}
     if (segment === 'inventory') {
-      state.inventory = { ...(value as Record<string, boolean>) }
+      state.inventory = decodeCatalogRecord(value as Record<string, boolean>)
     } else if (segment === 'prices') {
-      state.itemPrices = { ...(value as Record<string, number | string>) }
+      state.itemPrices = Object.fromEntries(
+        Object.entries(decodeCatalogRecord(value as Record<string, number | string>)).map(([key, entry]) => [
+          key,
+          Number(entry),
+        ])
+      )
     } else {
-      state.itemCosts = { ...(value as Record<string, number>) }
+      state.itemCosts = decodeCatalogRecord(value as Record<string, number>)
     }
     loadedCatalogSegments.add(segment)
   }
@@ -484,9 +448,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
   }
 
   async function ensureOwnerAuth() {
-    if (ownerAuthLoaded) {
-      return
-    }
+    if (ownerAuthLoaded) return
     ownerAuthLoad ||= fetchOwnerAuth().finally(() => {
       ownerAuthLoad = null
     })
@@ -556,7 +518,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     activeAttendanceMonths = new Set(normalized)
     rebuildAttendanceState()
     const stops = [
-      watchRevision('attendance/employees', () => {
+      db.ref(`${RTDB_V3_ROOT}/meta/revisions/attendance/employees`).on('value', () => {
         void fetchAttendanceEmployees().then(() => {
           attendanceEmployeesRev = Date.now()
           onInvalidate({
@@ -565,25 +527,25 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
             employeesChanged: true,
           })
         })
-      }),
-      ...normalized.map((monthKey) =>
-        watchRevision(`attendance/recordsByMonth/${monthKey}`, () => {
-          void db
-            .ref(`${RTDB_V3_ROOT}/attendance/recordsByMonth/${monthKey}`)
-            .once('value')
-            .then((snapshot) => {
-              replaceAttendanceMonth(monthKey, { ...((snapshot.val() || {}) as AttendanceMonthMap) })
-              revisionCache.set(`attendance/recordsByMonth/${monthKey}`, Date.now())
-            })
-            .then(() => {
-              rebuildAttendanceState()
-              onInvalidate({
-                kind: 'attendance-window',
-                changedMonthKeys: [monthKey],
-                employeesChanged: false,
+      }) as () => void,
+      ...normalized.map(
+        (monthKey) =>
+          db.ref(`${RTDB_V3_ROOT}/meta/revisions/attendance/recordsByMonth/${monthKey}`).on('value', () => {
+            void db
+              .ref(`${RTDB_V3_ROOT}/attendance/recordsByMonth/${monthKey}`)
+              .once('value')
+              .then((snapshot) => {
+                replaceAttendanceMonth(monthKey, { ...((snapshot.val() || {}) as AttendanceMonthMap) })
               })
-            })
-        })
+              .then(() => {
+                rebuildAttendanceState()
+                onInvalidate({
+                  kind: 'attendance-window',
+                  changedMonthKeys: [monthKey],
+                  employeesChanged: false,
+                })
+              })
+          }) as () => void
       ),
     ]
     return () => {
@@ -597,9 +559,8 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     const payload: Record<string, unknown> = {}
     const employeeUpdates = new Map<string, AttendanceEmployee | null>()
     const monthUpdates = new Map<V3MonthKey, AttendanceMonthMap>()
-    const recordStateUpdates = new Map<string, AttendanceRecord | null>()
-    let touchedEmployees = false
     const touchedMonths = new Set<V3MonthKey>()
+    let touchedEmployees = false
 
     for (const [path, value] of Object.entries(updates)) {
       const [root, key] = path.split('/')
@@ -612,42 +573,37 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         continue
       }
 
-      if (root === 'attendanceRecords') {
-        const existing = state.attendanceRecords[key]
-        const oldMonthKey = attendanceRecordLocationCache.get(key) || (existing ? getMonthKey(existing.ts) : null)
+      if (root !== 'attendanceRecords') continue
+      const existing = state.attendanceRecords[key]
+      const oldMonthKey = attendanceRecordLocationCache.get(key) || (existing ? getMonthKey(existing.ts) : null)
 
-        if (value === null) {
-          if (!oldMonthKey) continue
-          payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${oldMonthKey}/${key}`] = null
-          const monthRecords = { ...(monthUpdates.get(oldMonthKey) || attendanceMonthCache.get(oldMonthKey) || {}) }
-          delete monthRecords[key]
-          monthUpdates.set(oldMonthKey, monthRecords)
-          recordStateUpdates.set(key, null)
-          touchedMonths.add(oldMonthKey)
-          continue
-        }
-
-        const record = value as AttendanceRecord
-        const newMonthKey = getMonthKey(record.ts)
-
-        if (oldMonthKey && oldMonthKey !== newMonthKey) {
-          payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${oldMonthKey}/${key}`] = null
-          const oldMonthRecords = { ...(monthUpdates.get(oldMonthKey) || attendanceMonthCache.get(oldMonthKey) || {}) }
-          delete oldMonthRecords[key]
-          monthUpdates.set(oldMonthKey, oldMonthRecords)
-          touchedMonths.add(oldMonthKey)
-        }
-
-        payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${newMonthKey}/${key}`] = record
-        const newMonthRecords = { ...(monthUpdates.get(newMonthKey) || attendanceMonthCache.get(newMonthKey) || {}) }
-        newMonthRecords[key] = record
-        monthUpdates.set(newMonthKey, newMonthRecords)
-        recordStateUpdates.set(key, record)
-        touchedMonths.add(newMonthKey)
+      if (value === null) {
+        if (!oldMonthKey) continue
+        payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${oldMonthKey}/${key}`] = null
+        const monthRecords = { ...(monthUpdates.get(oldMonthKey) || attendanceMonthCache.get(oldMonthKey) || {}) }
+        delete monthRecords[key]
+        monthUpdates.set(oldMonthKey, monthRecords)
+        touchedMonths.add(oldMonthKey)
+        continue
       }
+
+      const record = value as AttendanceRecord
+      const newMonthKey = getMonthKey(record.ts)
+      if (oldMonthKey && oldMonthKey !== newMonthKey) {
+        payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${oldMonthKey}/${key}`] = null
+        const oldMonthRecords = { ...(monthUpdates.get(oldMonthKey) || attendanceMonthCache.get(oldMonthKey) || {}) }
+        delete oldMonthRecords[key]
+        monthUpdates.set(oldMonthKey, oldMonthRecords)
+        touchedMonths.add(oldMonthKey)
+      }
+
+      payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${newMonthKey}/${key}`] = record
+      const newMonthRecords = { ...(monthUpdates.get(newMonthKey) || attendanceMonthCache.get(newMonthKey) || {}) }
+      newMonthRecords[key] = record
+      monthUpdates.set(newMonthKey, newMonthRecords)
+      touchedMonths.add(newMonthKey)
     }
 
-    if (Object.keys(payload).length === 0) return
     if (touchedEmployees) {
       touchRevision('attendance/employees', payload)
     }
@@ -655,6 +611,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       touchRevision(`attendance/recordsByMonth/${monthKey}`, payload)
     })
     await updateRoot(payload)
+
     employeeUpdates.forEach((employee, key) => {
       if (employee === null) delete state.attendanceEmployees[key]
       else state.attendanceEmployees[key] = employee
@@ -663,250 +620,30 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       replaceAttendanceMonth(monthKey, records)
     })
     rebuildAttendanceState()
-    if (touchedEmployees) {
-      attendanceEmployeesRev = Date.now()
-    }
-    touchedMonths.forEach((monthKey) => {
-      revisionCache.set(`attendance/recordsByMonth/${monthKey}`, Date.now())
-    })
-  }
-
-  async function reserveDisplaySeqBase(value = Date.now()) {
-    const bizDate = getBizDateKey(value)
-    const ref = db.ref(`${RTDB_V3_ROOT}/history/sequenceByDate/${bizDate}/nextDisplaySeq`)
-    const tx = await ref.transaction<number>((current) => (current || 1) + 1)
-    const next = Number(tx.snapshot.val()) || 2
-    return {
-      bizDate,
-      displaySeqBase: Math.max(1, next - 1),
-    }
-  }
-
-  async function ensureDisplaySeqBase(table: string, customer: PosTableCustomer | undefined) {
-    const localCurrent = customer?.orderId
-    const localParsed =
-      typeof localCurrent === 'number'
-        ? localCurrent
-        : typeof localCurrent === 'string'
-          ? parseInt(localCurrent, 10) || 0
-          : 0
-    if (localParsed > 0) {
-      const nextCustomer = customer || {}
-      nextCustomer.orderId = localParsed
-      state.tableCustomers[table] = nextCustomer
-      return localParsed
-    }
-
-    const cachedSummary = state.tableCustomers[table]
-    const cachedParsed =
-      typeof cachedSummary?.orderId === 'number'
-        ? cachedSummary.orderId
-        : typeof cachedSummary?.orderId === 'string'
-          ? parseInt(cachedSummary.orderId, 10) || 0
-          : 0
-    if (cachedParsed > 0) {
-      const nextCustomer = customer || {}
-      nextCustomer.orderId = cachedParsed
-      state.tableCustomers[table] = nextCustomer
-      return cachedParsed
-    }
-
-    const remoteTable = await readLiveTable(table)
-    const remoteParsed = Number(remoteTable?.summary?.displaySeqBase || 0)
-    if (remoteParsed > 0) {
-      const nextCustomer = customer || {}
-      nextCustomer.orderId = remoteParsed
-      state.tableCustomers[table] = nextCustomer
-      return remoteParsed
-    }
-
-    const reserved = await reserveDisplaySeqBase()
-    const nextCustomer = customer || {}
-    nextCustomer.orderId = reserved.displaySeqBase
-    state.tableCustomers[table] = nextCustomer
-    return reserved.displaySeqBase
-  }
-
-  async function readLiveTable(table: string) {
-    const snapshot = await db.ref(`${RTDB_V3_ROOT}/live/tables/${table}`).once('value')
-    const value = snapshot.val()
-    return value ? (value as V3LiveTable) : null
-  }
-
-  async function subscribeLiveTables() {
-    const summariesPath = `${RTDB_V3_ROOT}/live/tableSummaries`
-    const pendingPath = `${RTDB_V3_ROOT}/live/pendingSummaries`
-    replaceAllLiveSummaries({})
-    replaceAllPendingSummaries({})
-
-    const stopSummaryAdded = db.ref(summariesPath).on('child_added', (child) => {
-      const tableId = child.key()
-      if (!tableId) return
-      applyTableSummary(tableId, (child.val() || null) as V3TableSummary | null)
-      notifyLiveStateChange(['live'])
-    }) as () => void
-    const stopSummaryChanged = db.ref(summariesPath).on('child_changed', (child) => {
-      const tableId = child.key()
-      if (!tableId) return
-      applyTableSummary(tableId, (child.val() || null) as V3TableSummary | null)
-      notifyLiveStateChange(['live'])
-    }) as () => void
-    const stopSummaryRemoved = db.ref(summariesPath).on('child_removed', (child) => {
-      const tableId = child.key()
-      if (!tableId) return
-      applyTableSummary(tableId, null)
-      delete state.tableCarts[tableId]
-      if (currentTableSession?.table !== tableId) {
-        delete state.incomingOrders[tableId]
-      }
-      notifyLiveStateChange(['live'])
-    }) as () => void
-
-    const stopPendingAdded = db.ref(pendingPath).on('child_added', (child) => {
-      const tableId = child.key()
-      if (!tableId) return
-      applyPendingSummary(tableId, (child.val() || null) as V3PendingSummary | null)
-      notifyLiveStateChange(['incomingOrders'])
-    }) as () => void
-    const stopPendingChanged = db.ref(pendingPath).on('child_changed', (child) => {
-      const tableId = child.key()
-      if (!tableId) return
-      applyPendingSummary(tableId, (child.val() || null) as V3PendingSummary | null)
-      notifyLiveStateChange(['incomingOrders'])
-    }) as () => void
-    const stopPendingRemoved = db.ref(pendingPath).on('child_removed', (child) => {
-      const tableId = child.key()
-      if (!tableId) return
-      applyPendingSummary(tableId, null)
-      notifyLiveStateChange(['incomingOrders'])
-    }) as () => void
-
-    setSubscription('live-tables', () => {
-      stopSummaryAdded()
-      stopSummaryChanged()
-      stopSummaryRemoved()
-      stopPendingAdded()
-      stopPendingChanged()
-      stopPendingRemoved()
-    })
-  }
-
-  async function subscribeTableSession(table: string, mode: LiveMode) {
-    if (currentTableSession?.table === table && currentTableSession.mode === mode) {
-      return
-    }
-    clearSubscription('table-session-live')
-
-    const seededLiveTable = await readLiveTable(table)
-    applyLiveTable(table, seededLiveTable, mode)
-
-    const liveUnsub = db.ref(`${RTDB_V3_ROOT}/live/tables/${table}`).on('value', (snapshot) => {
-      applyLiveTable(table, (snapshot.val() || null) as V3LiveTable | null, mode)
-      notifyLiveStateChange(['live', 'tableCarts', 'incomingOrders'])
-    }) as () => void
-    setSubscription('table-session-live', liveUnsub)
-    currentTableSession = { table, mode }
-  }
-
-  async function startStaffLive() {
-    await ensureCatalog()
-    if (staffLiveStarted) {
-      return
-    }
-    staffLiveLoad ||= subscribeLiveTables()
-      .then(() => {
-        staffLiveStarted = true
-      })
-      .finally(() => {
-        staffLiveLoad = null
-      })
-    await staffLiveLoad
-  }
-
-  async function startTableLiveSession(mode: LiveMode, table: string) {
-    const loadKey = `${mode}:${table}`
-    if (currentTableSession?.table === table && currentTableSession.mode === mode) {
-      return
-    }
-    if (tableSessionLoad && tableSessionLoadKey === loadKey) {
-      await tableSessionLoad
-      return
-    }
-    tableSessionLoadKey = loadKey
-    tableSessionLoad = ensureCatalog()
-      .then(() => subscribeTableSession(table, mode))
-      .finally(() => {
-        tableSessionLoad = null
-        if (tableSessionLoadKey === loadKey) {
-          tableSessionLoadKey = ''
-        }
-      })
-    await tableSessionLoad
-  }
-
-  function stopTableLiveSession() {
-    if (currentTableSession?.table) {
-      const table = currentTableSession.table
-      clearSubscription('table-session-live')
-      currentTableSession = null
-      delete state.tableCarts[table]
-      applyPendingSummary(table, pendingSummaryCache.get(table) || null)
-      return
-    }
-    clearSubscription('table-session-live')
-    currentTableSession = null
   }
 
   async function ensureHistoryBizDate(bizDate: V3BizDateKey) {
     if (historyDayCache.has(bizDate)) {
       return historyDayCache.get(bizDate) || {}
     }
-    return fetchHistoryBizDate(bizDate)
-  }
-
-  async function fetchHistoryBizDate(bizDate: V3BizDateKey) {
     const monthKey = getMonthKeyFromBizDate(bizDate)
     const snapshot = await db.ref(`${RTDB_V3_ROOT}/history/ordersByMonth/${monthKey}/${bizDate}`).once('value')
-    const dayOrders = ((snapshot.val() || {}) as Record<string, V3ClosedOrder>) || {}
-    historyDayCache.set(bizDate, dayOrders)
-    return dayOrders
-  }
-
-  async function listClosedOrdersByRange(range: HistoryRange) {
-    const bizDateKeys = getBizDateKeysBetween(range.start, range.endExclusive)
-    await syncHistoryRevisionBaselines(bizDateKeys)
-    await Promise.all(bizDateKeys.map((bizDate) => ensureHistoryBizDate(bizDate)))
-
-    const orders: PosOrder[] = []
-    for (const bizDate of bizDateKeys) {
-      for (const order of Object.values(historyDayCache.get(bizDate) || {})) {
-        const closedAt = order.closedAt || order.createdAt
-        if (closedAt < range.start.getTime() || closedAt >= range.endExclusive.getTime()) {
-          continue
-        }
-        orders.push(orderRecordToPosOrder(order))
-      }
-    }
-    return orders.sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0))
-  }
-
-  async function listClosedOrdersByDay(targetDate: Date) {
-    const start = new Date(targetDate)
-    start.setHours(5, 0, 0, 0)
-    const endExclusive = new Date(start)
-    endExclusive.setDate(endExclusive.getDate() + 1)
-    return listClosedOrdersByRange({ start, endExclusive })
+    const value = (snapshot.val() || {}) as Record<string, V3ClosedOrder>
+    historyDayCache.set(bizDate, value)
+    return value
   }
 
   async function ensureDailySummaryDay(bizDate: V3BizDateKey) {
     if (dailySummaryDayCache.has(bizDate)) {
-      return dailySummaryDayCache.get(bizDate) || createDailySummary()
+      return dailySummaryDayCache.get(bizDate) || null
     }
     const monthKey = getMonthKeyFromBizDate(bizDate)
     const snapshot = await db.ref(`${RTDB_V3_ROOT}/reports/dailyByMonth/${monthKey}/${bizDate}`).once('value')
-    const summary = ((snapshot.val() || createDailySummary()) as V3DailySummary) || createDailySummary()
-    dailySummaryDayCache.set(bizDate, summary)
-    return summary
+    const value = (snapshot.val() || null) as V3DailySummary | null
+    if (value) {
+      dailySummaryDayCache.set(bizDate, value)
+    }
+    return value
   }
 
   async function ensureItemStatsDay(bizDate: V3BizDateKey) {
@@ -915,59 +652,120 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     }
     const monthKey = getMonthKeyFromBizDate(bizDate)
     const snapshot = await db.ref(`${RTDB_V3_ROOT}/reports/itemStatsByMonth/${monthKey}/${bizDate}`).once('value')
-    const stats = ((snapshot.val() || {}) as Record<string, V3DailyItemStat>) || {}
-    itemStatsDayCache.set(bizDate, stats)
-    return stats
+    const value = decodeItemStatsRecord((snapshot.val() || {}) as Record<string, V3DailyItemStat>)
+    itemStatsDayCache.set(bizDate, value)
+    return value
+  }
+
+  async function listClosedOrdersByRange(range: HistoryRange) {
+    const bizDateKeys = getBizDateKeysBetween(range.start, range.endExclusive)
+    const orders = await Promise.all(
+      bizDateKeys.map(async (bizDate) => {
+        const byDay = await ensureHistoryBizDate(bizDate)
+        return Object.values(byDay || {})
+          .sort((left, right) => left.closedAt - right.closedAt)
+          .map((order) => orderRecordToPosOrder(order))
+      })
+    )
+    return orders.flat()
+  }
+
+  async function listClosedOrdersByDay(targetDate: Date) {
+    const start = new Date(targetDate)
+    start.setHours(5, 0, 0, 0)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    return listClosedOrdersByRange({ start, endExclusive: end })
   }
 
   async function loadDailySummariesRange(start: Date, endExclusive: Date) {
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
-    await syncDailySummaryRevisionBaselines(bizDateKeys)
-    await Promise.all(bizDateKeys.map((bizDate) => ensureDailySummaryDay(bizDate)))
-    return readDailySummariesRange(start, endExclusive)
+    const result: Record<string, V3DailySummary> = {}
+    await Promise.all(
+      bizDateKeys.map(async (bizDate) => {
+        const summary = await ensureDailySummaryDay(bizDate)
+        if (summary) result[bizDate] = summary
+      })
+    )
+    return result
   }
 
   async function loadItemStatsRange(start: Date, endExclusive: Date) {
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
-    await syncItemStatsRevisionBaselines(bizDateKeys)
-    await Promise.all(bizDateKeys.map((bizDate) => ensureItemStatsDay(bizDate)))
-    return readItemStatsRange(start, endExclusive)
+    const result: Record<string, Record<string, V3DailyItemStat>> = {}
+    await Promise.all(
+      bizDateKeys.map(async (bizDate) => {
+        const stats = await ensureItemStatsDay(bizDate)
+        result[bizDate] = stats
+      })
+    )
+    return result
   }
 
   function readDailySummariesRange(start: Date, endExclusive: Date) {
-    const result: Record<string, V3DailySummary> = {}
-    for (const bizDate of getBizDateKeysBetween(start, endExclusive)) {
+    const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
+    const summaries: Record<string, V3DailySummary> = {}
+    bizDateKeys.forEach((bizDate) => {
       const summary = dailySummaryDayCache.get(bizDate)
       if (summary) {
-        result[bizDate] = summary
+        summaries[bizDate] = summary
       }
-    }
-    return result
+    })
+    return summaries
   }
 
   function readItemStatsRange(start: Date, endExclusive: Date) {
-    const result: Record<string, Record<string, V3DailyItemStat>> = {}
-    for (const bizDate of getBizDateKeysBetween(start, endExclusive)) {
-      const stats = itemStatsDayCache.get(bizDate)
-      if (stats) {
-        result[bizDate] = stats
-      }
-    }
-    return result
+    const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
+    return Object.fromEntries(bizDateKeys.map((bizDate) => [bizDate, itemStatsDayCache.get(bizDate) || {}]))
   }
 
-  function watchCatalogRevision(onInvalidate: (event: V3CatalogRevisionEvent) => void) {
-    const segments: V3CatalogSegment[] = ['inventory', 'prices', 'costs']
-    const stops = segments.map((segment) =>
-      watchRevision(`catalog/${segment}`, () => {
-        loadedCatalogSegments.delete(segment)
-        void ensureCatalogSegment(segment).then(() => {
-          onInvalidate({
-            kind: 'catalog',
-            changedSegments: [segment],
-          })
+  function watchCatalogRevision(listener: (event: V3CatalogRevisionEvent) => void) {
+    const stops = [
+      db.ref(`${RTDB_V3_ROOT}/meta/revisions/catalog/inventory`).on('value', () => {
+        loadedCatalogSegments.delete('inventory')
+        void ensureCatalogSegment('inventory').then(() => {
+          listener({ kind: 'catalog', changedSegments: ['inventory'] })
         })
+      }) as () => void,
+      db.ref(`${RTDB_V3_ROOT}/meta/revisions/catalog/prices`).on('value', () => {
+        loadedCatalogSegments.delete('prices')
+        void ensureCatalogSegment('prices').then(() => {
+          listener({ kind: 'catalog', changedSegments: ['prices'] })
+        })
+      }) as () => void,
+      db.ref(`${RTDB_V3_ROOT}/meta/revisions/catalog/costs`).on('value', () => {
+        loadedCatalogSegments.delete('costs')
+        void ensureCatalogSegment('costs').then(() => {
+          listener({ kind: 'catalog', changedSegments: ['costs'] })
+        })
+      }) as () => void,
+    ]
+    return () => {
+      stops.forEach((stop) => {
+        stop()
       })
+    }
+  }
+
+  function watchOwnerAuthRevision(listener: (event: V3OwnerAuthRevisionEvent) => void) {
+    return db.ref(`${RTDB_V3_ROOT}/meta/revisions/auth/owners`).on('value', () => {
+      ownerAuthLoaded = false
+      void ensureOwnerAuth().then(() => {
+        listener({ kind: 'owner-auth' })
+      })
+    }) as () => void
+  }
+
+  function watchClosedOrdersRange(start: Date, endExclusive: Date, onInvalidate: (event: V3HistoryRangeEvent) => void) {
+    const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
+    const stops = bizDateKeys.map(
+      (bizDate) =>
+        db.ref(`${RTDB_V3_ROOT}/meta/revisions/history/ordersByDay/${bizDate}`).on('value', () => {
+          historyDayCache.delete(bizDate)
+          void ensureHistoryBizDate(bizDate).then(() => {
+            onInvalidate({ kind: 'history-orders', changedBizDates: [bizDate] })
+          })
+        }) as () => void
     )
     return () => {
       stops.forEach((stop) => {
@@ -976,524 +774,642 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     }
   }
 
-  function watchOwnerAuthRevision(onInvalidate: (event: V3OwnerAuthRevisionEvent) => void) {
-    return watchRevision('auth/owners', () => {
-      state.ownerPasswords = {}
-      ownerAuthLoaded = false
-      void ensureOwnerAuth().then(() => {
-        onInvalidate({ kind: 'owner-auth' })
-      })
-    })
-  }
-
-  function watchClosedOrdersRange(start: Date, endExclusive: Date, onInvalidate: (event: V3HistoryRangeEvent) => void) {
-    const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
-    return watchMappedRevisions(
-      bizDateKeys.map((bizDate) => `history/ordersByDay/${bizDate}`),
-      (path) => {
-        const bizDate = path.split('/').at(-1) as V3BizDateKey | undefined
-        if (!bizDate) return
-        void refreshHistoryBizDates([bizDate]).then(() => {
-          onInvalidate({
-            kind: 'history-orders',
-            changedBizDates: [bizDate],
-          })
-        })
-      }
-    )
-  }
-
   function watchDailySummariesRange(
     start: Date,
     endExclusive: Date,
     onInvalidate: (event: V3DailySummaryRangeEvent) => void
   ) {
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
-    return watchMappedRevisions(
-      bizDateKeys.map((bizDate) => `reports/dailyByDay/${bizDate}`),
-      (path) => {
-        const bizDate = path.split('/').at(-1) as V3BizDateKey | undefined
-        if (!bizDate) return
-        void refreshDailySummaryBizDates([bizDate]).then(() => {
-          onInvalidate({
-            kind: 'daily-summary',
-            changedBizDates: [bizDate],
+    const stops = bizDateKeys.map(
+      (bizDate) =>
+        db.ref(`${RTDB_V3_ROOT}/meta/revisions/reports/dailyByDay/${bizDate}`).on('value', () => {
+          dailySummaryDayCache.delete(bizDate)
+          void ensureDailySummaryDay(bizDate).then(() => {
+            onInvalidate({ kind: 'daily-summary', changedBizDates: [bizDate] })
           })
-        })
-      }
+        }) as () => void
     )
+    return () => {
+      stops.forEach((stop) => {
+        stop()
+      })
+    }
   }
 
   function watchItemStatsRange(start: Date, endExclusive: Date, onInvalidate: (event: V3ItemStatsRangeEvent) => void) {
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
-    return watchMappedRevisions(
-      bizDateKeys.map((bizDate) => `reports/itemStatsByDay/${bizDate}`),
-      (path) => {
-        const bizDate = path.split('/').at(-1) as V3BizDateKey | undefined
-        if (!bizDate) return
-        void refreshItemStatsBizDates([bizDate]).then(() => {
-          onInvalidate({
-            kind: 'item-stats',
-            changedBizDates: [bizDate],
+    const stops = bizDateKeys.map(
+      (bizDate) =>
+        db.ref(`${RTDB_V3_ROOT}/meta/revisions/reports/itemStatsByDay/${bizDate}`).on('value', () => {
+          itemStatsDayCache.delete(bizDate)
+          void ensureItemStatsDay(bizDate).then(() => {
+            onInvalidate({ kind: 'item-stats', changedBizDates: [bizDate] })
           })
-        })
-      }
+        }) as () => void
     )
-  }
-
-  async function saveTableDraft(table: string, cart: PosCartItem[], customerInput: PosTableCustomer) {
-    const customer = state.tableCustomers[table] || {}
-    customer.name = customerInput.name || ''
-    customer.phone = customerInput.phone || ''
-
-    let timerStartedAt = state.tableTimers[table]
-    if (!timerStartedAt) {
-      timerStartedAt = Date.now()
-      state.tableTimers[table] = timerStartedAt
-    }
-    state.tableSplitCounters[table] = state.tableSplitCounters[table] || 1
-    customer.orderId = await ensureDisplaySeqBase(table, customer)
-
-    const itemsToSave = cart.map((item) => {
-      const nextItem = { ...item }
-      delete nextItem.isNew
-      return nextItem
-    })
-
-    const liveTable = await transactLiveTable(table, (current) =>
-      buildLiveTable({
-        cart: itemsToSave,
-        incomingOrders: mapStoredIncomingOrders(current.incomingOrders),
-        status: 'yellow',
-        timerStartedAt,
-        splitCounter: state.tableSplitCounters[table],
-        batchCount: Math.max(state.tableBatchCounts[table] || 0, current.summary?.batchCount || 0),
-        customer: {
-          ...getLiveSummaryCustomer(current.summary),
-          ...customer,
-        },
-        updatedAt: Date.now(),
+    return () => {
+      stops.forEach((stop) => {
+        stop()
       })
-    )
-
-    applyLiveTable(table, liveTable, currentTableSession?.table === table ? currentTableSession.mode : undefined)
-    return {
-      displaySeqBase: Number(customer.orderId) || 1,
     }
   }
 
-  async function submitIncomingOrder(table: string, cart: PosCartItem[], customerInput: PosTableCustomer) {
-    const requestId = toRequestId()
-    const timestamp = Date.now()
-    const next = await transactLiveTable(table, (current) => {
-      const currentCart = mapCartLinesToItems(current.cart)
-      const summaryCustomer = getLiveSummaryCustomer(current.summary)
-      const batchId = (current.summary?.batchCount || 0) + 1
-      const batchIdx = (batchId - 1) % 3
-      const itemsToSend = cart.map((item, index) => ({
-        ...item,
-        isNew: true,
-        batchIdx,
-        incomingIdx: index,
-      }))
-      const incomingOrder: WritableIncomingOrder = {
-        requestId,
-        items: itemsToSend,
-        customer: { name: customerInput.name || '', phone: customerInput.phone || '' },
-        batchId,
-        timestamp,
-      }
-
-      const queue = mapStoredIncomingOrders(current.incomingOrders) as WritableIncomingOrder[]
-      queue.push(incomingOrder)
-      return buildLiveTable({
-        cart: currentCart,
-        incomingOrders: queue,
-        status: current.summary?.status || undefined,
-        timerStartedAt: current.summary?.timerStartedAt || undefined,
-        splitCounter: current.summary?.splitCounter || undefined,
-        batchCount: batchId,
-        customer: {
-          ...summaryCustomer,
-          name: customerInput.name || summaryCustomer.name || '',
-          phone: customerInput.phone || summaryCustomer.phone || '',
-        },
-        updatedAt: timestamp,
-      })
-    })
-
-    applyAuthorityState(table, next)
-  }
-
-  async function acceptIncomingOrder(table: string, requestId: string) {
-    let accepted: StoredIncomingOrder | null = null
-    const next = await transactLiveTable(table, (current) => {
-      const stored = current.incomingOrders[requestId]
-      if (!stored) return current
-      accepted = stored
-
-      const currentCart = mapCartLinesToItems(current.cart)
-      const items = mapCartLinesToItems(stored.items).map((item, index) => ({
-        ...item,
-        batchId: stored.batchId,
-        sentAt: stored.createdAt,
-        incomingIdx: item.incomingIdx !== undefined ? item.incomingIdx : index,
-      }))
-      const customer = getLiveSummaryCustomer(current.summary)
-      if (stored.customer?.name) customer.name = stored.customer.name
-      if (stored.customer?.phone) customer.phone = stored.customer.phone
-      customer.orderId = customer.orderId || current.summary?.displaySeqBase || undefined
-
-      const remainingQueue = mapStoredIncomingOrders(
-        Object.fromEntries(
-          Object.entries(current.incomingOrders).filter(([queuedRequestId]) => queuedRequestId !== requestId)
-        )
-      )
-      return buildLiveTable({
-        cart: currentCart.concat(items),
-        incomingOrders: remainingQueue,
-        status: 'yellow',
-        timerStartedAt: current.summary?.timerStartedAt || Date.now(),
-        splitCounter: current.summary?.splitCounter || 1,
-        batchCount: Math.max(current.summary?.batchCount || 0, stored.batchId || 0),
-        customer,
-        updatedAt: Date.now(),
-      })
-    })
-
-    const acceptedOrder: StoredIncomingOrder | null = accepted
-    if (!acceptedOrder || !next) return null
-    const resolvedAcceptedOrder: StoredIncomingOrder = acceptedOrder
-    if (!(next.summary?.displaySeqBase && next.summary.displaySeqBase > 0)) {
-      const customer = getLiveSummaryCustomer(next.summary)
-      customer.orderId = await ensureDisplaySeqBase(table, customer)
-      const fixedLiveTable = buildLiveTable({
-        cart: mapCartLinesToItems(next.cart),
-        incomingOrders: mapStoredIncomingOrders(next.incomingOrders),
-        status: next.summary?.status || undefined,
-        timerStartedAt: next.summary?.timerStartedAt || undefined,
-        splitCounter: next.summary?.splitCounter || undefined,
-        batchCount: next.summary?.batchCount || undefined,
-        customer,
-        updatedAt: Date.now(),
-      })
-      await replaceLiveTable(table, fixedLiveTable)
-      applyAuthorityState(table, fixedLiveTable)
-      const acceptedItems = mapCartLinesToItems(resolvedAcceptedOrder.items).map((item, index) => ({
-        ...item,
-        batchId: resolvedAcceptedOrder.batchId,
-        sentAt: resolvedAcceptedOrder.createdAt,
-        incomingIdx: item.incomingIdx !== undefined ? item.incomingIdx : index,
-      }))
-      return {
-        customer,
-        items: acceptedItems,
-        sentAt: resolvedAcceptedOrder.createdAt,
-        displaySeqBase: Number(customer.orderId) || 1,
-      }
-    }
-
-    applyAuthorityState(table, next)
-    const customer = getLiveSummaryCustomer(next.summary)
-    const items = mapCartLinesToItems(resolvedAcceptedOrder.items).map((item, index) => ({
-      ...item,
-      batchId: resolvedAcceptedOrder.batchId,
-      sentAt: resolvedAcceptedOrder.createdAt,
-      incomingIdx: item.incomingIdx !== undefined ? item.incomingIdx : index,
-    }))
-    return {
-      customer,
-      items,
-      sentAt: resolvedAcceptedOrder.createdAt,
-      displaySeqBase: Number(customer.orderId) || 1,
-    }
-  }
-
-  async function rejectIncomingOrder(table: string, requestId: string) {
-    const next = await transactLiveTable(table, (current) => {
-      if (!current.incomingOrders[requestId]) return current
-      return buildLiveTable({
-        cart: mapCartLinesToItems(current.cart),
-        incomingOrders: mapStoredIncomingOrders(
-          Object.fromEntries(
-            Object.entries(current.incomingOrders).filter(([queuedRequestId]) => queuedRequestId !== requestId)
-          )
-        ),
-        status: current.summary?.status || undefined,
-        timerStartedAt: current.summary?.timerStartedAt || undefined,
-        splitCounter: current.summary?.splitCounter || undefined,
-        batchCount: current.summary?.batchCount || undefined,
-        customer: getLiveSummaryCustomer(current.summary),
-        updatedAt: Date.now(),
-      })
-    })
-    applyAuthorityState(table, next)
-  }
-
-  function createReportDeltaPayload(order: V3ClosedOrder, direction: 1 | -1) {
-    const payload: Record<string, unknown> = {}
-    const summaryRef = `${RTDB_V3_ROOT}/reports/dailyByMonth/${order.monthKey}/${order.bizDate}`
-    payload[`${summaryRef}/orderCount`] = dbIncrement(direction)
-    payload[`${summaryRef}/paidTotal`] = dbIncrement(direction * (order.totals?.paid || 0))
-    payload[`${summaryRef}/originalTotal`] = dbIncrement(
-      direction * (order.totals?.original || order.totals?.paid || 0)
-    )
-    payload[`${summaryRef}/updatedAt`] = Date.now()
-
-    let categorizedRevenue = 0
-    let itemQtyDelta = 0
-    let barRevenueDelta = 0
-    let barCostDelta = 0
-    let bbqRevenueDelta = 0
-    let bbqCostDelta = 0
-    let unknownRevenueDelta = 0
-    let unknownCostDelta = 0
-    const itemStatDeltas = new Map<
-      string,
-      Pick<V3DailyItemStat, 'displayName' | 'type' | 'qty' | 'treatQty' | 'revenue' | 'cost'>
-    >()
-
-    for (const item of Object.values(order.items || {})) {
-      itemQtyDelta += direction * item.qty
-      categorizedRevenue += item.lineTotal
-      if (item.type === 'bar') {
-        barRevenueDelta += direction * item.lineTotal
-        barCostDelta += direction * item.unitCost * item.qty
-      } else if (item.type === 'bbq') {
-        bbqRevenueDelta += direction * item.lineTotal
-        bbqCostDelta += direction * item.unitCost * item.qty
-      } else {
-        unknownRevenueDelta += direction * item.lineTotal
-        unknownCostDelta += direction * item.unitCost * item.qty
-      }
-
-      const current = itemStatDeltas.get(item.catalogKey) || {
-        displayName: item.displayName,
-        type: item.type,
-        qty: 0,
-        treatQty: 0,
-        revenue: 0,
-        cost: 0,
-      }
-      current.qty += direction * item.qty
-      current.treatQty += direction * (item.isTreat ? item.qty : 0)
-      current.revenue += direction * item.lineTotal
-      current.cost += direction * item.unitCost * item.qty
-      itemStatDeltas.set(item.catalogKey, current)
-    }
-
-    itemStatDeltas.forEach((delta, catalogKey) => {
-      const statRef = `${RTDB_V3_ROOT}/reports/itemStatsByMonth/${order.monthKey}/${order.bizDate}/${catalogKey}`
-      payload[`${statRef}/displayName`] = delta.displayName
-      payload[`${statRef}/type`] = delta.type
-      payload[`${statRef}/qty`] = dbIncrement(delta.qty)
-      payload[`${statRef}/treatQty`] = dbIncrement(delta.treatQty)
-      payload[`${statRef}/revenue`] = dbIncrement(delta.revenue)
-      payload[`${statRef}/cost`] = dbIncrement(delta.cost)
-      payload[`${statRef}/updatedAt`] = Date.now()
-    })
-
-    payload[`${summaryRef}/itemQtyTotal`] = dbIncrement(itemQtyDelta)
-    payload[`${summaryRef}/barRevenue`] = dbIncrement(barRevenueDelta)
-    payload[`${summaryRef}/barCost`] = dbIncrement(barCostDelta)
-    payload[`${summaryRef}/bbqRevenue`] = dbIncrement(bbqRevenueDelta)
-    payload[`${summaryRef}/bbqCost`] = dbIncrement(bbqCostDelta)
-    payload[`${summaryRef}/unknownRevenue`] = dbIncrement(unknownRevenueDelta)
-    payload[`${summaryRef}/unknownCost`] = dbIncrement(unknownCostDelta)
-    payload[`${summaryRef}/extraRevenue`] = dbIncrement(direction * ((order.totals?.paid || 0) - categorizedRevenue))
-    touchRevision(`reports/dailyByDay/${order.bizDate}`, payload)
-    touchRevision(`reports/itemStatsByDay/${order.bizDate}`, payload)
-    return payload
-  }
-
-  function updateLocalReportCaches(order: V3ClosedOrder, direction: 1 | -1) {
-    const currentDayOrders = { ...(historyDayCache.get(order.bizDate) || {}) }
-    if (direction > 0) currentDayOrders[order.orderId] = order
-    else delete currentDayOrders[order.orderId]
-    const rebuilt = buildSummaryFromClosedOrders(currentDayOrders, Date.now())
-    historyDayCache.set(order.bizDate, currentDayOrders)
-    dailySummaryDayCache.set(order.bizDate, rebuilt.summary || createDailySummary())
-    itemStatsDayCache.set(order.bizDate, rebuilt.itemStats || {})
-  }
-
-  async function finalizeCheckout(payload: CheckoutPayload) {
-    const customer = state.tableCustomers[payload.table] || payload.customer || {}
-    const displaySeqBase = await ensureDisplaySeqBase(payload.table, customer)
-    const order = toClosedOrderRecord({
-      orderId: toOrderId(),
-      table: payload.splitCounter && payload.splitCounter > 1 ? `${payload.table} (拆單)` : payload.table,
-      displaySeqBase,
-      splitCounter: payload.splitCounter,
-      closedAt: Date.now(),
-      items: payload.cart,
-      paidTotal: payload.paidTotal,
-      originalTotal: payload.originalTotal,
-      customer,
-      itemCosts: state.itemCosts,
-    })
-
-    const nextCart = payload.remainingCart || []
-    let nextLiveTable: V3LiveTable | null = null
-
-    await transactLiveTable(
-      payload.table,
-      (current) => {
-        const incomingOrders = mapStoredIncomingOrders(current.incomingOrders)
-        nextLiveTable =
-          payload.clearTable && incomingOrders.length === 0
-            ? null
-            : buildLiveTable({
-                cart: nextCart,
-                incomingOrders,
-                status: nextCart.length > 0 ? 'yellow' : current.summary?.status || undefined,
-                timerStartedAt:
-                  nextCart.length > 0 ? current.summary?.timerStartedAt || state.tableTimers[payload.table] : undefined,
-                splitCounter: nextCart.length > 0 ? payload.nextSplitCounter : 1,
-                batchCount: current.summary?.batchCount || state.tableBatchCounts[payload.table] || 0,
-                customer: nextCart.length > 0 ? customer : incomingOrders.length > 0 ? customer : undefined,
-                updatedAt: Date.now(),
-              })
-        return nextLiveTable
-      },
-      { persistDerivedIndexes: false }
-    )
-
-    const dbPayload: Record<string, unknown> = {
-      [`${RTDB_V3_ROOT}/history/ordersByMonth/${order.monthKey}/${order.bizDate}/${order.orderId}`]: order,
-      ...createReportDeltaPayload(order, 1),
-    }
-    writeLiveTableAuthority(payload.table, nextLiveTable, dbPayload, { writeAuthority: false })
-    touchRevision(`history/ordersByDay/${order.bizDate}`, dbPayload)
-
-    await updateRoot(dbPayload)
-    const cachedDay = historyDayCache.get(order.bizDate) || {}
-    historyDayCache.set(order.bizDate, {
-      ...cachedDay,
-      [order.orderId]: order,
-    })
-    updateLocalReportCaches(order, 1)
-    applyAuthorityState(payload.table, nextLiveTable)
-
-    return orderRecordToPosOrder(order)
-  }
-
-  async function checkoutTable(payload: Omit<CheckoutPayload, 'clearTable'>) {
-    return finalizeCheckout({ ...payload, clearTable: true, remainingCart: [], nextSplitCounter: 1 })
-  }
-
-  async function checkoutSplit(payload: Omit<CheckoutPayload, 'clearTable'>) {
-    return finalizeCheckout({
-      ...payload,
-      clearTable: (payload.remainingCart || []).length === 0,
-    })
-  }
-
-  async function deleteClosedOrder(order: PosOrder) {
-    const orderId = String(order.orderId || '')
-    const monthKey = String(order.monthKey || '') as V3MonthKey
-    const bizDate = String(order.bizDateKey || '') as V3BizDateKey
-    if (!orderId || !monthKey || !bizDate) {
-      throw new Error('Order metadata missing')
-    }
-
-    const snapshot = await db
-      .ref(`${RTDB_V3_ROOT}/history/ordersByMonth/${monthKey}/${bizDate}/${orderId}`)
-      .once('value')
-    const stored = snapshot.val() as V3ClosedOrder | null
-    if (!stored) return
-
-    const currentDayOrders = { ...(await fetchHistoryBizDate(bizDate)) }
-    delete currentDayOrders[orderId]
-    const rebuilt = buildSummaryFromClosedOrders(currentDayOrders, Date.now())
+  async function rebuildDayReports(bizDate: V3BizDateKey) {
+    const monthKey = getMonthKeyFromBizDate(bizDate)
+    const orders = await ensureHistoryBizDate(bizDate)
+    const rebuilt = buildSummaryFromClosedOrders(orders)
     const payload: Record<string, unknown> = {
-      [`${RTDB_V3_ROOT}/history/ordersByMonth/${monthKey}/${bizDate}/${orderId}`]: null,
       [`${RTDB_V3_ROOT}/reports/dailyByMonth/${monthKey}/${bizDate}`]: rebuilt.summary,
-      [`${RTDB_V3_ROOT}/reports/itemStatsByMonth/${monthKey}/${bizDate}`]: rebuilt.itemStats,
+      [`${RTDB_V3_ROOT}/reports/itemStatsByMonth/${monthKey}/${bizDate}`]: encodeItemStatsRecord(rebuilt.itemStats),
     }
-    touchRevision(`history/ordersByDay/${bizDate}`, payload)
     touchRevision(`reports/dailyByDay/${bizDate}`, payload)
     touchRevision(`reports/itemStatsByDay/${bizDate}`, payload)
     await updateRoot(payload)
+    if (rebuilt.summary) dailySummaryDayCache.set(bizDate, rebuilt.summary)
+    else dailySummaryDayCache.delete(bizDate)
+    if (rebuilt.itemStats) itemStatsDayCache.set(bizDate, rebuilt.itemStats)
+    else itemStatsDayCache.delete(bizDate)
+  }
 
-    historyDayCache.set(bizDate, currentDayOrders)
-    dailySummaryDayCache.set(bizDate, rebuilt.summary || createDailySummary())
-    itemStatsDayCache.set(bizDate, rebuilt.itemStats || {})
+  async function saveCustomerDraft(table: string, entries: PosOrderEntry[], customerInput: PosTableCustomer) {
+    const displaySeqBase = await ensureDisplaySeqBase(table, customerInput)
+    const customer = cloneCustomer(customerInput)
+    customer.orderId = displaySeqBase
+    state.tableCustomers[table] = customer
+    state.tableTimers[table] ||= Date.now()
+    const updatedAt = Date.now()
+    await transactLiveTable(table, (liveTable) =>
+      buildLiveTable({
+        draft: sortEntries(entries.map((entry) => ({ ...entry, status: 'draft', source: 'customer', updatedAt }))),
+        pendingBatches: toBatchList(liveTable.pendingBatches),
+        submittedBatches: toBatchList(liveTable.submittedBatches),
+        status:
+          entries.length > 0 ||
+          Object.keys(liveTable.pendingBatches).length > 0 ||
+          Object.keys(liveTable.submittedBatches).length > 0
+            ? 'yellow'
+            : undefined,
+        timerStartedAt: state.tableTimers[table],
+        batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
+        customer,
+        updatedAt,
+      })
+    )
+    return { displaySeqBase }
+  }
+
+  async function discardCustomerDraft(table: string) {
+    const updatedAt = Date.now()
+    await transactLiveTable(table, (liveTable) =>
+      buildLiveTable({
+        draft: [],
+        pendingBatches: toBatchList(liveTable.pendingBatches),
+        submittedBatches: toBatchList(liveTable.submittedBatches),
+        status:
+          Object.keys(liveTable.pendingBatches).length > 0 || Object.keys(liveTable.submittedBatches).length > 0
+            ? 'yellow'
+            : undefined,
+        timerStartedAt: state.tableTimers[table],
+        batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
+        customer: state.tableCustomers[table],
+        updatedAt,
+      })
+    )
+  }
+
+  async function submitCustomerDraft(
+    table: string,
+    entries: PosOrderEntry[],
+    customerInput: PosTableCustomer
+  ): Promise<PosOrderBatch> {
+    const displaySeqBase = await ensureDisplaySeqBase(table, customerInput)
+    const customer = cloneCustomer(customerInput)
+    customer.orderId = displaySeqBase
+    const createdAt = Date.now()
+    let batch: PosOrderBatch | null = null
+    await transactLiveTable(table, (liveTable) => {
+      batch = {
+        batchId: toBatchId('pending'),
+        source: 'customer',
+        status: 'pending',
+        table,
+        customer,
+        createdAt,
+        updatedAt: createdAt,
+        requestLabel: `#${displaySeqBase}-${Object.keys(liveTable.pendingBatches).length + 1}`,
+        entries: sortEntries(
+          entries.map((entry) => ({ ...entry, status: 'pending', source: 'customer', updatedAt: createdAt }))
+        ),
+        subtotal: sumEntries(entries),
+      }
+      const nextPending = toBatchList(liveTable.pendingBatches)
+      nextPending.push(batch)
+      return buildLiveTable({
+        draft: [],
+        pendingBatches: nextPending,
+        submittedBatches: toBatchList(liveTable.submittedBatches),
+        status: 'yellow',
+        timerStartedAt: state.tableTimers[table] || createdAt,
+        batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
+        customer,
+        updatedAt: createdAt,
+      })
+    })
+    if (!batch) {
+      throw new Error('Failed to create pending batch')
+    }
+    return batch as PosOrderBatch
+  }
+
+  async function acceptPendingBatch(table: string, batchId: string): Promise<PosOrderBatch | null> {
+    let accepted: PosOrderBatch | null = null
+    await transactLiveTable(table, (liveTable) => {
+      const target = liveTable.pendingBatches[encodeBatchMapKey(batchId)]
+      if (!target) {
+        return liveTable
+      }
+      const acceptedBatch = mapStoredBatch(target)
+      acceptedBatch.status = 'accepted'
+      acceptedBatch.acceptedAt = Date.now()
+      acceptedBatch.updatedAt = acceptedBatch.acceptedAt
+      acceptedBatch.entries = acceptedBatch.entries.map((entry) => ({
+        ...entry,
+        status: 'accepted',
+        updatedAt: acceptedBatch.updatedAt,
+      }))
+      accepted = acceptedBatch
+      const nextPending = toBatchList(
+        Object.fromEntries(Object.entries(liveTable.pendingBatches).filter(([id]) => id !== batchId))
+      )
+      const nextSubmitted = toBatchList(liveTable.submittedBatches)
+      nextSubmitted.push(acceptedBatch)
+      return buildLiveTable({
+        draft: toDraftEntries(liveTable),
+        pendingBatches: nextPending,
+        submittedBatches: nextSubmitted,
+        status: 'yellow',
+        timerStartedAt: state.tableTimers[table],
+        batchCount: nextSubmitted.length,
+        nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
+        customer: state.tableCustomers[table],
+        updatedAt: acceptedBatch.updatedAt,
+      })
+    })
+    return accepted
+  }
+
+  async function rejectPendingBatch(table: string, batchId: string) {
+    await transactLiveTable(table, (liveTable) => {
+      const target = liveTable.pendingBatches[encodeBatchMapKey(batchId)]
+      if (!target) {
+        return liveTable
+      }
+      const rejected = mapStoredBatch(target)
+      const currentDraft = toDraftEntries(liveTable)
+      const returnedEntries = rejected.entries.map((entry) => ({
+        ...entry,
+        status: 'draft' as const,
+        updatedAt: Date.now(),
+      }))
+      const nextPending = toBatchList(
+        Object.fromEntries(Object.entries(liveTable.pendingBatches).filter(([id]) => id !== batchId))
+      )
+      return buildLiveTable({
+        draft: [...currentDraft, ...returnedEntries],
+        pendingBatches: nextPending,
+        submittedBatches: toBatchList(liveTable.submittedBatches),
+        status: 'yellow',
+        timerStartedAt: state.tableTimers[table],
+        batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
+        customer: state.tableCustomers[table],
+        updatedAt: Date.now(),
+      })
+    })
+  }
+
+  async function saveStaffDraft(table: string, entries: PosOrderEntry[]) {
+    const next = sortEntries(entries.map((entry) => ({ ...entry, source: 'staff', status: 'draft' })))
+    state.staffDrafts[table] = next
+    if (currentTableSession?.table === table && currentTableSession.mode === 'staff') {
+      state.activeDraftEntries = next
+    }
+  }
+
+  async function createStaffBatch(
+    table: string,
+    entries: PosOrderEntry[],
+    customer?: PosTableCustomer
+  ): Promise<PosOrderBatch> {
+    const displaySeqBase = await ensureDisplaySeqBase(table, customer || state.tableCustomers[table])
+    const createdAt = Date.now()
+    let batch: PosOrderBatch | null = null
+    await transactLiveTable(table, (liveTable) => {
+      const nextSplitCounter = readSplitCounter(liveTable.summary?.nextSplitCounter)
+      batch = {
+        batchId: toBatchId('submitted'),
+        source: 'staff',
+        status: 'accepted',
+        table,
+        customer: { ...cloneCustomer(customer || state.tableCustomers[table]), orderId: displaySeqBase },
+        createdAt,
+        updatedAt: createdAt,
+        acceptedAt: createdAt,
+        requestLabel: `#${displaySeqBase}-${Object.keys(liveTable.submittedBatches).length + 1}`,
+        entries: sortEntries(
+          entries.map((entry) => ({ ...entry, source: 'staff', status: 'accepted', updatedAt: createdAt }))
+        ),
+        subtotal: sumEntries(entries),
+      }
+      const nextSubmitted = toBatchList(liveTable.submittedBatches)
+      nextSubmitted.push(batch)
+      state.staffDrafts[table] = []
+      return buildLiveTable({
+        draft: toDraftEntries(liveTable),
+        pendingBatches: toBatchList(liveTable.pendingBatches),
+        submittedBatches: nextSubmitted,
+        status: 'yellow',
+        timerStartedAt: state.tableTimers[table] || createdAt,
+        batchCount: nextSubmitted.length,
+        nextSplitCounter,
+        customer: batch.customer,
+        updatedAt: createdAt,
+      })
+    })
+    if (!batch) {
+      throw new Error('Failed to create submitted batch')
+    }
+    return batch as PosOrderBatch
+  }
+
+  async function updateSubmittedBatch(
+    table: string,
+    batchId: string,
+    entries: PosOrderEntry[]
+  ): Promise<PosOrderBatch | null> {
+    let nextBatch: PosOrderBatch | null = null
+    await transactLiveTable(table, (liveTable) => {
+      const stored = liveTable.submittedBatches[encodeBatchMapKey(batchId)]
+      if (!stored) {
+        return liveTable
+      }
+      const current = mapStoredBatch(stored)
+      const updatedAt = Date.now()
+      const nextSplitCounter = readSplitCounter(liveTable.summary?.nextSplitCounter)
+      nextBatch = {
+        ...current,
+        updatedAt,
+        entries: sortEntries(entries.map((entry) => ({ ...entry, status: 'accepted', updatedAt }))),
+        subtotal: sumEntries(entries),
+      }
+      const nextSubmitted = toBatchList({
+        ...liveTable.submittedBatches,
+        [batchId]: mapBatchToStored(nextBatch),
+      })
+      return buildLiveTable({
+        draft: toDraftEntries(liveTable),
+        pendingBatches: toBatchList(liveTable.pendingBatches),
+        submittedBatches: nextSubmitted,
+        status: 'yellow',
+        timerStartedAt: state.tableTimers[table],
+        batchCount: nextSubmitted.length,
+        nextSplitCounter,
+        customer: state.tableCustomers[table],
+        updatedAt,
+      })
+    })
+    return nextBatch
+  }
+
+  async function checkoutSubmittedBatches(payload: {
+    table: string
+    entryIds?: string[]
+    entries?: PosOrderEntry[]
+    customer: PosTableCustomer | undefined
+    paidTotal: number
+    originalTotal: number
+  }) {
+    const liveTable = await readLiveTable(payload.table)
+    const displaySeqBase = await ensureDisplaySeqBase(payload.table, payload.customer)
+    const closedAt = Date.now()
+    const orderId = toOrderId()
+    const submittedBatches = toBatchList(liveTable.submittedBatches)
+    const requestedEntryIds = new Set(payload.entryIds || [])
+    const fallbackEntries = payload.entries || []
+
+    const selectedEntries =
+      requestedEntryIds.size > 0
+        ? submittedBatches.flatMap((batch) => batch.entries.filter((entry) => requestedEntryIds.has(entry.entryId)))
+        : fallbackEntries
+    if (selectedEntries.length === 0) {
+      throw new Error('No submitted entries selected for checkout')
+    }
+
+    const selectedEntryIds = new Set(selectedEntries.map((entry) => entry.entryId))
+    const selectedBatchIds = submittedBatches
+      .filter((batch) => batch.entries.some((entry) => selectedEntryIds.has(entry.entryId)))
+      .map((batch) => batch.batchId)
+
+    const splitCounter =
+      selectedEntries.length === submittedBatches.flatMap((batch) => batch.entries).length
+        ? null
+        : readSplitCounter(liveTable.summary?.nextSplitCounter)
+    const orderRecord = toClosedOrderRecord({
+      orderId,
+      table: payload.table,
+      displaySeqBase,
+      splitCounter,
+      closedAt,
+      customer: payload.customer,
+      batchIds: selectedBatchIds,
+      entries: selectedEntries,
+      itemCosts: state.itemCosts,
+      paidTotal: payload.paidTotal,
+      originalTotal: payload.originalTotal,
+    })
+    const bizDate = orderRecord.bizDate
+    const monthKey = orderRecord.monthKey
+
+    const remainingSubmitted = submittedBatches
+      .map((batch) => {
+        const remainingEntries = batch.entries.filter((entry) => !selectedEntryIds.has(entry.entryId))
+        if (remainingEntries.length === 0) {
+          return null
+        }
+        return {
+          ...batch,
+          entries: remainingEntries,
+          subtotal: sumEntries(remainingEntries),
+          updatedAt: closedAt,
+        } satisfies PosOrderBatch
+      })
+      .filter((batch): batch is PosOrderBatch => Boolean(batch))
+
+    const isFullCheckout = remainingSubmitted.length === 0
+    const payloadUpdate: Record<string, unknown> = {
+      [`${RTDB_V3_ROOT}/history/ordersByMonth/${monthKey}/${bizDate}/${orderId}`]: orderRecord,
+    }
+
+    if (isFullCheckout) {
+      payloadUpdate[`${RTDB_V3_ROOT}/live/tables/${payload.table}`] = null
+      payloadUpdate[`${RTDB_V3_ROOT}/live/tableSummaries/${payload.table}`] = null
+      payloadUpdate[`${RTDB_V3_ROOT}/live/pendingSummaries/${payload.table}`] = null
+    } else {
+      const nextLive = buildLiveTable({
+        draft: [],
+        pendingBatches: [],
+        submittedBatches: remainingSubmitted,
+        status: 'yellow',
+        timerStartedAt: state.tableTimers[payload.table],
+        batchCount: remainingSubmitted.length,
+        nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter) + 1,
+        customer: state.tableCustomers[payload.table] || payload.customer,
+        updatedAt: closedAt,
+      })
+      payloadUpdate[`${RTDB_V3_ROOT}/live/tables/${payload.table}`] = nextLive
+      payloadUpdate[`${RTDB_V3_ROOT}/live/tableSummaries/${payload.table}`] = nextLive.summary
+      payloadUpdate[`${RTDB_V3_ROOT}/live/pendingSummaries/${payload.table}`] =
+        buildPendingSummary(nextLive.pendingBatches) || null
+    }
+
+    touchRevision(`history/ordersByDay/${bizDate}`, payloadUpdate)
+    await updateRoot(payloadUpdate)
+
+    const byDay = { ...(historyDayCache.get(bizDate) || {}) }
+    byDay[orderId] = orderRecord
+    historyDayCache.set(bizDate, byDay)
+    await rebuildDayReports(bizDate)
+
+    if (isFullCheckout) {
+      delete state.tableDrafts[payload.table]
+      delete state.pendingBatches[payload.table]
+      delete state.submittedBatches[payload.table]
+      delete state.staffDrafts[payload.table]
+      delete state.tableTimers[payload.table]
+      delete state.tableStatuses[payload.table]
+      delete state.tableBatchCounts[payload.table]
+      delete state.tableCustomers[payload.table]
+      delete state.tableSplitCounters[payload.table]
+      if (currentTableSession?.table === payload.table) {
+        state.activeDraftEntries = []
+        state.activePendingBatches = []
+        state.activeSubmittedBatches = []
+      }
+    } else {
+      state.tableDrafts[payload.table] = []
+      delete state.pendingBatches[payload.table]
+      state.submittedBatches[payload.table] = remainingSubmitted
+      state.tableStatuses[payload.table] = 'yellow'
+      state.tableBatchCounts[payload.table] = remainingSubmitted.length
+      state.tableSplitCounters[payload.table] = readSplitCounter(liveTable.summary?.nextSplitCounter) + 1
+      if (currentTableSession?.table === payload.table) {
+        state.activeDraftEntries =
+          currentTableSession.mode === 'staff' ? [...(state.staffDrafts[payload.table] || [])] : []
+        state.activePendingBatches = []
+        state.activeSubmittedBatches = remainingSubmitted
+      }
+    }
+
+    return orderRecordToPosOrder(orderRecord)
+  }
+
+  async function deleteClosedOrder(order: PosOrder) {
+    const bizDate = String(order.bizDateKey || '')
+    const monthKey = String(order.monthKey || getMonthKeyFromBizDate(bizDate as V3BizDateKey))
+    const orderId = String(order.orderId || '')
+    if (!bizDate || !monthKey || !orderId) {
+      return
+    }
+    const payload: Record<string, unknown> = {
+      [`${RTDB_V3_ROOT}/history/ordersByMonth/${monthKey}/${bizDate}/${orderId}`]: null,
+    }
+    touchRevision(`history/ordersByDay/${bizDate}`, payload)
+    await updateRoot(payload)
+
+    const current = { ...(await ensureHistoryBizDate(bizDate as V3BizDateKey)) }
+    delete current[orderId]
+    historyDayCache.set(bizDate as V3BizDateKey, current)
+    await rebuildDayReports(bizDate as V3BizDateKey)
   }
 
   async function setOwnerPassword(ownerName: string, record: PosOwnerAuthRecord) {
-    state.ownerPasswords[ownerName] = record
     const payload: Record<string, unknown> = {
-      [`${RTDB_V3_ROOT}/auth/owners/${ownerName}`]: record as V3OwnerAuthRecord,
+      [`${RTDB_V3_ROOT}/auth/owners/${ownerName}`]: record,
     }
     touchRevision('auth/owners', payload)
     await updateRoot(payload)
+    state.ownerPasswords[ownerName] = record
   }
 
-  async function updateCatalogValue(segment: V3CatalogSegment, path: string, value: unknown) {
+  async function updateInventory(itemId: string, checked: boolean) {
     const payload: Record<string, unknown> = {
-      [`${RTDB_V3_ROOT}/catalog/${segment}/${path}`]: value,
+      [`${RTDB_V3_ROOT}/catalog/inventory/${encodeCatalogKey(itemId)}`]: checked,
     }
-    touchRevision(`catalog/${segment}`, payload)
+    touchRevision('catalog/inventory', payload)
     await updateRoot(payload)
+    state.inventory[itemId] = checked
   }
 
-  async function updateInventory(name: string, isAvailable: boolean) {
-    state.inventory[name] = isAvailable
-    await updateCatalogValue('inventory', name, isAvailable)
-  }
-
-  async function updateInventoryBatch(entries: Record<string, boolean>) {
+  async function updateInventoryBatch(batch: Record<string, boolean>) {
     const payload: Record<string, unknown> = {}
-    for (const [name, isAvailable] of Object.entries(entries)) {
-      state.inventory[name] = isAvailable
-      payload[`${RTDB_V3_ROOT}/catalog/inventory/${name}`] = isAvailable
-    }
+    Object.entries(batch).forEach(([itemId, checked]) => {
+      payload[`${RTDB_V3_ROOT}/catalog/inventory/${encodeCatalogKey(itemId)}`] = checked
+      state.inventory[itemId] = checked
+    })
     touchRevision('catalog/inventory', payload)
     await updateRoot(payload)
   }
 
-  async function updateItemPrice(name: string, value: number | string) {
-    state.itemPrices[name] = value
-    await updateCatalogValue('prices', name, value)
+  async function updateItemPrice(itemId: string, value: number) {
+    const payload: Record<string, unknown> = {
+      [`${RTDB_V3_ROOT}/catalog/prices/${encodeCatalogKey(itemId)}`]: value,
+    }
+    touchRevision('catalog/prices', payload)
+    await updateRoot(payload)
+    state.itemPrices[itemId] = value
   }
 
-  async function updateItemCost(name: string, value: number) {
-    state.itemCosts[name] = value
-    await updateCatalogValue('costs', name, value)
+  async function updateItemCost(itemId: string, value: number) {
+    const payload: Record<string, unknown> = {
+      [`${RTDB_V3_ROOT}/catalog/costs/${encodeCatalogKey(itemId)}`]: value,
+    }
+    touchRevision('catalog/costs', payload)
+    await updateRoot(payload)
+    state.itemCosts[itemId] = value
+  }
+
+  async function startStaffLive() {
+    if (staffLiveStarted) return
+    staffLiveStarted = true
+
+    const summariesPath = `${RTDB_V3_ROOT}/live/tableSummaries`
+    const pendingPath = `${RTDB_V3_ROOT}/live/pendingSummaries`
+    setSubscription(
+      'staff-table-added',
+      db.ref(summariesPath).on('child_added', (child) => {
+        const tableId = child.key()
+        if (!tableId) return
+        applyTableSummary(decodeTableKey(tableId), (child.val() || null) as V3TableSummary | null)
+        notifyLiveStateChange(['tableSummaries'])
+      }) as () => void
+    )
+    setSubscription(
+      'staff-table-changed',
+      db.ref(summariesPath).on('child_changed', (child) => {
+        const tableId = child.key()
+        if (!tableId) return
+        applyTableSummary(decodeTableKey(tableId), (child.val() || null) as V3TableSummary | null)
+        notifyLiveStateChange(['tableSummaries'])
+      }) as () => void
+    )
+    setSubscription(
+      'staff-table-removed',
+      db.ref(summariesPath).on('child_removed', (child) => {
+        const tableId = child.key()
+        if (!tableId) return
+        const decodedTableId = decodeTableKey(tableId)
+        applyTableSummary(decodedTableId, null)
+        delete state.tableDrafts[decodedTableId]
+        delete state.pendingBatches[decodedTableId]
+        delete state.submittedBatches[decodedTableId]
+        notifyLiveStateChange(['tableSummaries'])
+      }) as () => void
+    )
+    setSubscription(
+      'staff-pending-added',
+      db.ref(pendingPath).on('child_added', (child) => {
+        const tableId = child.key()
+        if (!tableId) return
+        applyPendingSummary(decodeTableKey(tableId), (child.val() || null) as V3PendingSummary | null)
+        notifyLiveStateChange(['pendingBatches'])
+      }) as () => void
+    )
+    setSubscription(
+      'staff-pending-changed',
+      db.ref(pendingPath).on('child_changed', (child) => {
+        const tableId = child.key()
+        if (!tableId) return
+        applyPendingSummary(decodeTableKey(tableId), (child.val() || null) as V3PendingSummary | null)
+        notifyLiveStateChange(['pendingBatches'])
+      }) as () => void
+    )
+    setSubscription(
+      'staff-pending-removed',
+      db.ref(pendingPath).on('child_removed', (child) => {
+        const tableId = child.key()
+        if (!tableId) return
+        applyPendingSummary(decodeTableKey(tableId), null)
+        notifyLiveStateChange(['pendingBatches'])
+      }) as () => void
+    )
+  }
+
+  async function startTableLiveSession(mode: LiveMode, table: string) {
+    stopTableLiveSession()
+    currentTableSession = { table, mode }
+    state.selectedTable = table
+    state.currentMode = mode
+    const liveTable = await readLiveTable(table)
+    applyLiveTable(table, liveTable, mode)
+    setSubscription(
+      `table-live-${table}`,
+      db.ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`).on('value', (snapshot) => {
+        const next = normalizeLiveTable(snapshot.val() as V3LiveTable | null | undefined)
+        applyLiveTable(table, next, mode)
+        notifyLiveStateChange(['tableDrafts', 'pendingBatches', 'submittedBatches'])
+      }) as () => void
+    )
+  }
+
+  function stopTableLiveSession() {
+    if (currentTableSession) {
+      clearSubscription(`table-live-${currentTableSession.table}`)
+    }
+    currentTableSession = null
+    state.selectedTable = null
+    state.activeDraftEntries = []
+    state.activePendingBatches = []
+    state.activeSubmittedBatches = []
   }
 
   return {
-    acceptIncomingOrder,
-    checkoutSplit,
-    checkoutTable,
+    acceptPendingBatch,
+    createStaffBatch,
     deleteClosedOrder,
-    ensureCatalog,
-    ensureOwnerAuth,
+    discardCustomerDraft,
     ensureAttendanceFullHistory,
     ensureAttendanceWindow,
+    ensureCatalog,
+    ensureOwnerAuth,
     listClosedOrdersByDay,
     listClosedOrdersByRange,
     loadDailySummariesRange,
     loadItemStatsRange,
     readDailySummariesRange,
     readItemStatsRange,
-    rejectIncomingOrder,
+    rejectPendingBatch,
     saveAttendanceUpdates,
-    saveTableDraft,
+    saveCustomerDraft,
+    saveStaffDraft,
     setOwnerPassword,
     startStaffLive,
     startTableLiveSession,
     stopTableLiveSession,
-    submitIncomingOrder,
+    submitCustomerDraft,
     updateInventory,
     updateInventoryBatch,
     updateItemCost,
     updateItemPrice,
+    updateSubmittedBatch,
     watchAttendanceWindow,
     watchCatalogRevision,
     watchClosedOrdersRange,
     watchDailySummariesRange,
     watchItemStatsRange,
     watchOwnerAuthRevision,
+    checkoutSubmittedBatches,
   }
 }

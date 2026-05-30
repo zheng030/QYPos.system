@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { V3DailySummaryRangeEvent } from '@/features/pos-data/rtdb-v3-types'
+import type { V3DailyItemStat, V3DailySummaryRangeEvent } from '@/features/pos-data/rtdb-v3-types'
 import { createHistoryReportingModule } from './history-reporting'
 
 type ElementStub = {
@@ -26,6 +26,17 @@ function createElementStub(id = ''): ElementStub {
       remove: () => {},
     },
     appendChild: () => {},
+  }
+}
+
+function createItemStat(displayName: string, qty: number, categoryKey: string, revenue: number): V3DailyItemStat {
+  return {
+    displayName,
+    qty,
+    categoryKey,
+    revenue,
+    cost: 0,
+    updatedAt: 1,
   }
 }
 
@@ -77,8 +88,7 @@ describe('history-reporting', () => {
 
     const reporting = createHistoryReportingModule({
       getIsHistorySimpleMode: () => false,
-      getItemCategoryType: () => 'bar',
-      getMergedItems: (items) => items.map((item) => ({ ...item, count: 1 })),
+      getItemCategoryType: () => 'other',
       listClosedOrdersByDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
@@ -109,5 +119,219 @@ describe('history-reporting', () => {
 
     reporting.stopAllWatches()
     expect(stopCalls).toHaveLength(2)
+  })
+
+  it('renders grouped line items for closed-order history details', async () => {
+    const historyBox = createElementStub('history-box')
+    dom.add(historyBox)
+
+    const reporting = createHistoryReportingModule({
+      getIsHistorySimpleMode: () => false,
+      getItemCategoryType: () => 'drink',
+      listClosedOrdersByDay: async () => [
+        {
+          formattedSeq: '12-1',
+          seat: 'A1',
+          time: '2026/05/30 18:00:00',
+          total: 300,
+          originalTotal: 310,
+          lines: [
+            {
+              lineId: 'entry_food_main',
+              groupId: 'entry_food',
+              role: 'main',
+              catalogKey: 'pasta_risotto.chicken-breast',
+              inventoryKey: 'pasta_risotto.chicken-breast',
+              displayName: '青醬雞胸義大利麵',
+              shortName: '青醬雞胸',
+              categoryKey: 'pasta_risotto',
+              station: 'kitchen',
+              courseKind: 'food',
+              quantity: 1,
+              unitPrice: 250,
+              priceDelta: 0,
+              lineTotal: 250,
+              selectionSummary: '冰 / 青醬 / 義大利麵',
+              isTreat: false,
+              sourceEntryId: 'entry_food',
+            },
+            {
+              lineId: 'entry_food_child_0',
+              groupId: 'entry_food',
+              parentLineId: 'entry_food_main',
+              role: 'upgrade',
+              catalogKey: 'drink.latte',
+              inventoryKey: 'drink.latte',
+              displayName: '拿鐵咖啡',
+              shortName: '拿鐵',
+              categoryKey: 'drink',
+              station: 'kitchen',
+              courseKind: 'drink',
+              quantity: 1,
+              unitPrice: 60,
+              priceDelta: 60,
+              lineTotal: 60,
+              selectionSummary: '熱',
+              isTreat: false,
+              sourceEntryId: 'entry_food',
+            },
+          ],
+        },
+      ],
+      listClosedOrdersByRange: async () => [],
+      loadDailySummariesRange: async () => ({}),
+      loadItemStatsRange: async () => ({}),
+      watchClosedOrdersRange: () => () => {},
+      watchDailySummariesRange: () => () => {},
+      watchItemStatsRange: () => () => {},
+      readDailySummariesRange: () => ({}),
+      readItemStatsRange: () => ({}),
+      moveSegmentHighlighter: () => {},
+      openPage: () => {},
+      printReceipt: async () => {},
+      deleteClosedOrder: async () => {},
+      setIsHistorySimpleMode: () => {},
+    })
+
+    await reporting.showHistory()
+
+    expect(historyBox.innerHTML).toContain('青醬雞胸')
+    expect(historyBox.innerHTML).toContain('拿鐵')
+    expect(historyBox.innerHTML).toContain('(熱)')
+    expect(historyBox.innerHTML).toContain('$250')
+  })
+
+  it('renders item stats with all-store total plus 7 menu categories and other bucket', async () => {
+    const itemStatsColumns = createElementStub('itemStatsColumns')
+    const customRange = createElementStub('customStatsDateRange')
+    dom.add(itemStatsColumns)
+    dom.add(customRange)
+
+    const reporting = createHistoryReportingModule({
+      getIsHistorySimpleMode: () => false,
+      getItemCategoryType: () => 'other',
+      listClosedOrdersByDay: async () => [],
+      listClosedOrdersByRange: async () => [],
+      loadDailySummariesRange: async () => ({}),
+      loadItemStatsRange: async () => ({
+        '2026-05-30': {
+          pasta: createItemStat('雞胸', 3, 'pasta_risotto', 750),
+          bread: createItemStat('蒜香麵包餐', 2, 'bread_set', 300),
+          salad: createItemStat('凱薩沙拉', 1, 'salad', 180),
+          main: createItemStat('香煎雞腿排', 4, 'plated_main', 1200),
+          aLaCarte: createItemStat('炸物拼盤', 5, 'a_la_carte', 500),
+          soup: createItemStat('主廚濃湯', 2, 'soup', 180),
+          drink: createItemStat('拿鐵', 6, 'drink', 360),
+          other: createItemStat('神秘品項', 1, 'other', 50),
+        },
+      }),
+      watchClosedOrdersRange: () => () => {},
+      watchDailySummariesRange: () => () => {},
+      watchItemStatsRange: () => () => {},
+      readDailySummariesRange: () => ({}),
+      readItemStatsRange: () => ({
+        '2026-05-30': {
+          pasta: createItemStat('雞胸', 3, 'pasta_risotto', 750),
+          bread: createItemStat('蒜香麵包餐', 2, 'bread_set', 300),
+          salad: createItemStat('凱薩沙拉', 1, 'salad', 180),
+          main: createItemStat('香煎雞腿排', 4, 'plated_main', 1200),
+          aLaCarte: createItemStat('炸物拼盤', 5, 'a_la_carte', 500),
+          soup: createItemStat('主廚濃湯', 2, 'soup', 180),
+          drink: createItemStat('拿鐵', 6, 'drink', 360),
+          other: createItemStat('神秘品項', 1, 'other', 50),
+        },
+      }),
+      moveSegmentHighlighter: () => {},
+      openPage: () => {},
+      printReceipt: async () => {},
+      deleteClosedOrder: async () => {},
+      setIsHistorySimpleMode: () => {},
+    })
+
+    await reporting.renderItemStats('day')
+
+    expect(itemStatsColumns.innerHTML).toContain('全店總計')
+    expect(itemStatsColumns.innerHTML).toContain('義大利麵 / 燉飯')
+    expect(itemStatsColumns.innerHTML).toContain('麵包餐')
+    expect(itemStatsColumns.innerHTML).toContain('沙拉')
+    expect(itemStatsColumns.innerHTML).toContain('排餐')
+    expect(itemStatsColumns.innerHTML).toContain('單品')
+    expect(itemStatsColumns.innerHTML).toContain('湯品')
+    expect(itemStatsColumns.innerHTML).toContain('飲品')
+    expect(itemStatsColumns.innerHTML).toContain('其他 / 未知')
+    expect(itemStatsColumns.innerHTML).toContain('拿鐵')
+    expect(itemStatsColumns.innerHTML).toContain('炸物拼盤')
+  })
+
+  it('reprints and deletes the visible archived order', async () => {
+    const historyBox = createElementStub('history-box')
+    dom.add(historyBox)
+    const printReceipt = vi.fn(async () => {})
+    const deleteClosedOrder = vi.fn(async () => {})
+    ;(globalThis as { confirm?: (message?: string) => boolean }).confirm = () => true
+
+    const order = {
+      formattedSeq: '12-1',
+      seq: 12,
+      seat: 'A1',
+      table: 'A1',
+      time: '2026/05/30 18:00:00',
+      total: 310,
+      originalTotal: 310,
+      lines: [
+        {
+          lineId: 'entry_food_main',
+          groupId: 'entry_food',
+          role: 'main' as const,
+          catalogKey: 'pasta_risotto.chicken-breast',
+          inventoryKey: 'pasta_risotto.chicken-breast',
+          displayName: '青醬雞胸義大利麵',
+          shortName: '青醬雞胸',
+          categoryKey: 'pasta_risotto' as const,
+          station: 'kitchen' as const,
+          courseKind: 'food' as const,
+          quantity: 1,
+          unitPrice: 250,
+          priceDelta: 0,
+          lineTotal: 250,
+          selectionSummary: '冰 / 青醬 / 義大利麵',
+          isTreat: false,
+          sourceEntryId: 'entry_food',
+        },
+      ],
+    }
+
+    const reporting = createHistoryReportingModule({
+      getIsHistorySimpleMode: () => false,
+      getItemCategoryType: () => 'drink',
+      listClosedOrdersByDay: async () => [order],
+      listClosedOrdersByRange: async () => [],
+      loadDailySummariesRange: async () => ({}),
+      loadItemStatsRange: async () => ({}),
+      watchClosedOrdersRange: () => () => {},
+      watchDailySummariesRange: () => () => {},
+      watchItemStatsRange: () => () => {},
+      readDailySummariesRange: () => ({}),
+      readItemStatsRange: () => ({}),
+      moveSegmentHighlighter: () => {},
+      openPage: () => {},
+      printReceipt,
+      deleteClosedOrder,
+      setIsHistorySimpleMode: () => {},
+    })
+
+    await reporting.showHistory()
+    await reporting.reprintOrder(0)
+    await reporting.deleteSingleOrder(0)
+
+    expect(printReceipt).toHaveBeenCalledWith({
+      seq: '12-1',
+      table: 'A1',
+      time: '2026/05/30 18:00:00',
+      lines: order.lines,
+      original: 310,
+      total: 310,
+    })
+    expect(deleteClosedOrder).toHaveBeenCalledWith(order)
   })
 })

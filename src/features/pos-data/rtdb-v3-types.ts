@@ -1,6 +1,3 @@
-import type { AttendanceEmployee, AttendanceRecord } from '@/shared/attendance-service'
-import type { FlavorSelection } from '@/shared/flavor'
-
 export const RTDB_V3_ROOT = 'v3'
 export const RTDB_V3_SCHEMA_VERSION = 3
 export const BUSINESS_DAY_SHIFT_HOURS = 5
@@ -20,77 +17,98 @@ export type V3TableCustomer = {
   phone: string
 }
 
+export type V3OrderLine = {
+  lineId: string
+  groupId: string
+  parentLineId?: string
+  role: string
+  catalogKey: string
+  inventoryKey: string
+  displayName: string
+  shortName: string
+  categoryKey: string
+  station: string
+  courseKind: string
+  quantity: number
+  unitPrice: number
+  priceDelta: number
+  lineTotal: number
+  selections?: Record<string, string>
+  selectionSummary: string
+  isTreat: boolean
+  sourceEntryId: string
+}
+
+export type V3OrderEntry = {
+  entryId: string
+  groupId: string
+  itemId: string
+  catalogKey: string
+  inventoryKey: string
+  itemName: string
+  shortName: string
+  categoryKey: string
+  quantity: number
+  status: 'draft' | 'pending' | 'accepted'
+  source: 'customer' | 'staff'
+  createdAt: number
+  updatedAt: number
+  selections: Record<string, string>
+  includeSelections: Record<string, Record<string, string>>
+  upgradeSelections: Record<string, string>
+  lines: Record<string, V3OrderLine>
+  subtotal: number
+  summary: {
+    title: string
+    subtitle: string
+    quantityLabel: string
+    totalLabel: string
+  }
+}
+
+export type V3OrderBatch = {
+  batchId: string
+  source: 'customer' | 'staff'
+  status: 'pending' | 'accepted'
+  table: string
+  customer: V3TableCustomer
+  createdAt: number
+  updatedAt: number
+  acceptedAt?: number
+  requestLabel: string
+  entries: Record<string, V3OrderEntry>
+  subtotal: number
+}
+
 export type V3TableSummary = {
   status: string | null
   timerStartedAt: number | null
   displaySeqBase: number | null
-  splitCounter: number
   batchCount: number
+  nextSplitCounter?: number | null
   customer: V3TableCustomer
   updatedAt: number
 }
 
-export type V3CartLine = {
-  position: number
-  displayName: string
-  catalogKey: V3CatalogKey
-  type: string
-  variant?: string
-  flavor?: FlavorSelection | null
-  unitPrice: number | string
-  isTreat: boolean
-  batchId?: number | string
-  batchIdx?: number
-  sentAt?: number
-  incomingIdx?: number
-  isSent?: boolean
-}
-
-export type V3IncomingOrderHead = {
-  requestId: string
-  createdAt: number
-  batchId: number
-  customer: V3TableCustomer
-  previewItems: Record<string, V3IncomingPreviewItem>
-}
-
 export type V3PendingSummary = {
   pendingCount: number
-  firstOrder: V3IncomingOrderHead | null
-}
-
-export type V3IncomingOrder = {
-  requestId: string
-  createdAt: number
-  batchId: number
-  customer: V3TableCustomer
-  items: Record<string, V3CartLine>
+  firstBatch: {
+    batchId: string
+    createdAt: number
+    requestLabel: string
+    itemPreview: string[]
+  } | null
 }
 
 export type V3LiveTable = {
   summary: V3TableSummary | null
-  cart: Record<string, V3CartLine>
-  incomingOrders: Record<string, V3IncomingOrder>
+  draft: Record<string, V3OrderEntry>
+  pendingBatches: Record<string, V3OrderBatch>
+  submittedBatches: Record<string, V3OrderBatch>
 }
 
-export type V3IncomingPreviewItem = {
-  position: number
-  displayName: string
-  unitPrice: number | string
-}
-
-export type V3ClosedOrderItem = {
-  position: number
-  displayName: string
-  catalogKey: V3CatalogKey
-  type: string
-  variant?: string
-  flavor?: FlavorSelection | null
-  qty: number
-  unitPrice: number
+export type V3ClosedOrderLine = V3OrderLine & {
   unitCost: number
-  lineTotal: number
-  isTreat: boolean
 }
 
 export type V3ClosedOrder = {
@@ -109,7 +127,9 @@ export type V3ClosedOrder = {
     original: number
   }
   status: 'closed'
-  items: Record<string, V3ClosedOrderItem>
+  batchIds: string[]
+  entries: Record<string, V3OrderEntry>
+  lines: Record<string, V3ClosedOrderLine>
 }
 
 export type V3DailySummary = {
@@ -117,21 +137,15 @@ export type V3DailySummary = {
   paidTotal: number
   originalTotal: number
   itemQtyTotal: number
-  barRevenue: number
-  bbqRevenue: number
-  unknownRevenue: number
-  extraRevenue: number
-  barCost: number
-  bbqCost: number
-  unknownCost: number
+  categoryRevenue: Record<string, number>
+  categoryCost: Record<string, number>
   updatedAt: number
 }
 
 export type V3DailyItemStat = {
   displayName: string
-  type: string
+  categoryKey: string
   qty: number
-  treatQty: number
   revenue: number
   cost: number
   updatedAt: number
@@ -158,43 +172,6 @@ export type V3RevisionTree = {
   attendance: {
     employees: V3RevisionValue
     recordsByMonth: Record<V3MonthKey, V3RevisionValue>
-  }
-}
-
-export type V3Meta = {
-  schemaVersion: 3
-  cutoverState: 'active' | 'migrating'
-  migratedAt: number
-  migrationId: string
-  revisions: V3RevisionTree
-}
-
-export type V3Dataset = {
-  meta: V3Meta
-  live: {
-    tables: Record<string, V3LiveTable>
-    tableSummaries: Record<string, V3TableSummary>
-    pendingSummaries: Record<string, V3PendingSummary>
-  }
-  history: {
-    ordersByMonth: Record<V3MonthKey, Record<V3BizDateKey, Record<string, V3ClosedOrder>>>
-    sequenceByDate: Record<V3BizDateKey, { nextDisplaySeq: number }>
-  }
-  reports: {
-    dailyByMonth: Record<V3MonthKey, Record<V3BizDateKey, V3DailySummary>>
-    itemStatsByMonth: Record<V3MonthKey, Record<V3BizDateKey, Record<V3CatalogKey, V3DailyItemStat>>>
-  }
-  catalog: {
-    inventory: Record<string, boolean>
-    prices: Record<string, number | string>
-    costs: Record<string, number>
-  }
-  attendance: {
-    employees: Record<string, AttendanceEmployee>
-    recordsByMonth: Record<V3MonthKey, Record<string, AttendanceRecord>>
-  }
-  auth: {
-    owners: Record<string, V3OwnerAuthRecord>
   }
 }
 

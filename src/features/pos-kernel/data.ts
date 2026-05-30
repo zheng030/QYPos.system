@@ -1,4 +1,12 @@
-/* data.js - 系統設定與菜單資料 (v15) */
+import type {
+  PosCategoryKey,
+  PosMenuCategory,
+  PosMenuItem,
+  PosMenuMeta,
+  PosOwnerAuthMap,
+  PosSelectionOption,
+  PosSelectionRule,
+} from './types'
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyBY3ILlBr5N8a8PxMv3IDSScmNZzvtXXVw',
@@ -15,7 +23,8 @@ export const SYSTEM_PASSWORD = {
   passwordSalt: 'JfQ2P/jVlbY9HZW2dyJJ8A==',
   passwordHash: 'B4xRSlbbNDSdB/944ssKtHHfi9ckFD6lBhjwPQDvWM8=',
 }
-export const defaultOwnerPasswords = {
+
+export const defaultOwnerPasswords: PosOwnerAuthMap = {
   景偉: {
     passwordSalt: 'c2FsdC1vd25lci0x',
     passwordHash: 'n06NSuWUI7n7xaka9XHmx4z16FRw76ycRb7XyRWIh7o=',
@@ -28,7 +37,7 @@ export const defaultOwnerPasswords = {
     passwordSalt: 'c2FsdC1vd25lci0z',
     passwordHash: 'd9Z8FgD9HmrbiNnNnKKKJ8l5AAs6AUbLnV1cDas2VYk=',
   },
-} as const
+}
 
 export const tables = [
   '外帶1',
@@ -53,233 +62,651 @@ export const tables = [
   '10桌',
 ]
 
-export const categories = [
-  '調酒',
-  '純飲',
-  'shot',
-  '啤酒',
-  '咖啡',
-  '飲料',
-  '燒烤',
-  '主餐',
-  '炸物',
-  '厚片',
-  '甜點',
-  '其他',
-]
-
-export const FOOD_OPTION_VARIANTS = {
-  炒飯: ['牛', '豬', '蝦仁'],
-  日式炒烏龍麵: ['牛', '豬', '雞'],
-  親子丼: ['牛', '豬', '雞'],
+function inferCategoryKeyFromCatalogKey(value: string): PosCategoryKey {
+  const head = String(value || '').split('.')[0]
+  return ({
+    pasta_risotto: 'pasta_risotto',
+    bread_set: 'bread_set',
+    salad: 'salad',
+    plated_main: 'plated_main',
+    a_la_carte: 'a_la_carte',
+    soup: 'soup',
+    drink: 'drink',
+  }[head] || 'other') as PosCategoryKey
 }
 
-export const menuData = {
-  調酒: {
-    '$250 調酒': [
-      { name: '高球', price: 250 },
-      { name: '琴通寧', price: 250 },
-      { name: '螺絲起子', price: 250 },
-      { name: '藍色珊瑚礁', price: 250 },
-      { name: '龍舌蘭日出', price: 250 },
-    ],
-    '$280 調酒': [
-      { name: '白色俄羅斯', price: 280 },
-      { name: '性感海灘', price: 280 },
-      { name: '威士忌酸', price: 280 },
-      { name: '惡魔', price: 280 },
-      { name: '梅夢', price: 280 },
-      { name: '輕浪蘭夢', price: 280 },
-      { name: '暮色梅影', price: 280 },
-      { name: '醉椰落日', price: 280 },
-      { name: '晨曦花露', price: 280 },
-      { name: '隱藏特調', price: 280 },
-    ],
-    '$320 調酒': [
-      { name: '橙韻旋律', price: 320 },
-      { name: '莫希托', price: 320 },
-      { name: '長島冰茶', price: 320 },
-      { name: '內格羅尼', price: 320 },
-      { name: '咖啡馬丁尼', price: 320 },
-      { name: '雅茗', price: 320 },
-      { name: '幽香琥珀', price: 320 },
-      { name: '琴盈紅酸', price: 320 },
-      { name: '微醺榛情', price: 320 },
-    ],
-    無酒精調酒: [
-      { name: '小熊軟糖', price: 300 },
-      { name: '桂花晨露', price: 300 },
-      { name: '玫瑰紅茶', price: 300 },
-      { name: '珍珠奶茶', price: 300 },
-      { name: '紅豆牛奶', price: 300 },
-      { name: '隱藏特調(無酒精)', price: 300 },
+function option(value: string, label: string, priceDelta = 0, targetItemId?: string): PosSelectionOption {
+  const catalogKey = targetItemId || value
+  return {
+    optionKey: value,
+    value,
+    label,
+    priceDelta,
+    targetItemId,
+    inventoryKey: targetItemId || catalogKey,
+    categoryKey: inferCategoryKeyFromCatalogKey(catalogKey),
+    station: 'kitchen',
+  }
+}
+
+function buildSelectionInventoryKey(itemId: string, ruleId: string, value: string) {
+  return `selection.${itemId}.${ruleId}.${value}`
+}
+
+function singleRule(
+  id: string,
+  label: string,
+  options: PosSelectionOption[],
+  required = true,
+  summaryLabel?: string
+): PosSelectionRule {
+  return { id, kind: 'single', label, options, required, summaryLabel }
+}
+
+function textRule(id: string, label: string, required = false, summaryLabel?: string): PosSelectionRule {
+  return { id, kind: 'text', label, required, summaryLabel }
+}
+
+type MenuItemSeed = Omit<PosMenuItem, 'kind' | 'station' | 'productKey' | 'inventoryKey'>
+
+function bundleItem(input: MenuItemSeed): PosMenuItem {
+  return {
+    ...input,
+    productKey: input.id,
+    inventoryKey: input.soldOutKey || input.id,
+    kind: 'bundle',
+    price: input.basePrice,
+    station: 'kitchen',
+  }
+}
+
+function singleItem(input: MenuItemSeed): PosMenuItem {
+  return {
+    ...input,
+    productKey: input.id,
+    inventoryKey: input.soldOutKey || input.id,
+    kind: 'single',
+    price: input.basePrice,
+    station: 'kitchen',
+  }
+}
+
+const drinkTemperatureRule = singleRule(
+  'temperature',
+  '冰 / 熱',
+  [option('ice', '冰'), option('hot', '熱')],
+  true,
+  '溫度'
+)
+
+const pastaBaseRule = singleRule('base', '主食', [option('pasta', '義大利麵'), option('risotto', '燉飯')], true, '主食')
+
+const upgradeDrinkOptions = [
+  option('black-tea', '紅茶', 0, 'drink.black-tea'),
+  option('green-tea', '綠茶', 0, 'drink.green-tea'),
+  option('espresso', '濃縮咖啡', 60, 'drink.espresso'),
+  option('americano', '美式咖啡', 60, 'drink.americano'),
+  option('latte', '拿鐵咖啡', 60, 'drink.latte'),
+  option('chef-soup', '主廚濃湯', 90, 'soup.chef'),
+  option('puff-soup', '酥皮濃湯', 120, 'soup.puff'),
+] as const
+
+function buildBundleIncludes() {
+  return [
+    {
+      id: 'included-drink',
+      label: '附飲',
+      itemId: 'drink.black-tea',
+      inventoryKey: 'drink.black-tea',
+      categoryKey: 'drink',
+      upgradeGroupId: 'bundle-drink-upgrade',
+      defaultSelections: { temperature: 'ice' },
+    },
+  ] as const satisfies PosMenuItem['includes']
+}
+
+function buildBundleUpgradeGroups() {
+  return [
+    {
+      id: 'bundle-drink-upgrade',
+      label: '附飲 / 換購',
+      required: true,
+      summaryLabel: '附飲',
+      options: [...upgradeDrinkOptions],
+    },
+  ]
+}
+
+function buildBundleSelections(extraRules: PosSelectionRule[] = []) {
+  return [...extraRules, textRule('note', '備註')]
+}
+
+const categories: PosMenuCategory[] = [
+  {
+    key: 'pasta_risotto',
+    label: '義大利麵 / 燉飯',
+    shortLabel: '義大利麵 / 燉飯',
+    description: '皆附紅茶 / 綠茶，可加價換購',
+    sections: [
+      {
+        id: 'pasta_risotto-main',
+        label: '義大利麵 / 燉飯',
+        items: [
+          bundleItem({
+            id: 'pasta_risotto.bolognese-pork',
+            name: '辣番茄肉醬(豬肉)',
+            shortName: '辣番茄肉醬',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 300,
+            selections: buildBundleSelections([pastaBaseRule]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.chicken-breast',
+            name: '雞胸',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 250,
+            selections: buildBundleSelections([
+              pastaBaseRule,
+              singleRule('sauce', '口味', [option('cheese', '香濃起司'), option('pesto', '青醬')], true, '口味'),
+            ]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.chicken-leg',
+            name: '雞腿',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 300,
+            selections: buildBundleSelections([
+              pastaBaseRule,
+              singleRule('sauce', '口味', [option('cheese', '香濃起司'), option('pesto', '青醬')], true, '口味'),
+            ]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.clam',
+            name: '蛤蜊',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 330,
+            selections: buildBundleSelections([
+              pastaBaseRule,
+              singleRule('sauce', '口味', [option('basil-oil', '清炒塔香'), option('cream', '奶香')], true, '口味'),
+            ]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.shrimp',
+            name: '鮮蝦',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 280,
+            selections: buildBundleSelections([
+              pastaBaseRule,
+              singleRule(
+                'sauce',
+                '口味',
+                [option('basil-oil', '清炒塔香'), option('cream', '奶香'), option('pesto', '青醬')],
+                true,
+                '口味'
+              ),
+            ]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.seabass',
+            name: '鱸魚',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 360,
+            selections: buildBundleSelections([
+              pastaBaseRule,
+              singleRule('sauce', '口味', [option('cream', '奶香'), option('pesto', '青醬')], true, '口味'),
+            ]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.truffle-mushroom-meat',
+            name: '野菇松露醬(葷)',
+            shortName: '野菇松露醬',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 360,
+            selections: buildBundleSelections([pastaBaseRule]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.creamy-mushroom-veg',
+            name: '奶油野菇醬(素)',
+            shortName: '奶油野菇醬',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 360,
+            selections: buildBundleSelections([pastaBaseRule]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.toscana-pork',
+            name: '托斯卡納豬肉',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 320,
+            selections: buildBundleSelections([pastaBaseRule]),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+        ],
+      },
     ],
   },
-  純飲: {
-    '$200 純飲': [
-      { name: '岩井(紅酒桶)', price: 200 },
-      { name: '鉑仕曼 12 年', price: 200 },
-      { name: '百富 12 年', price: 200 },
-      { name: '拉佛格', price: 200 },
-      { name: '蘇格登 12 年', price: 200 },
-      { name: '格蘭利威 12 年', price: 200 },
-      { name: '凱德漢 7 年', price: 200 },
-    ],
-    '$300 純飲': [
-      { name: '響', price: 300 },
-      { name: '白州', price: 300 },
-      { name: '岩井(雪莉桶)', price: 300 },
-      { name: '大摩 12 年', price: 300 },
-      { name: '百富 14 年', price: 300 },
-      { name: '卡爾里拉', price: 300 },
-    ],
-  },
-  shot: [
-    { name: '伏特加', price: 100 },
-    { name: '蘭姆酒', price: 100 },
-    { name: '龍舌蘭', price: 100 },
-    { name: '琴酒', price: 100 },
-    { name: '威士忌', price: 100 },
-    { name: 'B52', price: 150 },
-    { name: '薄荷奶糖', price: 150 },
-    { name: '提拉米蘇', price: 150 },
-    { name: '小愛爾蘭', price: 150 },
-  ],
-  啤酒: [
-    { name: '百威', price: 120 },
-    { name: '可樂娜', price: 120 },
-    { name: '金樽', price: 150 },
-    { name: '雪山', price: 150 },
-  ],
-  咖啡: [
-    { name: '美式', price: 100 },
-    { name: '青檸美式', price: 120 },
-    { name: '冰橙美式', price: 150 },
-    { name: '拿鐵', price: 120 },
-    { name: '香草拿鐵', price: 120 },
-    { name: '榛果拿鐵', price: 150 },
-    { name: '摩卡拿鐵', price: 150 },
-  ],
-  飲料: [
-    { name: '可樂', price: 80 },
-    { name: '雪碧', price: 80 },
-    { name: '可爾必思', price: 80 },
-    { name: '柳橙汁', price: 80 },
-    { name: '蘋果汁', price: 80 },
-    { name: '蔓越莓汁', price: 80 },
-    { name: '紅茶', price: 80 },
-    { name: '綠茶', price: 80 },
-    { name: '烏龍茶', price: 80 },
-    { name: '奶茶', price: 100 },
-  ],
-  燒烤: {
-    Popular: [
-      { name: '米血', price: 25 },
-      { name: '豆乾', price: 25 },
-      { name: '小肉豆', price: 25 },
-      { name: '甜不辣', price: 25 },
-      { name: '鑫鑫腸', price: 25 },
-      { name: '百頁豆腐', price: 25 },
-      { name: '豆包', price: 30 },
-      { name: '糯米腸', price: 25 },
-      { name: '肥腸', price: 30 },
-      { name: '鱈魚丸', price: 30 },
-      { name: '豬捲蔥', price: 40 },
-      { name: '豬捲金針菇', price: 40 },
-      { name: '牛肉串', price: 45 },
-      { name: '孜然羊肉串', price: 50 },
-      { name: '香蔥雞腿肉串', price: 55 },
-      { name: '四季豆', price: 45 },
-      { name: '青椒', price: 45 },
-      { name: '香菇', price: 45 },
-      { name: '杏包菇', price: 45 },
-      { name: '櫛瓜', price: 45 },
-    ],
-    Chicken: [
-      { name: '雞脖子', price: 25 },
-      { name: '雞胗', price: 30 },
-      { name: '雞心', price: 30 },
-      { name: '雞翅', price: 30 },
-      { name: '雞屁股', price: 30 },
-      { name: '雞皮', price: 35 },
-      { name: '雞腿捲', price: 45 },
-      { name: '雞胸肉', price: 40 },
-      { name: '雞軟骨', price: 65 },
-      { name: '雞腿', price: 80 },
-      { name: '大熱狗', price: 35 },
-      { name: '鹹麻吉', price: 35 },
-      { name: '煉乳麻吉', price: 50 },
-    ],
-    花生糯米腸組合: [
-      { name: 'A 糯米腸+香腸', price: 80 },
-      { name: 'B 糯米腸+鹹豬肉', price: 100 },
-      { name: 'C 糯米腸+香腸+鹹豬肉', price: 150 },
-    ],
-    隱藏限定: [
-      { name: '碳烤豆腐', price: 40 },
-      { name: '牛蒡甜不辣', price: 40 },
-      { name: '沙爹豬', price: 45 },
-      { name: '洋蔥牛五花', price: 55 },
-      { name: '香蔥牛五花', price: 55 },
-      { name: '蕃茄牛五花', price: 55 },
-      { name: '麝香牛五花', price: 55 },
-      { name: '砂糖橘牛五花', price: 60 },
-      { name: '碳烤雞排', price: 90 },
-      { name: '碳烤魷魚', price: 200 },
-      { name: '帶骨牛小排', price: 280 },
+  {
+    key: 'bread_set',
+    label: '麵包餐',
+    shortLabel: '麵包餐',
+    description: '皆附紅茶 / 綠茶，可加價換購',
+    sections: [
+      {
+        id: 'bread_set-main',
+        label: '麵包餐',
+        items: [
+          singleItem({
+            id: 'bread_set.garlic-bread',
+            name: '蒜香義式麵包片',
+            categoryKey: 'bread_set',
+            courseKind: 'food',
+            basePrice: 150,
+            selections: [textRule('note', '備註')],
+          }),
+          bundleItem({
+            id: 'bread_set.creamy-chicken-leg',
+            name: '奶油燉雞腿 佐 蒜香義式麵包',
+            shortName: '奶油燉雞腿',
+            categoryKey: 'bread_set',
+            courseKind: 'food',
+            basePrice: 330,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'bread_set.garlic-lemon-shrimp',
+            name: '蒜香檸檬鮮蝦 佐 蒜香義式麵包',
+            shortName: '蒜香檸檬鮮蝦',
+            categoryKey: 'bread_set',
+            courseKind: 'food',
+            basePrice: 360,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+        ],
+      },
     ],
   },
-  主餐: {
-    主餐: [
-      { name: '炒飯', price: 90 },
-      { name: '親子丼', price: 160 },
-      { name: '海鮮粥', price: 350 },
-      { name: '日式炒烏龍麵', price: 150 },
-      { name: '酒蒸蛤蠣', price: 180 },
-      { name: '唐揚咖哩', price: 220 },
-    ],
-    湯品: [
-      { name: '龍膽石斑魚湯', price: 280 },
-      { name: '蛤仔湯', price: 100 },
-      { name: '蚵仔湯', price: 100 },
-      { name: '蛤仔透抽', price: 180 },
-      { name: '蛤仔蚵仔', price: 180 },
-      { name: '福州丸湯', price: 100 },
+  {
+    key: 'salad',
+    label: '沙拉',
+    shortLabel: '沙拉',
+    description: '皆附紅茶 / 綠茶，可加價換購',
+    sections: [
+      {
+        id: 'salad-main',
+        label: '沙拉',
+        items: [
+          bundleItem({
+            id: 'salad.salami-mozzarella',
+            name: '義式臘腸 佐 莫札瑞拉起司',
+            shortName: '義式臘腸',
+            categoryKey: 'salad',
+            courseKind: 'food',
+            basePrice: 280,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'salad.crispy-bacon',
+            name: '香煎脆培根',
+            categoryKey: 'salad',
+            courseKind: 'food',
+            basePrice: 250,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'salad.beef-short-rib',
+            name: '香煎牛小排',
+            categoryKey: 'salad',
+            courseKind: 'food',
+            basePrice: 330,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'salad.smoked-salmon',
+            name: '煙燻鮭魚',
+            categoryKey: 'salad',
+            courseKind: 'food',
+            basePrice: 360,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+        ],
+      },
     ],
   },
-  炸物: [
-    { name: '嫩炸豆腐', price: 80 },
-    { name: '脆薯', price: 100 },
-    { name: '雞塊', price: 100 },
-    { name: '鑫鑫腸', price: 100 },
-    { name: '雞米花', price: 100 },
-    { name: '洋蔥圈', price: 100 },
-    { name: '唐揚雞', price: 150 },
-    { name: '酥炸魷魚', price: 200 },
-    { name: '酥炸蚵仔酥', price: 250 },
-    { name: '炸物拼盤', price: 400 },
-  ],
-  厚片: [
-    { name: '花生厚片', price: 80 },
-    { name: '奶酥厚片', price: 80 },
-    { name: '蒜香厚片', price: 80 },
-    { name: '巧克力厚片', price: 80 },
-    { name: '巧克力棉花糖厚片', price: 80 },
-  ],
-  甜點: [
-    { name: '原味巴斯克', price: 120 },
-    { name: '生巧巴斯克', price: 140 },
-    { name: '伯爵巴斯克', price: 140 },
-    { name: '蕉心巴斯克', price: 150 },
-    { name: '開心果巴斯克', price: 180 },
-    { name: '提拉米蘇', price: 180 },
-    { name: '小小龍', price: 260 },
-  ],
-  其他: [
-    { name: '檸檬(盤)', price: 50 },
-    { name: '服務費', price: 100 },
-    { name: '服務費(隱藏)', price: '自訂' },
-    { name: '清潔費', price: 300 },
-    { name: '碎碎平安', price: 500 },
-  ],
+  {
+    key: 'plated_main',
+    label: '排餐',
+    shortLabel: '排餐',
+    description: '皆附紅茶 / 綠茶，可加價換購',
+    sections: [
+      {
+        id: 'plated_main-main',
+        label: '排餐',
+        items: [
+          bundleItem({
+            id: 'plated_main.chicken-leg',
+            name: '香煎雞腿 佐 馬鈴薯泥',
+            shortName: '香煎雞腿',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 360,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'plated_main.red-wine-beef-stew',
+            name: '紅酒燉牛肉 佐 馬鈴薯泥',
+            shortName: '紅酒燉牛肉',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 400,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'plated_main.beef-short-rib',
+            name: '牛小排 佐 馬鈴薯泥',
+            shortName: '牛小排',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 450,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'plated_main.duck-breast',
+            name: '法式嫩鴨胸 佐 馬鈴薯泥',
+            shortName: '法式嫩鴨胸',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 480,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'plated_main.cod-fish',
+            name: '香煎鱈魚 佐 奶油菠菜泥',
+            shortName: '香煎鱈魚',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 420,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'plated_main.filet-mignon',
+            name: '菲力牛排 佐 巴薩米可炒蘑菇',
+            shortName: '菲力牛排',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 450,
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'plated_main.beef-wellington',
+            name: '威靈頓牛排(需預訂)',
+            shortName: '威靈頓牛排',
+            categoryKey: 'plated_main',
+            courseKind: 'food',
+            basePrice: 700,
+            tags: ['需預訂'],
+            selections: buildBundleSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+        ],
+      },
+    ],
+  },
+  {
+    key: 'a_la_carte',
+    label: '單品',
+    shortLabel: '單品',
+    sections: [
+      {
+        id: 'a_la_carte-main',
+        label: '單品',
+        items: [
+          singleItem({
+            id: 'a_la_carte.mozzarella-stick',
+            name: '莫札瑞拉起司棒',
+            categoryKey: 'a_la_carte',
+            courseKind: 'addon',
+            basePrice: 150,
+            selections: [textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'a_la_carte.cheese-fries',
+            name: '起司醬薯條',
+            categoryKey: 'a_la_carte',
+            courseKind: 'addon',
+            basePrice: 150,
+            selections: [textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'a_la_carte.truffle-fries',
+            name: '松露醬薯條',
+            categoryKey: 'a_la_carte',
+            courseKind: 'addon',
+            basePrice: 180,
+            selections: [textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'a_la_carte.balsamic-mushroom',
+            name: '巴薩米可炒蘑菇',
+            categoryKey: 'a_la_carte',
+            courseKind: 'addon',
+            basePrice: 180,
+            selections: [textRule('note', '備註')],
+          }),
+        ],
+      },
+    ],
+  },
+  {
+    key: 'soup',
+    label: '湯品',
+    shortLabel: '湯品',
+    sections: [
+      {
+        id: 'soup-main',
+        label: '湯品',
+        items: [
+          singleItem({
+            id: 'soup.chef',
+            name: '主廚濃湯',
+            categoryKey: 'soup',
+            courseKind: 'addon',
+            basePrice: 150,
+            selections: [textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'soup.puff',
+            name: '酥皮濃湯',
+            categoryKey: 'soup',
+            courseKind: 'addon',
+            basePrice: 180,
+            selections: [textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'soup.seafood',
+            name: '義式海鮮湯',
+            categoryKey: 'soup',
+            courseKind: 'addon',
+            basePrice: 230,
+            selections: [textRule('note', '備註')],
+          }),
+        ],
+      },
+    ],
+  },
+  {
+    key: 'drink',
+    label: '飲品',
+    shortLabel: '飲品',
+    description: '可選冰 / 熱',
+    sections: [
+      {
+        id: 'drink-main',
+        label: '飲品',
+        items: [
+          singleItem({
+            id: 'drink.espresso',
+            name: '濃縮咖啡',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 100,
+            selections: [drinkTemperatureRule, textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'drink.americano',
+            name: '美式咖啡',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 110,
+            selections: [drinkTemperatureRule, textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'drink.latte',
+            name: '拿鐵咖啡',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 150,
+            selections: [drinkTemperatureRule, textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'drink.black-tea',
+            name: '紅茶',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 0,
+            menuModes: ['staff'],
+            selections: [drinkTemperatureRule],
+          }),
+          singleItem({
+            id: 'drink.green-tea',
+            name: '綠茶',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 0,
+            menuModes: ['staff'],
+            selections: [drinkTemperatureRule],
+          }),
+        ],
+      },
+    ],
+  },
+]
+
+export const orderedCategoryKeys = categories.map((category) => category.key)
+
+function normalizeMenuItem(item: PosMenuItem): PosMenuItem {
+  return {
+    ...item,
+    productKey: item.productKey || item.id,
+    inventoryKey: item.inventoryKey || item.soldOutKey || item.id,
+    selections: item.selections?.map((rule) =>
+      rule.kind === 'single'
+        ? {
+            ...rule,
+            options: rule.options.map((selectionOption) => ({
+              ...selectionOption,
+              optionKey: selectionOption.optionKey || selectionOption.value,
+              priceDelta: Number(selectionOption.priceDelta || 0),
+              inventoryKey: selectionOption.targetItemId
+                ? selectionOption.inventoryKey || selectionOption.targetItemId || selectionOption.value
+                : buildSelectionInventoryKey(item.id, rule.id, selectionOption.value),
+              categoryKey:
+                selectionOption.categoryKey ||
+                (selectionOption.targetItemId
+                  ? inferCategoryKeyFromCatalogKey(selectionOption.targetItemId || selectionOption.value)
+                  : item.categoryKey),
+              station: 'kitchen',
+            })),
+          }
+        : rule
+    ),
+    includes: item.includes?.map((includeRule) => ({
+      ...includeRule,
+      inventoryKey: includeRule.inventoryKey || includeRule.itemId,
+      categoryKey: includeRule.categoryKey || inferCategoryKeyFromCatalogKey(includeRule.itemId),
+    })),
+    upgradeGroups: item.upgradeGroups?.map((group) => ({
+      ...group,
+      options: group.options.map((selectionOption) => ({
+        ...selectionOption,
+        optionKey: selectionOption.optionKey || selectionOption.value,
+        priceDelta: Number(selectionOption.priceDelta || 0),
+        inventoryKey: selectionOption.inventoryKey || selectionOption.targetItemId || selectionOption.value,
+        categoryKey:
+          selectionOption.categoryKey ||
+          inferCategoryKeyFromCatalogKey(selectionOption.targetItemId || selectionOption.value),
+        station: 'kitchen',
+      })),
+    })),
+  }
+}
+
+const normalizedCategories = categories.map((category) => ({
+  ...category,
+  sections: category.sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => normalizeMenuItem(item)),
+  })),
+}))
+
+export const menuMeta: PosMenuMeta = {
+  orderedCategoryKeys,
+  categories: Object.fromEntries(normalizedCategories.map((category) => [category.key, category])) as Record<
+    PosCategoryKey,
+    PosMenuCategory
+  >,
+  itemsById: Object.fromEntries(
+    normalizedCategories.flatMap((category) =>
+      category.sections.flatMap((section) => section.items.map((item) => [item.id, item]))
+    )
+  ) as Record<string, PosMenuItem>,
 }

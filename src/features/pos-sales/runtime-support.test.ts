@@ -1,0 +1,294 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import type { PosOrderBatch, PosOrderEntry, PosReceiptData } from '@/features/pos-kernel/types'
+import {
+  acceptPendingBatchAndPrint,
+  buildReceiptMarkup,
+  calculateSplitCheckoutTotal,
+  getBuilderGroupSelector,
+  getFloatingBarViewModel,
+  getVisibleOrderBatches,
+  guideBuilderIssue,
+  persistCustomerInfoSilently,
+  selectPendingOverlayBatch,
+  submitDraftBatch,
+  updateSubmittedBatchAndPrint,
+} from './runtime-support'
+
+function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
+  return {
+    entryId: 'entry_1',
+    groupId: 'entry_1',
+    itemId: 'pasta_risotto.chicken-breast',
+    catalogKey: 'pasta_risotto.chicken-breast',
+    inventoryKey: 'pasta_risotto.chicken-breast',
+    itemName: '雞胸',
+    shortName: '雞胸',
+    categoryKey: 'pasta_risotto',
+    quantity: 1,
+    status: 'draft',
+    source: 'customer',
+    createdAt: 1,
+    updatedAt: 1,
+    selections: {},
+    includeSelections: {},
+    upgradeSelections: {},
+    lines: [
+      {
+        lineId: 'entry_1_main',
+        groupId: 'entry_1',
+        role: 'main',
+        catalogKey: 'pasta_risotto.chicken-breast',
+        inventoryKey: 'pasta_risotto.chicken-breast',
+        categoryKey: 'pasta_risotto',
+        displayName: '青醬雞胸義大利麵',
+        shortName: '青醬雞胸',
+        station: 'kitchen',
+        courseKind: 'food',
+        quantity: 1,
+        unitPrice: 250,
+        priceDelta: 0,
+        lineTotal: 250,
+        selectionSummary: '青醬 / 義大利麵',
+        isTreat: false,
+        sourceEntryId: 'entry_1',
+      },
+      {
+        lineId: 'entry_1_child_0',
+        groupId: 'entry_1',
+        parentLineId: 'entry_1_main',
+        role: 'upgrade',
+        catalogKey: 'drink.latte',
+        inventoryKey: 'drink.latte',
+        categoryKey: 'drink',
+        displayName: '拿鐵咖啡',
+        shortName: '拿鐵',
+        station: 'kitchen',
+        courseKind: 'drink',
+        quantity: 1,
+        unitPrice: 60,
+        priceDelta: 60,
+        lineTotal: 60,
+        selectionSummary: '熱',
+        isTreat: false,
+        sourceEntryId: 'entry_1',
+      },
+    ],
+    subtotal: 310,
+    summary: {
+      title: '雞胸',
+      subtitle: '附飲：拿鐵咖啡',
+      quantityLabel: '1 份',
+      totalLabel: '$310',
+    },
+    ...overrides,
+  }
+}
+
+function createBatch(overrides: Partial<PosOrderBatch> = {}): PosOrderBatch {
+  const entries = overrides.entries || [createEntry()]
+  return {
+    batchId: 'batch_1',
+    source: 'customer',
+    status: 'pending',
+    table: 'A1',
+    customer: { name: '王小明', phone: '0900' },
+    createdAt: 10,
+    updatedAt: 10,
+    requestLabel: '#12-1',
+    entries,
+    subtotal: entries.reduce((sum, entry) => sum + entry.subtotal, 0),
+    ...overrides,
+  }
+}
+
+describe('pos-sales runtime-support', () => {
+  it('shows pending then submitted batches for customer mode and only submitted for staff mode', () => {
+    const pending = [createBatch({ batchId: 'pending_1', status: 'pending', createdAt: 1 })]
+    const submitted = [createBatch({ batchId: 'submitted_1', status: 'accepted', createdAt: 2 })]
+
+    expect(getVisibleOrderBatches('customer', pending, submitted).map((item) => item.batch.batchId)).toEqual([
+      'pending_1',
+      'submitted_1',
+    ])
+    expect(getVisibleOrderBatches('staff', pending, submitted).map((item) => item.batch.batchId)).toEqual([
+      'submitted_1',
+    ])
+  })
+
+  it('selects the first pending overlay batch only for staff mode', () => {
+    const match = selectPendingOverlayBatch('staff', {
+      A1: [],
+      A2: [createBatch({ batchId: 'pending_2', table: 'A2' })],
+    })
+    expect(match).toMatchObject({
+      table: 'A2',
+      batch: { batchId: 'pending_2' },
+    })
+    expect(selectPendingOverlayBatch('customer', { A2: [createBatch()] })).toBeNull()
+  })
+
+  it('calculates split checkout totals with discount, service fee, and allowance', () => {
+    expect(calculateSplitCheckoutTotal(1000, 90, true, 50)).toBe(940)
+    expect(calculateSplitCheckoutTotal(100, 0, false, 150)).toBe(0)
+  })
+
+  it('maps the floating bar actions by tab and mode', () => {
+    expect(getFloatingBarViewModel('customer', 'menu')).toMatchObject({
+      visible: true,
+      label: '購物車',
+      clearVisible: false,
+      primaryVisible: true,
+      primaryText: '前往購物車',
+      primaryAction: 'go-cart-tab',
+    })
+    expect(getFloatingBarViewModel('customer', 'cart')).toMatchObject({
+      clearVisible: true,
+      primaryVisible: true,
+      primaryText: '送出',
+    })
+    expect(getFloatingBarViewModel('customer', 'orders')).toMatchObject({
+      label: '訂單紀錄',
+      clearVisible: false,
+      primaryVisible: false,
+    })
+    expect(getFloatingBarViewModel('staff', 'orders')).toMatchObject({
+      clearVisible: true,
+      clearText: '補印',
+      primaryVisible: true,
+      primaryText: '結帳',
+    })
+  })
+
+  it('renders grouped receipt markup with child line indentation', () => {
+    const data: PosReceiptData = {
+      seq: '12-1',
+      table: 'A1',
+      time: '2026/05/30 18:00:00',
+      lines: createEntry().lines,
+      original: 310,
+      total: 310,
+    }
+
+    const html = buildReceiptMarkup(data, 'Kitchen 工作單')
+    expect(html).toContain('Kitchen 工作單')
+    expect(html).toContain('青醬雞胸')
+    expect(html).toContain('(青醬 / 義大利麵)')
+    expect(html).toContain('拿鐵')
+    expect(html).toContain('· 熱')
+  })
+
+  it('guides the first builder issue to its matching group card and focusable control', () => {
+    const focus = vi.fn()
+    const scrollIntoView = vi.fn()
+    const add = vi.fn()
+    const querySelector = vi.fn((selector: string) => {
+      if (selector === getBuilderGroupSelector('bundle-drink-upgrade')) {
+        return {
+          classList: { add },
+          scrollIntoView,
+          querySelector: (childSelector: string) =>
+            childSelector.includes('button:not([disabled])') ? { focus } : null,
+        }
+      }
+      return null
+    })
+
+    expect(guideBuilderIssue({ querySelector }, 'bundle-drink-upgrade')).toBe(true)
+    expect(add).toHaveBeenCalledWith('issue-target')
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+    expect(focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns false when the requested builder issue card is missing', () => {
+    const querySelector = vi.fn(() => null)
+    expect(guideBuilderIssue({ querySelector }, 'missing-group')).toBe(false)
+  })
+
+  it('persists customer info silently only in customer mode', async () => {
+    const saveCustomerDraft = vi.fn(async () => ({ displaySeqBase: 12 }))
+
+    await expect(
+      persistCustomerInfoSilently({
+        mode: 'staff',
+        table: 'A1',
+        entries: [createEntry()],
+        customer: { name: '王小明' },
+        saveCustomerDraft,
+      })
+    ).resolves.toBe(false)
+
+    await expect(
+      persistCustomerInfoSilently({
+        mode: 'customer',
+        table: 'A1',
+        entries: [createEntry()],
+        customer: { name: '王小明' },
+        saveCustomerDraft,
+      })
+    ).resolves.toBe(true)
+
+    expect(saveCustomerDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('submits customer drafts without printing and prints staff-created batches immediately', async () => {
+    const submitCustomerDraft = vi.fn(async () => createBatch({ batchId: 'pending_1', status: 'pending' }))
+    const createStaffBatch = vi.fn(async () =>
+      createBatch({ batchId: 'submitted_1', status: 'accepted', source: 'staff' })
+    )
+    const printKitchenTicket = vi.fn(async () => {})
+
+    const customerResult = await submitDraftBatch({
+      mode: 'customer',
+      table: 'A1',
+      entries: [createEntry()],
+      customer: { name: '王小明' },
+      submitCustomerDraft,
+      createStaffBatch,
+      printKitchenTicket,
+    })
+    expect(customerResult.printed).toBe(false)
+    expect(submitCustomerDraft).toHaveBeenCalledTimes(1)
+    expect(printKitchenTicket).not.toHaveBeenCalled()
+
+    const staffResult = await submitDraftBatch({
+      mode: 'staff',
+      table: 'A1',
+      entries: [createEntry({ source: 'staff', status: 'draft' })],
+      customer: { name: '王小明' },
+      submitCustomerDraft,
+      createStaffBatch,
+      printKitchenTicket,
+    })
+    expect(staffResult.printed).toBe(true)
+    expect(createStaffBatch).toHaveBeenCalledTimes(1)
+    expect(printKitchenTicket).toHaveBeenCalledTimes(1)
+  })
+
+  it('prints accepted and updated submitted batches after persistence', async () => {
+    const printKitchenTicket = vi.fn(async () => {})
+    const acceptedBatch = createBatch({ batchId: 'pending_1', status: 'accepted' })
+    const updatedBatch = createBatch({ batchId: 'submitted_1', status: 'accepted' })
+
+    await expect(
+      acceptPendingBatchAndPrint({
+        table: 'A1',
+        batchId: 'pending_1',
+        acceptPendingBatch: async () => acceptedBatch,
+        printKitchenTicket,
+      })
+    ).resolves.toBe(acceptedBatch)
+
+    await expect(
+      updateSubmittedBatchAndPrint({
+        table: 'A1',
+        batchId: 'submitted_1',
+        entries: updatedBatch.entries,
+        updateSubmittedBatch: async () => updatedBatch,
+        printKitchenTicket,
+      })
+    ).resolves.toBe(updatedBatch)
+
+    expect(printKitchenTicket).toHaveBeenCalledTimes(2)
+  })
+})

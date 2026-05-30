@@ -1,4 +1,4 @@
-import type { PosIncomingOrder } from '@/features/pos-kernel/types'
+import type { PosReceiptData } from '@/features/pos-kernel/types'
 
 export const POS_SALES_SERVICE_KEY = 'pos-sales'
 
@@ -7,10 +7,11 @@ export type PosSalesService = {
   openTableSelect(): Promise<void>
   openSettingsPage(): Promise<void>
   goHome(): void
+  renderMenu(): void
   renderCart(): void
   renderTableGrid(): Promise<void>
-  showIncomingOrderModal(table: string, orderData: PosIncomingOrder): void
-  closeIncomingOrderModal(): void
+  showPendingBatchOverlay(): void
+  closePendingBatchOverlay(): void
   closeCheckoutModal(): void
-  fixAllOrderIds(): Promise<void>
+  printReceipt(data: PosReceiptData, isTicket?: boolean): Promise<void>
 }

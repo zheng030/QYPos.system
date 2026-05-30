@@ -6,20 +6,20 @@ import type {
   V3ItemStatsRangeEvent,
 } from '@/features/pos-data/rtdb-v3-types'
 import type {
-  PosCartItem,
-  PosMergedCartItem,
+  PosCategoryKey,
+  PosMenuCategoryKey,
   PosOrder,
   PosReceiptData,
   PosReportRange,
 } from '@/features/pos-kernel/types'
+import { MENU_CATEGORY_KEYS, POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
 import { findElement } from '@/shared/dom-helpers'
-import { getErrorMessage, toNumberValue } from '@/shared/errors'
-import { formatFlavorText } from '@/shared/flavor'
+import { getErrorMessage } from '@/shared/errors'
+import { getGroupedOrderLines } from '@/shared/grouped-order-lines'
 
 type HistoryReportingDeps = {
   getIsHistorySimpleMode: () => boolean
-  getItemCategoryType: (name: string) => string
-  getMergedItems: (items: PosCartItem[]) => PosMergedCartItem[]
+  getItemCategoryType: (name: string) => PosCategoryKey
   listClosedOrdersByDay: (targetDate: Date) => Promise<PosOrder[]>
   listClosedOrdersByRange: (start: Date, endExclusive: Date) => Promise<PosOrder[]>
   loadDailySummariesRange: (start: Date, endExclusive: Date) => Promise<Record<string, V3DailySummary>>
@@ -47,13 +47,10 @@ type HistoryReportingDeps = {
 type StatsRow = {
   name: string
   count: number
+  categoryKey: PosCategoryKey
 }
 
-function normalizeItemName(name: string) {
-  const match = name.match(/^[^<]+/)
-  const rawName = match ? match[0] : name
-  return rawName.replace(/\s*\(招待\)$/, '').trim()
-}
+type StatDisplayCategoryKey = 'all' | PosMenuCategoryKey | 'other'
 
 function setText(id: string, value: string) {
   const element = findElement(id)
@@ -62,26 +59,10 @@ function setText(id: string, value: string) {
   }
 }
 
-function getDateInputValue(input: HTMLInputElement | null, fallback: Date) {
-  if (!input?.value) {
-    return fallback
-  }
-  const [year, month, day] = input.value.split('-').map((value) => Number(value))
-  return new Date(year, month - 1, day)
-}
-
-function toLocalIsoDate(date: Date) {
-  const offset = date.getTimezoneOffset() * 60000
-  return new Date(date.getTime() - offset).toISOString().split('T')[0]
-}
-
-function getSummaryTotalsByDay(range: Record<string, V3DailySummary>) {
-  const totals: Record<number, number> = {}
-  Object.entries(range).forEach(([bizDateKey, summary]) => {
-    const day = Number(bizDateKey.slice(-2))
-    totals[day] = summary.paidTotal || 0
-  })
-  return totals
+function normalizeItemName(name: string) {
+  const match = name.match(/^[^<]+/)
+  const rawName = match ? match[0] : name
+  return rawName.replace(/\s*\(招待\)$/, '').trim()
 }
 
 function getRangeBounds(range: PosReportRange | string) {
@@ -110,6 +91,112 @@ function getRangeBounds(range: PosReportRange | string) {
   return { start, end }
 }
 
+function toLocalIsoDate(date: Date) {
+  const offset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - offset).toISOString().split('T')[0]
+}
+
+function getDateInputValue(input: HTMLInputElement | null, fallback: Date) {
+  if (!input?.value) {
+    return fallback
+  }
+  const [year, month, day] = input.value.split('-').map((value) => Number(value))
+  return new Date(year, month - 1, day)
+}
+
+function _renderRankedList(list: StatsRow[], containerId: string, emptyHtml: string, detailed = true) {
+  const container = findElement(containerId)
+  if (!container) return
+
+  if (list.length === 0) {
+    container.innerHTML = emptyHtml
+    return
+  }
+
+  container.innerHTML = list
+    .map((item, index) => {
+      if (!detailed) {
+        return `<div class="stats-item-row"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`
+      }
+      let rankClass = ''
+      if (index === 0) rankClass = 'top-1'
+      else if (index === 1) rankClass = 'top-2'
+      else if (index === 2) rankClass = 'top-3'
+
+      return `
+        <div class="stats-row-item">
+          <div class="rank-badge ${rankClass}">${index + 1}</div>
+          <span class="stats-name">${item.name}</span>
+          <span class="stats-val">${item.count}</span>
+        </div>
+      `
+    })
+    .join('')
+}
+
+function getStatsCategoryKey(categoryKey: PosCategoryKey | string | undefined): PosCategoryKey {
+  return (MENU_CATEGORY_KEYS as readonly string[]).includes(String(categoryKey))
+    ? (categoryKey as PosCategoryKey)
+    : 'other'
+}
+
+function createRankedGroups() {
+  return Object.fromEntries([
+    ['all', [] as StatsRow[]],
+    ...[...MENU_CATEGORY_KEYS, 'other'].map((key) => [key, [] as StatsRow[]] as const),
+  ]) as Record<StatDisplayCategoryKey, StatsRow[]>
+}
+
+function renderCategoryStatColumns(
+  containerId: string,
+  groups: Record<StatDisplayCategoryKey, StatsRow[]>,
+  emptyHtml: string,
+  detailed: boolean = true
+) {
+  const container = findElement(containerId)
+  if (!container) return
+
+  container.innerHTML = (['all', ...MENU_CATEGORY_KEYS, 'other'] as StatDisplayCategoryKey[])
+    .map((categoryKey) => {
+      const list = groups[categoryKey]
+      const content =
+        list.length === 0
+          ? emptyHtml
+          : detailed
+            ? list
+                .map((item, index) => {
+                  let rankClass = ''
+                  if (index === 0) rankClass = 'top-1'
+                  else if (index === 1) rankClass = 'top-2'
+                  else if (index === 2) rankClass = 'top-3'
+
+                  return `
+                    <div class="stats-row-item">
+                      <div class="rank-badge ${rankClass}">${index + 1}</div>
+                      <span class="stats-name">${item.name}</span>
+                      <span class="stats-val">${item.count}</span>
+                    </div>
+                  `
+                })
+                .join('')
+            : list
+                .map(
+                  (item, index) =>
+                    `<div class="stats-item-row"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`
+                )
+                .join('')
+
+      return `
+        <section class="stats-category-card">
+          <h3>${categoryKey === 'all' ? '全店總計' : POS_CATEGORY_LABELS[categoryKey]}</h3>
+          <div class="stats-header-row"><span>品項</span><span>數量</span></div>
+          <div class="stats-list-content">${content}</div>
+        </section>
+      `
+    })
+    .join('')
+}
+
 export function createHistoryReportingModule(deps: HistoryReportingDeps) {
   let stopHistoryWatch: (() => void) | null = null
   let stopReportSummaryWatch: (() => void) | null = null
@@ -128,33 +215,6 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     return null
   }
 
-  function watchHistory(start: Date, endExclusive: Date) {
-    stopHistoryWatch = resetWatch(stopHistoryWatch)
-    stopHistoryWatch = deps.watchClosedOrdersRange(start, endExclusive, () => {
-      void showHistory()
-    })
-  }
-
-  function watchReportSummaries(start: Date, endExclusive: Date, onChange: () => void) {
-    stopReportSummaryWatch = resetWatch(stopReportSummaryWatch)
-    stopReportSummaryWatch = deps.watchDailySummariesRange(start, endExclusive, onChange)
-  }
-
-  function watchCalendarSummaries(start: Date, endExclusive: Date, onChange: () => void) {
-    stopCalendarSummaryWatch = resetWatch(stopCalendarSummaryWatch)
-    stopCalendarSummaryWatch = deps.watchDailySummariesRange(start, endExclusive, onChange)
-  }
-
-  function watchItemStats(start: Date, endExclusive: Date, onChange: () => void) {
-    stopItemStatsWatch = resetWatch(stopItemStatsWatch)
-    stopItemStatsWatch = deps.watchItemStatsRange(start, endExclusive, onChange)
-  }
-
-  function watchPublicItemStats(start: Date, endExclusive: Date, onChange: () => void) {
-    stopPublicItemStatsWatch = resetWatch(stopPublicItemStatsWatch)
-    stopPublicItemStatsWatch = deps.watchItemStatsRange(start, endExclusive, onChange)
-  }
-
   function stopAllWatches() {
     stopHistoryWatch = resetWatch(stopHistoryWatch)
     stopReportSummaryWatch = resetWatch(stopReportSummaryWatch)
@@ -163,87 +223,56 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     stopPublicItemStatsWatch = resetWatch(stopPublicItemStatsWatch)
   }
 
-  function getOpenHistoryDetailIds() {
-    const ids: string[] = []
-    document.querySelectorAll<HTMLElement>('.history-detail').forEach((element) => {
-      if (element.style.display === 'block') {
-        ids.push(element.id)
-      }
+  function watchHistory(start: Date, endExclusive: Date) {
+    stopHistoryWatch = resetWatch(stopHistoryWatch)
+    stopHistoryWatch = deps.watchClosedOrdersRange(start, endExclusive, () => {
+      void showHistory()
     })
-    return ids
-  }
-
-  function renderOrderItem(item: PosCartItem | PosMergedCartItem) {
-    const count = item.count ?? 1
-    const countStr = count > 1 ? ` <b style="color:#ef476f;">x${count}</b>` : ''
-    const flavorText = formatFlavorText(item.flavor)
-    const itemLabel = `${item.name}${flavorText ? ` (${flavorText})` : ''}`
-    if (item.isTreat) {
-      const treatTag = item.name.includes('(招待)') ? '' : ' (招待)'
-      return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${itemLabel}${treatTag}${countStr}</span> <span>$0</span></div>`
-    }
-
-    const price = toNumberValue(item.price)
-    const priceStr = count > 1 ? `$${price * count}` : `$${price}`
-    return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;"><span>${itemLabel}${countStr}</span> <span>${priceStr}</span></div>`
-  }
-
-  function getOrdersForActions() {
-    return visibleOrders
   }
 
   function collectRankedStatsFromCache(start: Date, endExclusive: Date) {
-    const counts: Record<string, number> = {}
-    const typeMap: Record<string, string> = {}
-    const statsByDay = deps.readItemStatsRange(start, endExclusive)
-    Object.values(statsByDay).forEach((stats) => {
+    const counts = new Map<string, StatsRow>()
+    Object.values(deps.readItemStatsRange(start, endExclusive)).forEach((stats) => {
       Object.values(stats).forEach((item) => {
         const name = normalizeItemName(item.displayName)
-        counts[name] = (counts[name] || 0) + (item.qty || 0)
-        if (!typeMap[name]) typeMap[name] = item.type || deps.getItemCategoryType(name)
+        const categoryKey = getStatsCategoryKey(item.categoryKey || deps.getItemCategoryType(name))
+        const current = counts.get(name) || { name, count: 0, categoryKey }
+        current.count += item.qty || 0
+        counts.set(name, current)
       })
     })
 
-    const barList: StatsRow[] = []
-    const bbqList: StatsRow[] = []
-
-    Object.entries(counts)
-      .sort((left, right) => right[1] - left[1])
-      .forEach(([name, count]) => {
-        const target = (typeMap[name] || deps.getItemCategoryType(name)) === 'bar' ? barList : bbqList
-        target.push({ name, count })
+    const byCategory = createRankedGroups()
+    ;[...counts.values()]
+      .sort((left, right) => right.count - left.count)
+      .forEach((item) => {
+        byCategory.all.push(item)
+        const targetKey = getStatsCategoryKey(item.categoryKey)
+        if (targetKey === 'extra') {
+          return
+        }
+        byCategory[targetKey].push(item)
       })
-
-    return { barList, bbqList }
+    return byCategory
   }
 
-  function renderRankedList(list: StatsRow[], containerId: string, emptyHtml: string, detailed = true) {
-    const container = findElement(containerId)
-    if (!container) return
-
-    if (list.length === 0) {
-      container.innerHTML = emptyHtml
-      return
-    }
-
-    container.innerHTML = list
-      .map((item, index) => {
-        if (!detailed) {
-          return `<div class="stats-item-row"><span>${index + 1}. ${item.name}</span><span class="stats-count">${item.count}</span></div>`
-        }
-
-        let rankClass = ''
-        if (index === 0) rankClass = 'top-1'
-        else if (index === 1) rankClass = 'top-2'
-        else if (index === 2) rankClass = 'top-3'
-
+  function renderGroupedOrderItems(order: PosOrder) {
+    return getGroupedOrderLines(order)
+      .map(({ main, children }) => {
+        const childLines = children
+          .map((line) => {
+            const summary = line.selectionSummary ? ` (${line.selectionSummary})` : ''
+            const price = line.lineTotal > 0 ? `$${line.lineTotal}` : ''
+            return `<div style="display:flex;justify-content:space-between;padding:4px 0 4px 20px;color:#64748b;"><span>${line.shortName}${summary}</span><span>${price}</span></div>`
+          })
+          .join('')
         return `
-                <div class="stats-row-item">
-                    <div class="rank-badge ${rankClass}">${index + 1}</div>
-                    <span class="stats-name">${item.name}</span>
-                    <span class="stats-val">${item.count}</span>
-                </div>
-            `
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #eee;">
+            <span>${main.shortName}${main.selectionSummary ? ` (${main.selectionSummary})` : ''}${main.quantity > 1 ? ` <b style="color:#ef476f;">x${main.quantity}</b>` : ''}</span>
+            <span>$${main.lineTotal}</span>
+          </div>
+          ${childLines}
+        `
       })
       .join('')
   }
@@ -252,40 +281,45 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     try {
       const historyBox = findElement('history-box')
       if (!historyBox) return
-
       const orders = await deps.listClosedOrdersByDay(new Date())
       visibleOrders = orders
-
-      const openIds = getOpenHistoryDetailIds()
       historyBox.innerHTML = ''
-
       if (orders.length === 0) {
-        historyBox.innerHTML = "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單 (或已日結)</div>"
+        historyBox.innerHTML = "<div style='padding:20px;color:#8d99ae;'>今日尚無訂單</div>"
         return
       }
 
       const isHistorySimpleMode = deps.getIsHistorySimpleMode()
-      const btnIcon = isHistorySimpleMode ? '📝' : '🔢'
-      const btnText = isHistorySimpleMode ? '切換為詳細清單' : '切換為簡化清單 (合併數量)'
-      historyBox.innerHTML += `<div class="view-toggle-container"><button data-action="toggle-history-view" class="view-toggle-btn btn-effect"><span class="icon">${btnIcon}</span><span>${btnText}</span></button></div>`
+      const btnText = isHistorySimpleMode ? '切換為詳細清單' : '切換為簡化清單'
+      historyBox.innerHTML += `<div class="view-toggle-container"><button data-action="toggle-history-view" class="view-toggle-btn btn-effect"><span>${btnText}</span></button></div>`
 
       orders.forEach((order, index) => {
         const seqDisplay = order.formattedSeq ? `#${order.formattedSeq}` : `#${orders.length - index}`
-        const custInfo =
-          order.customerName || order.customerPhone
-            ? `<span style="color:#007bff; font-weight:bold;">${order.customerName || ''}</span> ${order.customerPhone || ''}`
-            : "<span style='color:#ccc'>-</span>"
-        const itemsToDisplay = isHistorySimpleMode ? deps.getMergedItems(order.items) : order.items
-        const itemsDetail = itemsToDisplay.map(renderOrderItem).join('')
-        const timeOnly = order.time.split(' ')[1] || order.time
+        const itemsDetail = renderGroupedOrderItems(order)
         const rowId = `detail-${index}`
-        const displayStyle = openIds.includes(rowId) ? 'block' : 'none'
-        let amountDisplay = `$${order.total}`
-        if (order.originalTotal && order.originalTotal !== order.total) {
-          amountDisplay = `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${order.originalTotal}</span> <br> <span style="color:#ef476f;">$${order.total}</span>`
-        }
-
-        historyBox.innerHTML += `<div class="history-row btn-effect" data-action="toggle-detail" data-id="${rowId}"><span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span><span class="seat">${order.seat}</span><span class="cust">${custInfo}</span><span class="time">${timeOnly}</span><span class="amt">${amountDisplay}</span></div><div id="${rowId}" class="history-detail" style="display:${displayStyle};"><div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;"><b>📅 完整時間：</b>${order.time}<br><b>🧾 內容：</b><br>${itemsDetail}<div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${order.total}</div><div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;"><button data-action="reprint-order" data-index="${index}" class="print-btn btn-effect">🖨 列印明細</button><button data-action="delete-single-order" data-index="${index}" class="delete-single-btn btn-effect">🗑 刪除此筆訂單</button></div></div></div>`
+        const amountDisplay =
+          order.originalTotal && order.originalTotal !== order.total
+            ? `<span style="text-decoration:line-through; color:#999; font-size:12px;">$${order.originalTotal}</span><br><span style="color:#ef476f;">$${order.total}</span>`
+            : `$${order.total}`
+        historyBox.innerHTML += `
+          <div class="history-row btn-effect" data-action="toggle-detail" data-id="${rowId}">
+            <span class="seq" style="font-weight:bold; color:#4361ee;">${seqDisplay}</span>
+            <span class="seat">${order.seat || order.table || ''}</span>
+            <span class="cust">${order.customerName || '-'}</span>
+            <span class="time">${order.time.split(' ')[1] || order.time}</span>
+            <span class="amt">${amountDisplay}</span>
+          </div>
+          <div id="${rowId}" class="history-detail" style="display:none;">
+            <div style="background:#f8fafc; padding:15px; border-radius:0 0 12px 12px; border:1px solid #eee; border-top:none;">
+              <b>📅 完整時間：</b>${order.time}<br><b>🧾 內容：</b><br>${itemsDetail}
+              <div style="text-align:right; margin-top:10px; font-size:18px; font-weight:bold; color:#ef476f;">總計：$${order.total}</div>
+              <div style="text-align:right; margin-top:15px; border-top:1px solid #ddd; padding-top:10px; display:flex; justify-content:flex-end; gap:10px;">
+                <button data-action="reprint-order" data-index="${index}" class="print-btn btn-effect">🖨 列印明細</button>
+                <button data-action="delete-order" data-index="${index}" class="delete-order-btn btn-effect">🗑 刪除此筆訂單</button>
+              </div>
+            </div>
+          </div>
+        `
       })
     } catch (error) {
       alert(`showHistory 錯誤\n${getErrorMessage(error)}`)
@@ -297,28 +331,32 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     void showHistory()
   }
 
-  function filterOrdersFromCache(startTime: Date, endTime: Date | null, titleText: string) {
-    let total = 0
-    let count = 0
-    let barTotal = 0
-    let bbqTotal = 0
-
-    const summaries = deps.readDailySummariesRange(
-      startTime,
-      endTime || new Date(startTime.getTime() + 24 * 60 * 60 * 1000)
+  function filterOrdersFromCache(start: Date, endExclusive: Date, titleText: string) {
+    const summaries = deps.readDailySummariesRange(start, endExclusive)
+    const total = Object.values(summaries).reduce((sum, summary) => sum + (summary.paidTotal || 0), 0)
+    const count = Object.values(summaries).reduce((sum, summary) => sum + (summary.orderCount || 0), 0)
+    const mainRevenue = Object.values(summaries).reduce(
+      (sum, summary) =>
+        sum + Number(summary.categoryRevenue?.pasta_risotto || 0) + Number(summary.categoryRevenue?.bread_set || 0),
+      0
     )
-    Object.values(summaries).forEach((summary) => {
-      total += summary.paidTotal || 0
-      count += summary.orderCount || 0
-      barTotal += summary.barRevenue || 0
-      bbqTotal += summary.bbqRevenue || 0
-    })
+    const sideRevenue = Object.values(summaries).reduce(
+      (sum, summary) =>
+        sum +
+        Number(summary.categoryRevenue?.salad || 0) +
+        Number(summary.categoryRevenue?.plated_main || 0) +
+        Number(summary.categoryRevenue?.a_la_carte || 0) +
+        Number(summary.categoryRevenue?.soup || 0) +
+        Number(summary.categoryRevenue?.drink || 0) +
+        Number(summary.categoryRevenue?.other || 0),
+      0
+    )
 
     setText('rptTitle', titleText)
-    setText('rptTotal', `$${total}`)
+    setText('rptTotal', `$${Math.round(total)}`)
     setText('rptCount', `總單數: ${count}`)
-    setText('rptBar', `$${barTotal}`)
-    setText('rptBBQ', `$${bbqTotal}`)
+    setText('rptPrimary', `$${Math.round(mainRevenue)}`)
+    setText('rptSecondary', `$${Math.round(sideRevenue)}`)
   }
 
   function renderCalendarGrid(year: number, month: number, dailyTotals: Record<number, number>) {
@@ -326,22 +364,15 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     const daysInMonth = new Date(year, month + 1, 0).getDate()
     const grid = findElement('calendarGrid')
     if (!grid) return
-
     grid.innerHTML = ''
     for (let index = 0; index < firstDay; index += 1) {
       const empty = document.createElement('div')
       empty.className = 'calendar-day empty'
       grid.appendChild(empty)
     }
-
-    const today = new Date()
-    if (today.getHours() < 5) today.setDate(today.getDate() - 1)
     for (let day = 1; day <= daysInMonth; day += 1) {
       const cell = document.createElement('div')
       cell.className = 'calendar-day'
-      if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
-        cell.classList.add('today')
-      }
       const revenue = dailyTotals[day] ? `$${dailyTotals[day]}` : ''
       cell.innerHTML = `<div class="day-num">${day}</div><div class="day-revenue">${revenue}</div>`
       grid.appendChild(cell)
@@ -350,51 +381,24 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
 
   async function generateReport(type: PosReportRange | string) {
     try {
-      const reportContent = findElement('reportContent')
       const reportPage = findElement('reportPage')
-      if (!reportContent || !reportPage || reportPage.style.display === 'none') {
+      if (!reportPage || reportPage.style.display === 'none') {
         return
       }
-
-      document.querySelectorAll('.segment-option').forEach((button) => {
-        button.classList.remove('active')
-      })
-
       let index = 0
       if (type === 'week') index = 1
       if (type === 'month') index = 2
-
-      const options = document.querySelectorAll('.segment-option')
-      if (options[index]) {
-        options[index].classList.add('active')
-      }
       deps.moveSegmentHighlighter(index)
 
       const { start, end } = getRangeBounds(type)
-      let title = ''
-
-      if (type === 'day') {
-        title = '💰 今日營業額 (即時)'
-        await deps.loadDailySummariesRange(start, end)
-        watchReportSummaries(start, end, () => {
-          filterOrdersFromCache(start, end, title)
-        })
+      const title =
+        type === 'week' ? '💰 本周營業額 (即時)' : type === 'month' ? '💰 當月營業額 (即時)' : '💰 今日營業額 (即時)'
+      await deps.loadDailySummariesRange(start, end)
+      stopReportSummaryWatch = resetWatch(stopReportSummaryWatch)
+      stopReportSummaryWatch = deps.watchDailySummariesRange(start, end, () => {
         filterOrdersFromCache(start, end, title)
-      } else if (type === 'week') {
-        title = '💰 本周營業額 (即時)'
-        await deps.loadDailySummariesRange(start, end)
-        watchReportSummaries(start, end, () => {
-          filterOrdersFromCache(start, end, title)
-        })
-        filterOrdersFromCache(start, end, title)
-      } else if (type === 'month') {
-        title = '💰 當月營業額 (即時)'
-        await deps.loadDailySummariesRange(start, end)
-        watchReportSummaries(start, end, () => {
-          filterOrdersFromCache(start, end, title)
-        })
-        filterOrdersFromCache(start, end, title)
-      }
+      })
+      filterOrdersFromCache(start, end, title)
     } catch (error) {
       alert(`generateReport 錯誤\n${getErrorMessage(error)}`)
     }
@@ -407,14 +411,22 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       const year = now.getFullYear()
       const month = now.getMonth()
       setText('calendarMonthTitle', `${year}年 ${month + 1}月`)
-
       const start = new Date(year, month, 1, 5, 0, 0, 0)
       const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
       await deps.loadDailySummariesRange(start, end)
-      watchCalendarSummaries(start, end, () => {
-        renderCalendarGrid(year, month, getSummaryTotalsByDay(deps.readDailySummariesRange(start, end)))
+      stopCalendarSummaryWatch = resetWatch(stopCalendarSummaryWatch)
+      stopCalendarSummaryWatch = deps.watchDailySummariesRange(start, end, () => {
+        const totals: Record<number, number> = {}
+        Object.entries(deps.readDailySummariesRange(start, end)).forEach(([bizDate, summary]) => {
+          totals[Number(bizDate.slice(-2))] = summary.paidTotal || 0
+        })
+        renderCalendarGrid(year, month, totals)
       })
-      renderCalendarGrid(year, month, getSummaryTotalsByDay(deps.readDailySummariesRange(start, end)))
+      const totals: Record<number, number> = {}
+      Object.entries(deps.readDailySummariesRange(start, end)).forEach(([bizDate, summary]) => {
+        totals[Number(bizDate.slice(-2))] = summary.paidTotal || 0
+      })
+      renderCalendarGrid(year, month, totals)
     } catch (error) {
       alert(`renderCalendar 錯誤\n${getErrorMessage(error)}`)
     }
@@ -422,40 +434,19 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
 
   function openItemStatsPage() {
     deps.openPage('itemStatsPage')
-    const activeBtn = findElement('statBtnDay')
-    if (activeBtn) {
-      renderItemStats('day', activeBtn)
-    }
+    void renderItemStats('day')
   }
 
   async function renderItemStats(range: PosReportRange | string, button: HTMLElement | null = null) {
     document.querySelectorAll('#itemStatsPage .segment-option').forEach((element) => {
       element.classList.remove('active')
     })
-
-    let activeBtn = button
-    if (!activeBtn) {
-      if (range === 'day') activeBtn = findElement('statBtnDay')
-      if (range === 'week') activeBtn = findElement('statBtnWeek')
-      if (range === 'month') activeBtn = findElement('statBtnMonth')
-      if (range === 'custom') activeBtn = findElement('statBtnCustom')
-    }
-
     const customRangeDiv = findElement('customStatsDateRange')
     if (customRangeDiv) {
       customRangeDiv.style.display = range === 'custom' ? 'flex' : 'none'
     }
-
-    if (activeBtn) {
-      activeBtn.classList.add('active')
-      const highlighter = findElement('statsHighlighter')
-      if (highlighter) {
-        let index = 0
-        if (range === 'week') index = 1
-        if (range === 'month') index = 2
-        if (range === 'custom') index = 3
-        highlighter.style.transform = `translateX(${index * 100}%)`
-      }
+    if (button) {
+      button.classList.add('active')
     }
 
     const now = new Date()
@@ -481,19 +472,8 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     } else if (range === 'custom') {
       const sInput = findElement<HTMLInputElement>('statsStartDate')
       const eInput = findElement<HTMLInputElement>('statsEndDate')
-
-      if (sInput && !sInput.value) {
-        const date = new Date()
-        date.setDate(1)
-        sInput.value = toLocalIsoDate(date)
-      }
-      if (eInput && !eInput.value) {
-        const date = new Date()
-        date.setMonth(date.getMonth() + 1)
-        date.setDate(0)
-        eInput.value = toLocalIsoDate(date)
-      }
-
+      if (sInput && !sInput.value) sInput.value = toLocalIsoDate(new Date())
+      if (eInput && !eInput.value) eInput.value = toLocalIsoDate(new Date())
       start = getDateInputValue(sInput, start)
       start.setHours(5, 0, 0, 0)
       end = getDateInputValue(eInput, start)
@@ -502,31 +482,18 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     }
 
     await deps.loadItemStatsRange(start, end || start)
-    watchItemStats(start, end || start, () => {
-      const { barList, bbqList } = collectRankedStatsFromCache(start, end || start)
-      renderRankedList(
-        barList,
-        'statsListBar',
+    const render = () => {
+      renderCategoryStatColumns(
+        'itemStatsColumns',
+        collectRankedStatsFromCache(start, end || start),
         "<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>"
       )
-      renderRankedList(
-        bbqList,
-        'statsListBbq',
-        "<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>"
-      )
+    }
+    stopItemStatsWatch = resetWatch(stopItemStatsWatch)
+    stopItemStatsWatch = deps.watchItemStatsRange(start, end || start, () => {
+      render()
     })
-    const { barList, bbqList } = collectRankedStatsFromCache(start, end || start)
-
-    renderRankedList(
-      barList,
-      'statsListBar',
-      "<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>"
-    )
-    renderRankedList(
-      bbqList,
-      'statsListBbq',
-      "<div style='text-align:center; padding:20px; color:#ccc;'>無銷量資料</div>"
-    )
+    render()
   }
 
   function changeStatsMonth(offset: number) {
@@ -540,98 +507,39 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     const year = historyViewDate.getFullYear()
     const month = historyViewDate.getMonth()
     setText('statsMonthTitle', `${year}年 ${month + 1}月`)
-
-    const stats: Record<string, { count: number; type: string }> = {}
     const start = new Date(year, month, 1, 5, 0, 0, 0)
     const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
     await deps.loadItemStatsRange(start, end)
-    watchPublicItemStats(start, end, () => {
-      const stats: Record<string, { count: number; type: string }> = {}
-      Object.values(deps.readItemStatsRange(start, end)).forEach((dayStats) => {
-        Object.values(dayStats).forEach((item) => {
-          const name = normalizeItemName(item.displayName)
-          if (!stats[name]) {
-            stats[name] = {
-              count: 0,
-              type: item.type || deps.getItemCategoryType(name),
-            }
-          }
-          stats[name].count += item.qty || 0
-        })
-      })
-
-      const barList: StatsRow[] = []
-      const bbqList: StatsRow[] = []
-
-      Object.entries(stats).forEach(([name, data]) => {
-        const target = data.type === 'bar' ? barList : bbqList
-        target.push({ name, count: data.count })
-      })
-
-      barList.sort((left, right) => right.count - left.count)
-      bbqList.sort((left, right) => right.count - left.count)
-
-      renderRankedList(barList, 'publicStatsBar', "<div style='padding:10px; color:#8d99ae;'>無資料</div>", false)
-      renderRankedList(bbqList, 'publicStatsBbq', "<div style='padding:10px; color:#8d99ae;'>無資料</div>", false)
+    const render = () => {
+      renderCategoryStatColumns(
+        'publicStatsColumns',
+        collectRankedStatsFromCache(start, end),
+        "<div style='padding:10px; color:#8d99ae;'>無資料</div>",
+        false
+      )
+    }
+    stopPublicItemStatsWatch = resetWatch(stopPublicItemStatsWatch)
+    stopPublicItemStatsWatch = deps.watchItemStatsRange(start, end, () => {
+      render()
     })
-    Object.values(deps.readItemStatsRange(start, end)).forEach((dayStats) => {
-      Object.values(dayStats).forEach((item) => {
-        const name = normalizeItemName(item.displayName)
-        if (!stats[name]) {
-          stats[name] = {
-            count: 0,
-            type: item.type || deps.getItemCategoryType(name),
-          }
-        }
-        stats[name].count += item.qty || 0
-      })
-    })
-
-    const barList: StatsRow[] = []
-    const bbqList: StatsRow[] = []
-
-    Object.entries(stats).forEach(([name, data]) => {
-      const target = data.type === 'bar' ? barList : bbqList
-      target.push({ name, count: data.count })
-    })
-
-    barList.sort((left, right) => right.count - left.count)
-    bbqList.sort((left, right) => right.count - left.count)
-
-    renderRankedList(barList, 'publicStatsBar', "<div style='padding:10px; color:#8d99ae;'>無資料</div>", false)
-    renderRankedList(bbqList, 'publicStatsBbq', "<div style='padding:10px; color:#8d99ae;'>無資料</div>", false)
+    render()
   }
 
   async function reprintOrder(index: number) {
     try {
-      const target = getOrdersForActions()[index]
+      const target = visibleOrders[index]
       if (!target) {
         alert('找不到此訂單')
         return
       }
-
-      const seq = target.formattedSeq || target.seq || index + 1
-      const table = target.seat || target.table || ''
-      const time =
-        target.time ||
-        (target.timestamp
-          ? new Date(target.timestamp).toLocaleString('zh-TW', { hour12: false })
-          : new Date().toLocaleString('zh-TW', { hour12: false }))
-      const original = target.originalTotal || target.total || 0
-      const rawItems = Array.isArray(target.items) ? target.items : []
-      const items = deps.getIsHistorySimpleMode() ? deps.getMergedItems(rawItems) : rawItems
-
-      await deps.printReceipt(
-        {
-          seq,
-          table,
-          time,
-          items,
-          original,
-          total: target.total || 0,
-        },
-        false
-      )
+      await deps.printReceipt({
+        seq: target.formattedSeq || target.seq || index + 1,
+        table: target.seat || target.table || '',
+        time: target.time,
+        lines: target.lines || [],
+        original: target.originalTotal || target.total || 0,
+        total: target.total || 0,
+      })
     } catch (error) {
       alert(`列印失敗：${getErrorMessage(error)}`)
     }
@@ -640,15 +548,13 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
   async function deleteSingleOrder(index: number) {
     try {
       if (!confirm('確定刪除此筆訂單嗎？')) return
-
-      const target = getOrdersForActions()[index]
+      const target = visibleOrders[index]
       if (!target) {
         alert('找不到此訂單')
         return
       }
-
       await deps.deleteClosedOrder(target)
-      showHistory()
+      void showHistory()
     } catch (error) {
       alert(`刪除失敗：${getErrorMessage(error)}`)
     }
