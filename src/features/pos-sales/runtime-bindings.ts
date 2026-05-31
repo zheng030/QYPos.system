@@ -27,6 +27,7 @@ type RuntimeBindingsDeps = {
   openOrderPage: (table: string, options?: { mode?: 'staff' | 'customer' }) => Promise<void>
   toggleQrMode: () => void
   closeQrModal: () => void
+  renderMenuCategoryChips: () => void
   renderMenuGrid: () => void
   setOrderTab: (tab: 'menu' | 'cart' | 'orders') => void
   openBuilder: (
@@ -96,6 +97,7 @@ export function registerPosSalesBindings({
   openOrderPage,
   toggleQrMode,
   closeQrModal,
+  renderMenuCategoryChips,
   renderMenuGrid,
   setOrderTab,
   openBuilder,
@@ -180,6 +182,7 @@ export function registerPosSalesBindings({
     const category = element.dataset.category as PosMenuCategoryKey | undefined
     if (!category) return
     kernel.state.menuFilter.activeCategoryKey = category
+    renderMenuCategoryChips()
     renderMenuGrid()
   })
   ui.on('click', 'set-order-tab', (_event, element) => {

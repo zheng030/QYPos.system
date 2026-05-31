@@ -252,6 +252,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         openOrderPage,
         toggleQrMode: navigation.toggleQrMode,
         closeQrModal: navigation.closeQrModal,
+        renderMenuCategoryChips: workspace.renderMenuCategoryChips,
         renderMenuGrid: orderUi.renderMenuGrid,
         setOrderTab,
         openBuilder: orderUi.openBuilder,
