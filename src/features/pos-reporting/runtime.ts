@@ -30,11 +30,11 @@ export function createPosReportingFeature(context: AppContext): FeatureRuntime {
       const reporting = createHistoryReportingModule({
         getIsHistorySimpleMode: () => kernel.state.isHistorySimpleMode,
         getItemCategoryType: kernel.helpers.getItemCategoryType,
-        listClosedOrdersByDay: data.listClosedOrdersByDay,
+        listClosedOrdersForBusinessDay: data.listClosedOrdersForBusinessDay,
         listClosedOrdersByRange: data.listClosedOrdersByRange,
         loadDailySummariesRange: data.loadDailySummariesRange,
         loadItemStatsRange: data.loadItemStatsRange,
-        watchClosedOrdersRange: data.watchClosedOrdersRange,
+        watchClosedOrdersForBusinessDay: data.watchClosedOrdersForBusinessDay,
         watchDailySummariesRange: data.watchDailySummariesRange,
         watchItemStatsRange: data.watchItemStatsRange,
         readDailySummariesRange: data.readDailySummariesRange,
@@ -95,11 +95,7 @@ export function createPosReportingFeature(context: AppContext): FeatureRuntime {
 
       ui.subscribePage((pageId) => {
         if (pageId === 'historyPage') {
-          const start = new Date()
-          start.setHours(5, 0, 0, 0)
-          const end = new Date(start)
-          end.setDate(end.getDate() + 1)
-          reporting.watchHistory(start, end)
+          reporting.watchHistory(new Date())
           void reporting.showHistory()
         }
         if (pageId === 'reportPage') {

@@ -5,8 +5,10 @@ export {
   buildSelectionSummary,
   createCatalogHelpers,
   getBusinessDate,
+  getCanonicalDraftEntries,
   getDateFromOrder,
   getDeltaEntries,
   getEntrySignature,
   getMergedEntries,
 } from './catalog'
+export { buildEntryDisplaySummary, normalizeEntryForDisplay } from './entry-display'

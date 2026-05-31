@@ -1,6 +1,5 @@
 export const RTDB_V3_ROOT = 'v3'
 export const RTDB_V3_SCHEMA_VERSION = 3
-export const BUSINESS_DAY_SHIFT_HOURS = 5
 
 export type V3CatalogKey = string
 export type V3MonthKey = `${number}-${string}`
@@ -75,6 +74,7 @@ export type V3OrderBatch = {
   createdAt: number
   updatedAt: number
   acceptedAt?: number
+  requestSeq?: number
   requestLabel: string
   entries: Record<string, V3OrderEntry>
   subtotal: number
@@ -85,6 +85,7 @@ export type V3TableSummary = {
   timerStartedAt: number | null
   displaySeqBase: number | null
   batchCount: number
+  nextRequestSeq?: number | null
   nextSplitCounter?: number | null
   customer: V3TableCustomer
   updatedAt: number
@@ -94,9 +95,13 @@ export type V3PendingSummary = {
   pendingCount: number
   firstBatch: {
     batchId: string
+    requestSeq: number
     createdAt: number
     requestLabel: string
-    itemPreview: string[]
+    itemPreview: Array<{
+      title: string
+      quantityLabel: string
+    }>
   } | null
 }
 

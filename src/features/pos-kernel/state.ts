@@ -12,6 +12,7 @@ export const state: CorePosState = {
   attendanceRecords: {},
   ownerPasswords: { ...defaultOwnerPasswords },
   tableDrafts: {},
+  pendingBatchPreviews: {},
   pendingBatches: {},
   submittedBatches: {},
   staffDrafts: {},
@@ -31,6 +32,11 @@ export const state: CorePosState = {
   menuFilter: {
     activeTab: 'menu',
     activeCategoryKey: 'pasta_risotto',
+  },
+  staffWorkspace: {
+    expanded: false,
+    serviceFeeEnabled: false,
+    discount: null,
   },
   syncLog: [],
 }

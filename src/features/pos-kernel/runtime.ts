@@ -5,6 +5,7 @@ import { firebaseConfig, menuMeta, SYSTEM_PASSWORD, tables } from './data'
 import {
   createCatalogHelpers,
   getBusinessDate,
+  getCanonicalDraftEntries,
   getDateFromOrder,
   getDeltaEntries,
   getMergedEntries,
@@ -43,6 +44,7 @@ export function createPosKernelFeature(context: AppContext): FeatureRuntime {
           getDateFromOrder,
         },
         orderUtils: {
+          getCanonicalDraftEntries,
           getDeltaEntries,
           getMergedEntries,
           getMergedItems: getMergedEntries,

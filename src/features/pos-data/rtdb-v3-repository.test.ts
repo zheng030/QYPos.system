@@ -19,6 +19,7 @@ function createState(): CorePosState {
     attendanceRecords: {},
     ownerPasswords: {},
     tableDrafts: {},
+    pendingBatchPreviews: {},
     pendingBatches: {},
     submittedBatches: {},
     staffDrafts: {},
@@ -38,6 +39,11 @@ function createState(): CorePosState {
     menuFilter: {
       activeTab: 'menu',
       activeCategoryKey: 'pasta_risotto',
+    },
+    staffWorkspace: {
+      expanded: false,
+      serviceFeeEnabled: false,
+      discount: null,
     },
     syncLog: [],
   }
@@ -344,6 +350,242 @@ describe('rtdb-v3-repository', () => {
     expect(db.onceCalls).not.toContain('v3/reports/itemStatsByMonth/2026-05')
   })
 
+  it('normalizes legacy mixed summaries when reading live and history entries', async () => {
+    const legacyEntry = {
+      entryId: 'entry_food',
+      groupId: 'entry_food',
+      itemId: 'pasta_risotto.chicken-breast',
+      catalogKey: 'pasta_risotto.chicken-breast',
+      inventoryKey: 'pasta_risotto.chicken-breast',
+      itemName: '雞胸',
+      shortName: '雞胸',
+      categoryKey: 'pasta_risotto',
+      quantity: 1,
+      status: 'accepted' as const,
+      source: 'customer' as const,
+      createdAt: 1,
+      updatedAt: 1,
+      selections: { base: 'pasta', sauce: 'pesto' },
+      includeSelections: { 'included-drink': { temperature: 'ice' } },
+      upgradeSelections: { 'bundle-drink-upgrade': 'espresso' },
+      lines: {
+        entry_food_main: {
+          lineId: 'entry_food_main',
+          groupId: 'entry_food',
+          role: 'main',
+          catalogKey: 'pasta_risotto.chicken-breast',
+          inventoryKey: 'pasta_risotto.chicken-breast',
+          displayName: '雞胸',
+          shortName: '雞胸',
+          categoryKey: 'pasta_risotto',
+          station: 'kitchen',
+          courseKind: 'food',
+          quantity: 1,
+          unitPrice: 250,
+          priceDelta: 0,
+          lineTotal: 250,
+          selections: { base: 'pasta', sauce: 'pesto' },
+          selectionSummary: '主食：義大利麵 / 口味：青醬 / 附飲：濃縮咖啡',
+          isTreat: false,
+          sourceEntryId: 'entry_food',
+        },
+        entry_food_child_0: {
+          lineId: 'entry_food_child_0',
+          groupId: 'entry_food',
+          parentLineId: 'entry_food_main',
+          role: 'upgrade',
+          catalogKey: 'drink.espresso',
+          inventoryKey: 'drink.espresso',
+          displayName: '濃縮咖啡',
+          shortName: '濃縮咖啡',
+          categoryKey: 'drink',
+          station: 'kitchen',
+          courseKind: 'drink',
+          quantity: 1,
+          unitPrice: 60,
+          priceDelta: 60,
+          lineTotal: 60,
+          selections: { temperature: 'ice' },
+          selectionSummary: '溫度：冰',
+          isTreat: false,
+          sourceEntryId: 'entry_food',
+        },
+      },
+      subtotal: 310,
+      summary: {
+        title: '雞胸',
+        subtitle: '主食：義大利麵 / 口味：青醬 / 附飲：濃縮咖啡',
+        quantityLabel: '1 份',
+        totalLabel: '$310',
+      },
+    }
+    const db = createDbStub({
+      v3: {
+        history: {
+          ordersByMonth: {
+            '2026-05': {
+              '2026-05-30': {
+                ord_1: {
+                  orderId: 'ord_1',
+                  bizDate: '2026-05-30',
+                  monthKey: '2026-05',
+                  createdAt: 1,
+                  closedAt: 1,
+                  tableLabel: 'A1',
+                  displaySeqBase: 12,
+                  splitCounter: null,
+                  displaySeqLabel: '12',
+                  customer: { name: '', phone: '' },
+                  totals: { paid: 310, original: 310 },
+                  status: 'closed',
+                  batchIds: [],
+                  entries: { entry_food: legacyEntry },
+                  lines: {
+                    entry_food_main: { ...legacyEntry.lines.entry_food_main, unitCost: 0 },
+                    entry_food_child_0: { ...legacyEntry.lines.entry_food_child_0, unitCost: 0 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const repository = createRtdbV3Repository({
+      db: db as never,
+      state: createState(),
+      helpers: {
+        normalizeEntryForDisplay(entry) {
+          return {
+            ...entry,
+            summary: { ...entry.summary, subtitle: '主食：義大利麵 / 口味：青醬' },
+            lines: entry.lines.map((line) =>
+              line.parentLineId
+                ? { ...line, selectionSummary: '溫度：冰' }
+                : { ...line, selectionSummary: '主食：義大利麵 / 口味：青醬' }
+            ),
+          }
+        },
+        getCanonicalDraftEntries(entries) {
+          return entries
+        },
+      },
+    })
+
+    const orders = await repository.listClosedOrdersForBusinessDay(new Date('2026-05-30T12:00:00+08:00'))
+    expect(orders[0]?.entries?.[0]?.summary.subtitle).toBe('主食：義大利麵 / 口味：青醬')
+    expect(orders[0]?.lines?.find((line) => line.parentLineId)?.selectionSummary).toBe('溫度：冰')
+  })
+
+  it('maps early-morning anchors to the previous business day when listing closed orders', async () => {
+    const db = createDbStub({
+      v3: {
+        history: {
+          ordersByMonth: {
+            '2026-05': {
+              '2026-05-30': {
+                closed_early: {
+                  orderId: 'closed_early',
+                  bizDate: '2026-05-30',
+                  monthKey: '2026-05',
+                  createdAt: 1,
+                  closedAt: new Date('2026-05-31T02:30:00+08:00').getTime(),
+                  tableLabel: 'A1',
+                  displaySeqBase: 12,
+                  splitCounter: null,
+                  displaySeqLabel: '12',
+                  customer: { name: '', phone: '' },
+                  totals: { paid: 200, original: 200 },
+                  status: 'closed',
+                  batchIds: [],
+                  entries: {
+                    entry_food: {
+                      entryId: 'entry_food',
+                      groupId: 'entry_food',
+                      itemId: 'drink.cola',
+                      catalogKey: 'drink.cola',
+                      inventoryKey: 'drink.cola',
+                      itemName: '可樂',
+                      shortName: '可樂',
+                      categoryKey: 'drink',
+                      quantity: 1,
+                      status: 'accepted',
+                      source: 'staff',
+                      createdAt: 1,
+                      updatedAt: 1,
+                      selections: {},
+                      includeSelections: {},
+                      upgradeSelections: {},
+                      lines: {
+                        entry_food_main: {
+                          lineId: 'entry_food_main',
+                          groupId: 'entry_food',
+                          role: 'main',
+                          catalogKey: 'drink.cola',
+                          inventoryKey: 'drink.cola',
+                          displayName: '可樂',
+                          shortName: '可樂',
+                          categoryKey: 'drink',
+                          station: 'kitchen',
+                          courseKind: 'drink',
+                          quantity: 1,
+                          unitPrice: 200,
+                          priceDelta: 0,
+                          lineTotal: 200,
+                          selectionSummary: '',
+                          isTreat: false,
+                          sourceEntryId: 'entry_food',
+                          unitCost: 0,
+                        },
+                      },
+                      subtotal: 200,
+                      summary: {
+                        title: '可樂',
+                        subtitle: '',
+                        quantityLabel: '1 份',
+                        totalLabel: '$200',
+                      },
+                    },
+                  },
+                  lines: {
+                    entry_food_main: {
+                      lineId: 'entry_food_main',
+                      groupId: 'entry_food',
+                      role: 'main',
+                      catalogKey: 'drink.cola',
+                      inventoryKey: 'drink.cola',
+                      displayName: '可樂',
+                      shortName: '可樂',
+                      categoryKey: 'drink',
+                      station: 'kitchen',
+                      courseKind: 'drink',
+                      quantity: 1,
+                      unitPrice: 200,
+                      priceDelta: 0,
+                      lineTotal: 200,
+                      selectionSummary: '',
+                      isTreat: false,
+                      sourceEntryId: 'entry_food',
+                      unitCost: 0,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const repository = createRtdbV3Repository({ db: db as never, state: createState() })
+
+    const orders = await repository.listClosedOrdersForBusinessDay(new Date('2026-05-31T02:30:00+08:00'))
+
+    expect(db.onceCalls).toContain('v3/history/ordersByMonth/2026-05/2026-05-30')
+    expect(orders).toHaveLength(1)
+    expect(orders[0]?.timestamp).toBe(new Date('2026-05-31T02:30:00+08:00').getTime())
+    expect(orders[0]?.total).toBe(200)
+  })
+
   it('saves customer drafts while preserving pending and submitted batches', async () => {
     const entry = createEntry()
     const db = createDbStub({
@@ -497,6 +739,7 @@ describe('rtdb-v3-repository', () => {
     const repository = createRtdbV3Repository({ db: db as never, state })
 
     const batch = await repository.submitCustomerDraft('A1', [entry], state.tableCustomers.A1)
+    expect(batch).toMatchObject({ requestSeq: 1, requestLabel: '#5-1' })
     expect(readAtPath(db.data, `v3/live/tables/A1/pendingBatches/${batch.batchId}`)).toBeTruthy()
     expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toEqual({})
 
@@ -506,9 +749,49 @@ describe('rtdb-v3-repository', () => {
     expect(readAtPath(db.data, `v3/live/tables/A1/submittedBatches/${batch.batchId}`)).toBeTruthy()
 
     const batch2 = await repository.submitCustomerDraft('A1', [entry], state.tableCustomers.A1)
+    expect(batch2).toMatchObject({ requestSeq: 2, requestLabel: '#5-2' })
     await repository.rejectPendingBatch('A1', batch2.batchId)
     expect(readAtPath(db.data, `v3/live/tables/A1/pendingBatches/${batch2.batchId}`)).toBeUndefined()
     expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toBeTruthy()
+  })
+
+  it('uses a shared per-table request sequence across customer and staff batches', async () => {
+    const customerEntry = createEntry({ entryId: 'entry_customer' })
+    const staffEntry = createEntry({ entryId: 'entry_staff', source: 'staff', status: 'draft' })
+    const db = createDbStub({
+      v3: {
+        history: {
+          sequenceByDate: {},
+        },
+        live: {
+          tables: {
+            A1: {
+              summary: {
+                status: 'yellow',
+                timerStartedAt: 1,
+                displaySeqBase: 5,
+                batchCount: 0,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
+              draft: {},
+              pendingBatches: {},
+              submittedBatches: {},
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    state.tableCustomers.A1 = { name: 'A', phone: '', orderId: 5 }
+    const repository = createRtdbV3Repository({ db: db as never, state })
+
+    const pendingBatch = await repository.submitCustomerDraft('A1', [customerEntry], state.tableCustomers.A1)
+    const submittedBatch = await repository.createStaffBatch('A1', [staffEntry], state.tableCustomers.A1)
+
+    expect(pendingBatch).toMatchObject({ requestSeq: 1, requestLabel: '#5-1' })
+    expect(submittedBatch).toMatchObject({ requestSeq: 2, requestLabel: '#5-2' })
+    expect(readAtPath(db.data, 'v3/live/tables/A1/summary/nextRequestSeq')).toBe(3)
   })
 
   it('keeps concurrently added pending batches when customer shared draft saves last-write-wins', async () => {
@@ -775,6 +1058,7 @@ describe('rtdb-v3-repository', () => {
   })
 
   it('supports split checkout by selected entry ids and keeps remaining submitted entries live', async () => {
+    const orderTs = new Date('2026-05-30T12:00:00+08:00').getTime()
     const pasta = createEntry({
       entryId: 'entry_food',
       itemId: 'pasta_risotto.chicken-breast',
@@ -782,6 +1066,8 @@ describe('rtdb-v3-repository', () => {
       shortName: '青醬雞胸',
       categoryKey: 'pasta_risotto',
       subtotal: 310,
+      createdAt: orderTs,
+      updatedAt: orderTs,
       lines: [
         {
           lineId: 'entry_food_main',
@@ -831,6 +1117,8 @@ describe('rtdb-v3-repository', () => {
       shortName: '紅茶',
       categoryKey: 'drink',
       subtotal: 80,
+      createdAt: orderTs,
+      updatedAt: orderTs,
       lines: [
         {
           lineId: 'entry_drink_main',
@@ -963,8 +1251,12 @@ describe('rtdb-v3-repository', () => {
     expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1/entries/entry_food')).toBeUndefined()
     expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1/entries/entry_drink')).toBeTruthy()
     expect(readAtPath(db.data, 'v3/live/tables/A1/summary/nextSplitCounter')).toBe(2)
-    expect(readAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-30/categoryRevenue/pasta_risotto')).toBe(250)
-    expect(readAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-30/categoryRevenue/drink')).toBe(60)
+    expect(
+      readAtPath(db.data, `v3/reports/dailyByMonth/${order.monthKey}/${order.bizDateKey}/categoryRevenue/pasta_risotto`)
+    ).toBe(250)
+    expect(
+      readAtPath(db.data, `v3/reports/dailyByMonth/${order.monthKey}/${order.bizDateKey}/categoryRevenue/drink`)
+    ).toBe(60)
     expect(state.submittedBatches.A1?.[0]?.entries.map((entry) => entry.entryId)).toEqual(['entry_drink'])
     expect(state.tableSplitCounters.A1).toBe(2)
   })
@@ -1296,9 +1588,10 @@ describe('rtdb-v3-repository', () => {
               pendingCount: 1,
               firstBatch: {
                 batchId: 'pending_1',
+                requestSeq: 1,
                 createdAt: 1,
                 requestLabel: '#8-1',
-                itemPreview: ['可樂'],
+                itemPreview: [{ title: '可樂', quantityLabel: '2 份' }],
               },
             },
           },
@@ -1311,8 +1604,55 @@ describe('rtdb-v3-repository', () => {
     await repository.startStaffLive()
 
     expect(state.tableStatuses.A1).toBe('yellow')
-    expect(state.pendingBatches.A1?.[0]?.batchId).toBe('pending_1')
-    expect(state.pendingBatches.A1?.[0]?.entries[0]?.itemName).toBe('可樂')
+    expect(state.pendingBatchPreviews.A1?.[0]?.batchId).toBe('pending_1')
+    expect(state.pendingBatchPreviews.A1?.[0]?.requestSeq).toBe(1)
+    expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.title).toBe('可樂')
+    expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.quantityLabel).toBe('2 份')
+  })
+
+  it('reads a single pending batch detail from the live table path only', async () => {
+    const entry = createEntry({ entryId: 'entry_pending', subtotal: 220, itemName: '鱸魚', shortName: '鱸魚' })
+    const db = createDbStub({
+      v3: {
+        live: {
+          tables: {
+            A1: {
+              pendingBatches: {
+                pending_1: {
+                  batchId: 'pending_1',
+                  source: 'customer',
+                  status: 'pending',
+                  table: 'A1',
+                  customer: { name: '', phone: '' },
+                  createdAt: 5,
+                  updatedAt: 5,
+                  requestLabel: '#8-1',
+                  entries: {
+                    [encodeRtdbKeySegment(entry.entryId)]: {
+                      ...entry,
+                      lines: Object.fromEntries(entry.lines.map((line) => [encodeRtdbKeySegment(line.lineId), line])),
+                    },
+                  },
+                  subtotal: 220,
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const repository = createRtdbV3Repository({ db: db as never, state: createState() })
+
+    const batch = await repository.readPendingBatchDetail('A1', 'pending_1')
+
+    expect(db.onceCalls).toContain('v3/live/tables/A1/pendingBatches/pending_1')
+    expect(batch).toMatchObject({
+      batchId: 'pending_1',
+      requestSeq: 1,
+      requestLabel: '#8-1',
+      subtotal: 220,
+      entries: [expect.objectContaining({ entryId: 'entry_pending', itemName: '鱸魚' })],
+    })
   })
 
   it('refreshes only changed daily summary day on revision invalidation', async () => {
@@ -1475,5 +1815,176 @@ describe('rtdb-v3-repository', () => {
 
     const draft = readAtPath(db.data, 'v3/live/tables/A1/draft') as Record<string, unknown>
     expect(Object.keys(draft)).toEqual(['entry_1', 'entry_2'])
+  })
+
+  it('merges identical staff draft entries into one row with summed quantity', async () => {
+    const firstEntry = createEntry({ entryId: 'entry_1', quantity: 1, subtotal: 150, createdAt: 1, updatedAt: 1 })
+    const secondEntry = createEntry({ entryId: 'entry_2', quantity: 1, subtotal: 150, createdAt: 2, updatedAt: 2 })
+    const state = createState()
+    const repository = createRtdbV3Repository({
+      db: createDbStub({}) as never,
+      state,
+      helpers: {
+        normalizeEntryForDisplay(entry) {
+          return entry
+        },
+        getCanonicalDraftEntries(entries) {
+          const [first, second] = entries
+          return [
+            {
+              ...first,
+              quantity: first.quantity + second.quantity,
+              subtotal: first.subtotal + second.subtotal,
+              updatedAt: second.updatedAt,
+              summary: {
+                ...first.summary,
+                quantityLabel: '2 份',
+                totalLabel: '$300',
+              },
+              lines: first.lines.map((line) => ({
+                ...line,
+                quantity: line.quantity + (second.lines[0]?.quantity || 0),
+                lineTotal: line.lineTotal + (second.lines[0]?.lineTotal || 0),
+              })),
+            },
+          ]
+        },
+      },
+    })
+
+    await repository.saveStaffDraft('A1', [firstEntry, secondEntry])
+
+    expect(state.staffDrafts.A1).toHaveLength(1)
+    expect(state.staffDrafts.A1?.[0]).toMatchObject({
+      quantity: 2,
+      subtotal: 300,
+      summary: {
+        quantityLabel: '2 份',
+        totalLabel: '$300',
+      },
+    })
+  })
+
+  it('merges rejected pending entries with matching existing draft entries', async () => {
+    const firstEntry = createEntry({ entryId: 'entry_1', createdAt: 1, updatedAt: 1, quantity: 1, subtotal: 150 })
+    const secondEntry = createEntry({ entryId: 'entry_2', createdAt: 3, updatedAt: 3, quantity: 1, subtotal: 150 })
+    const db = createDbStub({
+      v3: {
+        history: {
+          sequenceByDate: {},
+        },
+        live: {
+          tables: {
+            A1: {
+              summary: {
+                status: 'yellow',
+                timerStartedAt: 1,
+                displaySeqBase: 5,
+                batchCount: 0,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
+              draft: {
+                [firstEntry.entryId]: {
+                  ...firstEntry,
+                  lines: Object.fromEntries(firstEntry.lines.map((line) => [line.lineId, line])),
+                },
+              },
+              pendingBatches: {
+                pending_1: {
+                  batchId: 'pending_1',
+                  source: 'customer',
+                  status: 'pending',
+                  table: 'A1',
+                  customer: { name: 'A', phone: '' },
+                  createdAt: 3,
+                  updatedAt: 3,
+                  requestLabel: '#5-1',
+                  entries: {
+                    [secondEntry.entryId]: {
+                      ...secondEntry,
+                      lines: Object.fromEntries(secondEntry.lines.map((line) => [line.lineId, line])),
+                    },
+                  },
+                  subtotal: secondEntry.subtotal,
+                },
+              },
+              submittedBatches: {},
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    state.tableCustomers.A1 = { name: 'A', phone: '', orderId: 5 }
+    const repository = createRtdbV3Repository({ db: db as never, state })
+
+    await repository.rejectPendingBatch('A1', 'pending_1')
+
+    const draft = readAtPath(db.data, 'v3/live/tables/A1/draft') as Record<
+      string,
+      { quantity: number; subtotal: number }
+    >
+    expect(Object.keys(draft)).toHaveLength(1)
+    expect(draft.entry_1).toMatchObject({
+      quantity: 2,
+      subtotal: 300,
+    })
+  })
+
+  it('removes a submitted batch when updateSubmittedBatch receives no entries', async () => {
+    const entry = createEntry()
+    const db = createDbStub({
+      v3: {
+        history: {
+          sequenceByDate: {},
+        },
+        live: {
+          tables: {
+            A1: {
+              summary: {
+                status: 'yellow',
+                timerStartedAt: 1,
+                displaySeqBase: 5,
+                batchCount: 1,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
+              draft: {},
+              pendingBatches: {},
+              submittedBatches: {
+                submitted_1: {
+                  batchId: 'submitted_1',
+                  source: 'staff',
+                  status: 'accepted',
+                  table: 'A1',
+                  customer: { name: 'A', phone: '' },
+                  createdAt: 3,
+                  updatedAt: 3,
+                  acceptedAt: 3,
+                  requestLabel: '#5-1',
+                  entries: {
+                    [entry.entryId]: {
+                      ...entry,
+                      lines: Object.fromEntries(entry.lines.map((line) => [line.lineId, line])),
+                    },
+                  },
+                  subtotal: entry.subtotal,
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    state.tableCustomers.A1 = { name: 'A', phone: '', orderId: 5 }
+    const repository = createRtdbV3Repository({ db: db as never, state })
+
+    const result = await repository.updateSubmittedBatch('A1', 'submitted_1', [])
+
+    expect(result).toBeNull()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1')).toBeUndefined()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/summary/batchCount')).toBe(0)
   })
 })

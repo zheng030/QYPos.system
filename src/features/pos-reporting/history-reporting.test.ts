@@ -71,6 +71,7 @@ function installDocumentStub() {
 const dom = installDocumentStub()
 
 afterEach(() => {
+  vi.useRealTimers()
   dom.reset()
 })
 
@@ -89,11 +90,11 @@ describe('history-reporting', () => {
     const reporting = createHistoryReportingModule({
       getIsHistorySimpleMode: () => false,
       getItemCategoryType: () => 'other',
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       loadItemStatsRange: async () => ({}),
-      watchClosedOrdersRange: () => () => {},
+      watchClosedOrdersForBusinessDay: () => () => {},
       watchDailySummariesRange: (start, endExclusive, _listener: (event: V3DailySummaryRangeEvent) => void) => {
         watchCalls.push({ start: start.getTime(), end: endExclusive.getTime() })
         const id = `summary-${watchCalls.length}`
@@ -128,7 +129,7 @@ describe('history-reporting', () => {
     const reporting = createHistoryReportingModule({
       getIsHistorySimpleMode: () => false,
       getItemCategoryType: () => 'drink',
-      listClosedOrdersByDay: async () => [
+      listClosedOrdersForBusinessDay: async () => [
         {
           formattedSeq: '12-1',
           seat: 'A1',
@@ -151,7 +152,7 @@ describe('history-reporting', () => {
               unitPrice: 250,
               priceDelta: 0,
               lineTotal: 250,
-              selectionSummary: '冰 / 青醬 / 義大利麵',
+              selectionSummary: '主食：義大利麵 / 口味：青醬',
               isTreat: false,
               sourceEntryId: 'entry_food',
             },
@@ -171,7 +172,7 @@ describe('history-reporting', () => {
               unitPrice: 60,
               priceDelta: 60,
               lineTotal: 60,
-              selectionSummary: '熱',
+              selectionSummary: '溫度：熱',
               isTreat: false,
               sourceEntryId: 'entry_food',
             },
@@ -181,7 +182,7 @@ describe('history-reporting', () => {
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       loadItemStatsRange: async () => ({}),
-      watchClosedOrdersRange: () => () => {},
+      watchClosedOrdersForBusinessDay: () => () => {},
       watchDailySummariesRange: () => () => {},
       watchItemStatsRange: () => () => {},
       readDailySummariesRange: () => ({}),
@@ -197,7 +198,7 @@ describe('history-reporting', () => {
 
     expect(historyBox.innerHTML).toContain('青醬雞胸')
     expect(historyBox.innerHTML).toContain('拿鐵')
-    expect(historyBox.innerHTML).toContain('(熱)')
+    expect(historyBox.innerHTML).toContain('(溫度：熱)')
     expect(historyBox.innerHTML).toContain('$250')
   })
 
@@ -210,7 +211,7 @@ describe('history-reporting', () => {
     const reporting = createHistoryReportingModule({
       getIsHistorySimpleMode: () => false,
       getItemCategoryType: () => 'other',
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       loadItemStatsRange: async () => ({
@@ -225,7 +226,7 @@ describe('history-reporting', () => {
           other: createItemStat('神秘品項', 1, 'other', 50),
         },
       }),
-      watchClosedOrdersRange: () => () => {},
+      watchClosedOrdersForBusinessDay: () => () => {},
       watchDailySummariesRange: () => () => {},
       watchItemStatsRange: () => () => {},
       readDailySummariesRange: () => ({}),
@@ -294,7 +295,7 @@ describe('history-reporting', () => {
           unitPrice: 250,
           priceDelta: 0,
           lineTotal: 250,
-          selectionSummary: '冰 / 青醬 / 義大利麵',
+          selectionSummary: '主食：義大利麵 / 口味：青醬',
           isTreat: false,
           sourceEntryId: 'entry_food',
         },
@@ -304,11 +305,11 @@ describe('history-reporting', () => {
     const reporting = createHistoryReportingModule({
       getIsHistorySimpleMode: () => false,
       getItemCategoryType: () => 'drink',
-      listClosedOrdersByDay: async () => [order],
+      listClosedOrdersForBusinessDay: async () => [order],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       loadItemStatsRange: async () => ({}),
-      watchClosedOrdersRange: () => () => {},
+      watchClosedOrdersForBusinessDay: () => () => {},
       watchDailySummariesRange: () => () => {},
       watchItemStatsRange: () => () => {},
       readDailySummariesRange: () => ({}),
@@ -333,5 +334,42 @@ describe('history-reporting', () => {
       total: 310,
     })
     expect(deleteClosedOrder).toHaveBeenCalledWith(order)
+  })
+
+  it('uses the current timestamp as the business-day anchor for early-morning history', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-31T02:30:00+08:00'))
+
+    const historyBox = createElementStub('history-box')
+    dom.add(historyBox)
+
+    const seenAnchors: Date[] = []
+    const listClosedOrdersForBusinessDay = vi.fn(async (anchor: Date) => {
+      seenAnchors.push(anchor)
+      return []
+    })
+    const reporting = createHistoryReportingModule({
+      getIsHistorySimpleMode: () => false,
+      getItemCategoryType: () => 'drink',
+      listClosedOrdersForBusinessDay,
+      listClosedOrdersByRange: async () => [],
+      loadDailySummariesRange: async () => ({}),
+      loadItemStatsRange: async () => ({}),
+      watchClosedOrdersForBusinessDay: () => () => {},
+      watchDailySummariesRange: () => () => {},
+      watchItemStatsRange: () => () => {},
+      readDailySummariesRange: () => ({}),
+      readItemStatsRange: () => ({}),
+      moveSegmentHighlighter: () => {},
+      openPage: () => {},
+      printReceipt: async () => {},
+      deleteClosedOrder: async () => {},
+      setIsHistorySimpleMode: () => {},
+    })
+
+    await reporting.showHistory()
+
+    expect(listClosedOrdersForBusinessDay).toHaveBeenCalledTimes(1)
+    expect(seenAnchors[0]?.getTime()).toBe(new Date('2026-05-31T02:30:00+08:00').getTime())
   })
 })

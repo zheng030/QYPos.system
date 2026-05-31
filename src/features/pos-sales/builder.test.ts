@@ -116,7 +116,7 @@ describe('pos-sales builder', () => {
       throw new Error('expected finalized entry')
     }
 
-    expect(result.entry.summary.subtitle).toContain('附飲：拿鐵咖啡')
+    expect(result.entry.summary.subtitle).toBe('主食：義大利麵 / 口味：青醬')
     expect(result.entry.lines).toHaveLength(2)
     expect(result.entry.lines[0]).toMatchObject({
       lineId: 'entry_test_main',
@@ -125,7 +125,7 @@ describe('pos-sales builder', () => {
       inventoryKey: 'pasta_risotto.chicken-breast',
       displayName: '雞胸',
       lineTotal: 250,
-      selectionSummary: '主食：義大利麵 / 口味：青醬 / 附飲：拿鐵咖啡',
+      selectionSummary: '主食：義大利麵 / 口味：青醬',
     })
     expect(result.entry.lines[1]).toMatchObject({
       parentLineId: 'entry_test_main',

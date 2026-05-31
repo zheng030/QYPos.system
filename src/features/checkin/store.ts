@@ -1,5 +1,6 @@
 import type { AppShellService } from '@/shared/app-shell-service'
 import type { AttendanceEmployeesMap, AttendanceRecordsMap, AttendanceService } from '@/shared/attendance-service'
+import { BUSINESS_DAY_SHIFT_HOURS as SHARED_BUSINESS_DAY_SHIFT_HOURS } from '@/shared/business-day'
 
 import type { CheckinModalState } from './types'
 
@@ -19,7 +20,7 @@ export function initBridge({ attendance, appShell }: { attendance: AttendanceSer
 export const CHECKIN_PAGE_ID = 'checkinPage'
 export const CHECKIN_ROOT_ID = 'checkin-root'
 export const CHECKIN_ROOTS = ['attendanceEmployees', 'attendanceRecords']
-export const BUSINESS_DAY_SHIFT_HOURS = 5
+export const BUSINESS_DAY_SHIFT_HOURS = SHARED_BUSINESS_DAY_SHIFT_HOURS
 
 export const UserRole = {
   ADMIN: 'ADMIN',

@@ -1,10 +1,9 @@
 import { authGate } from '@/shared/auth-gate'
+import { toBusinessDate as toSharedBusinessDate } from '@/shared/business-day'
 import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
-
 import {
   AttendanceType,
   AVATAR_COLORS,
-  BUSINESS_DAY_SHIFT_HOURS,
   bridge,
   CHECKIN_PAGE_ID,
   CHECKIN_ROOT_ID,
@@ -23,14 +22,12 @@ function padMonth(value: number) {
 }
 
 export function toAttendanceMonthKey(date: Date | string | number) {
-  const nextDate = new Date(date)
-  nextDate.setHours(nextDate.getHours() - BUSINESS_DAY_SHIFT_HOURS)
+  const nextDate = toSharedBusinessDate(date)
   return `${nextDate.getFullYear()}-${padMonth(nextDate.getMonth() + 1)}`
 }
 
 export function getWindowMonthKeys(anchor = new Date()) {
-  const current = new Date(anchor)
-  current.setHours(current.getHours() - BUSINESS_DAY_SHIFT_HOURS)
+  const current = toSharedBusinessDate(anchor)
   const previous = new Date(current)
   previous.setMonth(previous.getMonth() - 1)
   return [toAttendanceMonthKey(previous), toAttendanceMonthKey(current)]
@@ -182,9 +179,7 @@ export function formatShortTime(date: Date | null) {
 }
 
 export function toBusinessDate(date: Date | string | number) {
-  const nextDate = new Date(date)
-  nextDate.setHours(nextDate.getHours() - BUSINESS_DAY_SHIFT_HOURS)
-  return nextDate
+  return toSharedBusinessDate(date)
 }
 
 export function formatDate(date: Date | string | number) {
@@ -201,8 +196,7 @@ export function formatBusinessDateOnly(date: Date | string | number) {
 }
 
 export function formatDateKey(date: Date | string | number) {
-  const shifted = new Date(date)
-  shifted.setHours(shifted.getHours() - BUSINESS_DAY_SHIFT_HOURS)
+  const shifted = toSharedBusinessDate(date)
   return shifted.toDateString()
 }
 
@@ -350,8 +344,7 @@ export function groupRecordsByDay(records: AttendanceRecord[]) {
   records.forEach((record) => {
     const dateObj = toDate(record.ts)
     if (!dateObj) return
-    const businessDate = new Date(dateObj)
-    businessDate.setHours(businessDate.getHours() - BUSINESS_DAY_SHIFT_HOURS)
+    const businessDate = toSharedBusinessDate(dateObj)
     const key = businessDate.toDateString()
     if (!grouped[key]) {
       grouped[key] = { date: new Date(businessDate), records: [], sessions: [], totalHours: 0 }

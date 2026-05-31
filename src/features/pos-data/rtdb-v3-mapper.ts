@@ -1,3 +1,4 @@
+import type { PosCatalogHelpers } from '@/features/pos-kernel/service'
 import type {
   PosCategoryKey,
   PosCourseKind,
@@ -10,6 +11,7 @@ import type {
   PosTableCustomer,
 } from '@/features/pos-kernel/types'
 import type { AttendanceRecord } from '@/shared/attendance-service'
+import { getBusinessDateKey, getBusinessDayRange } from '@/shared/business-day'
 import { decodeRtdbKeySegment, encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import type {
   V3BizDateKey,
@@ -26,19 +28,28 @@ import type {
   V3TableSummary,
 } from './rtdb-v3-types'
 
+export function parseRequestSeqFromLabel(requestLabel: string | null | undefined) {
+  const match = String(requestLabel || '').match(/-(\d+)$/)
+  if (!match) return 0
+  const value = Number.parseInt(match[1] || '', 10)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+export function resolveStoredBatchRequestSeq(batch: Pick<V3OrderBatch, 'requestLabel' | 'requestSeq'>) {
+  const direct =
+    typeof batch.requestSeq === 'number' ? batch.requestSeq : Number.parseInt(String(batch.requestSeq || ''), 10)
+  if (Number.isFinite(direct) && direct > 0) {
+    return direct
+  }
+  return parseRequestSeqFromLabel(batch.requestLabel)
+}
+
 function pad(value: number) {
   return String(value).padStart(2, '0')
 }
 
 export function getBizDateKey(value: Date | string | number): V3BizDateKey {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid date value: ${String(value)}`)
-  }
-  if (date.getHours() < 5) {
-    date.setDate(date.getDate() - 1)
-  }
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return getBusinessDateKey(value) as V3BizDateKey
 }
 
 export function getMonthKeyFromBizDate(bizDate: V3BizDateKey): V3MonthKey {
@@ -63,10 +74,9 @@ export function getMonthKeysBetween(start: Date, endExclusive: Date): V3MonthKey
 export function getBizDateKeysBetween(start: Date, endExclusive: Date): V3BizDateKey[] {
   if (endExclusive.getTime() <= start.getTime()) return []
   const keys: V3BizDateKey[] = []
-  const cursor = new Date(start)
-  cursor.setHours(5, 0, 0, 0)
-  const end = new Date(endExclusive)
-  while (cursor.getTime() < end.getTime()) {
+  const { start: alignedStart } = getBusinessDayRange(start)
+  const cursor = new Date(alignedStart)
+  while (cursor.getTime() < endExclusive.getTime()) {
     keys.push(getBizDateKey(cursor))
     cursor.setDate(cursor.getDate() + 1)
   }
@@ -101,19 +111,24 @@ export function mapEntryToStored(entry: PosOrderEntry): V3OrderEntry {
   }
 }
 
-export function mapStoredEntry(entry: V3OrderEntry): PosOrderEntry {
-  return {
+export function mapStoredEntry(
+  entry: V3OrderEntry,
+  normalizeEntryForDisplay?: PosCatalogHelpers['normalizeEntryForDisplay']
+): PosOrderEntry {
+  const mapped = {
     ...entry,
     categoryKey: entry.categoryKey as PosCategoryKey,
     lines: Object.entries(entry.lines || {})
       .sort(([left], [right]) => decodeRtdbKeySegment(left).localeCompare(decodeRtdbKeySegment(right)))
       .map(([, line]) => mapStoredLine(line)),
   }
+  return normalizeEntryForDisplay ? normalizeEntryForDisplay(mapped) : mapped
 }
 
 export function mapBatchToStored(batch: PosOrderBatch): V3OrderBatch {
   return {
     ...batch,
+    requestSeq: batch.requestSeq,
     customer: normalizeCustomer(batch.customer),
     entries: Object.fromEntries(
       batch.entries.map((entry) => [encodeRtdbKeySegment(entry.entryId), mapEntryToStored(entry)])
@@ -121,12 +136,16 @@ export function mapBatchToStored(batch: PosOrderBatch): V3OrderBatch {
   }
 }
 
-export function mapStoredBatch(batch: V3OrderBatch): PosOrderBatch {
+export function mapStoredBatch(
+  batch: V3OrderBatch,
+  normalizeEntryForDisplay?: PosCatalogHelpers['normalizeEntryForDisplay']
+): PosOrderBatch {
   return {
     ...batch,
+    requestSeq: resolveStoredBatchRequestSeq(batch),
     entries: Object.entries(batch.entries || {})
       .sort(([, left], [, right]) => left.createdAt - right.createdAt)
-      .map(([, entry]) => mapStoredEntry(entry)),
+      .map(([, entry]) => mapStoredEntry(entry, normalizeEntryForDisplay)),
   }
 }
 
@@ -138,11 +157,15 @@ export function buildPendingSummary(batches: Record<string, V3OrderBatch> | unde
     pendingCount: queue.length,
     firstBatch: {
       batchId: firstBatch.batchId,
+      requestSeq: resolveStoredBatchRequestSeq(firstBatch),
       createdAt: firstBatch.createdAt,
       requestLabel: firstBatch.requestLabel,
       itemPreview: Object.values(firstBatch.entries || {})
         .slice(0, 3)
-        .map((entry) => entry.shortName),
+        .map((entry) => ({
+          title: entry.summary?.title || entry.shortName,
+          quantityLabel: entry.summary?.quantityLabel || `${entry.quantity || 1} 份`,
+        })),
     },
   }
 }
@@ -163,6 +186,7 @@ export function buildLiveTable(params: {
   status?: string
   timerStartedAt?: number
   batchCount?: number
+  nextRequestSeq?: number
   nextSplitCounter?: number
   customer?: PosTableCustomer
   updatedAt?: number
@@ -174,6 +198,7 @@ export function buildLiveTable(params: {
     status,
     timerStartedAt,
     batchCount = submittedBatches.length,
+    nextRequestSeq,
     nextSplitCounter,
     customer,
     updatedAt = Date.now(),
@@ -185,6 +210,7 @@ export function buildLiveTable(params: {
           status,
           timerStartedAt,
           batchCount,
+          nextRequestSeq,
           nextSplitCounter,
           customer,
           updatedAt,
@@ -207,11 +233,20 @@ export function buildTableSummary(params: {
   status?: string
   timerStartedAt?: number
   batchCount?: number
+  nextRequestSeq?: number
   nextSplitCounter?: number
   customer?: PosTableCustomer
   updatedAt?: number
 }) {
-  const { status, timerStartedAt, batchCount = 0, nextSplitCounter, customer, updatedAt = Date.now() } = params
+  const {
+    status,
+    timerStartedAt,
+    batchCount = 0,
+    nextRequestSeq,
+    nextSplitCounter,
+    customer,
+    updatedAt = Date.now(),
+  } = params
   const orderId = customer?.orderId
   const displaySeqBase =
     typeof orderId === 'number' ? orderId : typeof orderId === 'string' ? parseInt(orderId, 10) || null : null
@@ -221,6 +256,7 @@ export function buildTableSummary(params: {
     timerStartedAt: timerStartedAt ?? null,
     displaySeqBase,
     batchCount,
+    nextRequestSeq: nextRequestSeq && nextRequestSeq > 1 ? nextRequestSeq : null,
     nextSplitCounter: nextSplitCounter && nextSplitCounter > 1 ? nextSplitCounter : null,
     customer: normalizeCustomer(customer),
     updatedAt,
@@ -250,7 +286,10 @@ export function cloneItemStat(displayName: string, categoryKey: string): V3Daily
   }
 }
 
-export function orderRecordToPosOrder(order: V3ClosedOrder): PosOrder {
+export function orderRecordToPosOrder(
+  order: V3ClosedOrder,
+  normalizeEntryForDisplay?: PosCatalogHelpers['normalizeEntryForDisplay']
+): PosOrder {
   const lines = Object.values(order.lines || {})
     .sort((left, right) => {
       if (!left.parentLineId && right.parentLineId) return -1
@@ -262,7 +301,9 @@ export function orderRecordToPosOrder(order: V3ClosedOrder): PosOrder {
 
   const entries = Object.values(order.entries || {})
     .sort((left, right) => left.createdAt - right.createdAt)
-    .map((entry) => mapStoredEntry(entry))
+    .map((entry) => mapStoredEntry(entry, normalizeEntryForDisplay))
+
+  const normalizedLineMap = new Map(entries.flatMap((entry) => entry.lines.map((line) => [line.lineId, line] as const)))
 
   return {
     orderId: order.orderId,
@@ -282,7 +323,7 @@ export function orderRecordToPosOrder(order: V3ClosedOrder): PosOrder {
     originalTotal: order.totals?.original || order.totals?.paid || 0,
     batchIds: order.batchIds || [],
     entries,
-    lines,
+    lines: lines.map((line) => normalizedLineMap.get(line.lineId) || line),
     isClosed: true,
   }
 }

@@ -75,7 +75,7 @@ export function createUiBridgeModule(deps: UiBridgeDeps) {
   }
 
   function checkPendingBatches() {
-    for (const [_table, batches] of Object.entries(deps.state.pendingBatches)) {
+    for (const [_table, batches] of Object.entries(deps.state.pendingBatchPreviews)) {
       const firstBatch = batches?.[0]
       if (firstBatch) {
         deps.showPendingBatchOverlay()

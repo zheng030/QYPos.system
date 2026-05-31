@@ -181,6 +181,14 @@ export type PosEntrySummary = {
   totalLabel: string
 }
 
+export type PosEntryDisplaySummary = {
+  mainSummary: string
+  mainCompact: string
+  drinkSummary: string
+  drinkCompact: string
+  expandedSummary: string
+}
+
 export type PosOrderLine = {
   lineId: string
   groupId: string
@@ -237,9 +245,24 @@ export type PosOrderBatch = {
   createdAt: number
   updatedAt: number
   acceptedAt?: number
+  requestSeq: number
   requestLabel: string
   entries: PosOrderEntry[]
   subtotal: number
+}
+
+export type PosPendingBatchPreviewEntry = {
+  entryId: string
+  title: string
+  quantityLabel: string
+}
+
+export type PosPendingBatchPreview = {
+  batchId: string
+  requestSeq: number
+  requestLabel: string
+  createdAt: number
+  entries: PosPendingBatchPreviewEntry[]
 }
 
 export type PosReceiptData = {
@@ -260,6 +283,7 @@ export type PosTableCustomer = {
 
 export type PosTableCustomersMap = Record<string, PosTableCustomer | undefined>
 export type PosLiveTableDraftMap = Record<string, PosOrderEntry[] | undefined>
+export type PosLivePendingBatchPreviewMap = Record<string, PosPendingBatchPreview[] | undefined>
 export type PosLivePendingBatchMap = Record<string, PosOrderBatch[] | undefined>
 export type PosLiveSubmittedBatchMap = Record<string, PosOrderBatch[] | undefined>
 export type PosStaffDraftMap = Record<string, PosOrderEntry[] | undefined>
@@ -277,6 +301,16 @@ export type PosBatchListItem = {
 export type PosMenuFilterState = {
   activeTab: 'menu' | 'cart' | 'orders'
   activeCategoryKey: PosMenuCategoryKey
+}
+
+export type PosStaffWorkspaceDiscount = {
+  percent: number
+}
+
+export type PosStaffWorkspaceState = {
+  expanded: boolean
+  serviceFeeEnabled: boolean
+  discount: PosStaffWorkspaceDiscount | null
 }
 
 export type PosOrder = {
@@ -385,6 +419,7 @@ export type CorePosState = {
   attendanceRecords: AttendanceRecordsMap
   ownerPasswords: PosOwnerAuthMap
   tableDrafts: PosLiveTableDraftMap
+  pendingBatchPreviews: PosLivePendingBatchPreviewMap
   pendingBatches: PosLivePendingBatchMap
   submittedBatches: PosLiveSubmittedBatchMap
   staffDrafts: PosStaffDraftMap
@@ -402,5 +437,6 @@ export type CorePosState = {
   isQrMode: boolean
   isHistorySimpleMode: boolean
   menuFilter: PosMenuFilterState
+  staffWorkspace: PosStaffWorkspaceState
   syncLog: SyncLogRecord[]
 }

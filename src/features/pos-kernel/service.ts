@@ -5,18 +5,28 @@ import type {
   buildRevenueDetailsTemplate,
   buildSelectionSummary,
   getBusinessDate,
+  getCanonicalDraftEntries,
   getDateFromOrder,
   getDeltaEntries,
   getMergedEntries,
 } from './item-helpers'
-import type { CorePosState, PosMenuCategoryKey, PosMenuMeta, PosSystemPasswordConfig } from './types'
+import type {
+  CorePosState,
+  PosEntryDisplaySummary,
+  PosMenuCategoryKey,
+  PosMenuMeta,
+  PosOrderEntry,
+  PosSystemPasswordConfig,
+} from './types'
 
 export const POS_KERNEL_SERVICE_KEY = 'pos-kernel'
 
 export type PosCatalogHelpers = {
   buildFinanceStatsTemplate: typeof buildFinanceStatsTemplate
   buildRevenueDetailsTemplate: typeof buildRevenueDetailsTemplate
+  buildEntryDisplaySummary(entry: PosOrderEntry): PosEntryDisplaySummary
   buildSelectionSummary: typeof buildSelectionSummary
+  getCanonicalDraftEntries: typeof getCanonicalDraftEntries
   flattenEntryLines(entry: import('./types').PosOrderEntry): import('./types').PosOrderLine[]
   groupOrderLines(lines: import('./types').PosOrderLine[] | undefined): PosGroupedOrderLine[]
   getCostByItemId(itemId: string): number
@@ -31,6 +41,7 @@ export type PosCatalogHelpers = {
   getOwnedSelectionInventoryKeys(itemId: string): string[]
   isItemSoldOut(itemId: string): boolean
   isInventoryKeySoldOut(inventoryKey: string): boolean
+  normalizeEntryForDisplay(entry: PosOrderEntry): PosOrderEntry
   resolveSelectionLabel(itemId: string, ruleId: string, value: string): string
   sumLines(lines: import('./types').PosOrderLine[]): number
   validateSelections(itemId: string, selections: import('./types').PosBuilderSelectionMap): string[]
@@ -50,6 +61,7 @@ export type PosKernelService = {
     getDateFromOrder: typeof getDateFromOrder
   }
   orderUtils: {
+    getCanonicalDraftEntries: typeof getCanonicalDraftEntries
     getDeltaEntries: typeof getDeltaEntries
     getMergedEntries: typeof getMergedEntries
     getMergedItems: typeof getMergedEntries

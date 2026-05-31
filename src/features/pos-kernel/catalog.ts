@@ -1,4 +1,6 @@
+import { toBusinessDateStartTimestamp } from '@/shared/business-day'
 import { groupOrderLines } from '@/shared/grouped-order-lines'
+import { buildEntryDisplaySummary, normalizeEntryForDisplay } from './entry-display'
 import type {
   PosBuilderSelectionMap,
   PosCategoryKey,
@@ -34,11 +36,11 @@ function getSelectionRuleMap(rules: PosSelectionRule[] | undefined) {
 }
 
 export function getBusinessDate(dateObj: Date | string | number) {
-  let date = new Date(dateObj)
-  if (Number.isNaN(date.getTime())) date = new Date()
-  if (date.getHours() < 5) date.setDate(date.getDate() - 1)
-  date.setHours(0, 0, 0, 0)
-  return date.getTime()
+  try {
+    return toBusinessDateStartTimestamp(dateObj)
+  } catch {
+    return toBusinessDateStartTimestamp(Date.now())
+  }
 }
 
 export function getDateFromOrder(order: Partial<PosOrder> | null | undefined) {
@@ -115,6 +117,12 @@ export function getMergedEntries(entries: PosOrderEntry[]) {
     }))
   })
   return [...merged.values()]
+}
+
+export function getCanonicalDraftEntries(entries: PosOrderEntry[]) {
+  return getMergedEntries(entries).sort(
+    (left, right) => left.createdAt - right.createdAt || left.entryId.localeCompare(right.entryId)
+  )
 }
 
 export function buildSelectionSummary(
@@ -275,7 +283,9 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
   return {
     buildFinanceStatsTemplate,
     buildRevenueDetailsTemplate,
+    buildEntryDisplaySummary: (entry: PosOrderEntry) => buildEntryDisplaySummary(entry, menuMeta),
     buildSelectionSummary,
+    getCanonicalDraftEntries,
     flattenEntryLines,
     groupOrderLines,
     getCostByItemId,
@@ -290,6 +300,7 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
     getOwnedSelectionInventoryKeys,
     isInventoryKeySoldOut,
     isItemSoldOut,
+    normalizeEntryForDisplay: (entry: PosOrderEntry) => normalizeEntryForDisplay(entry, menuMeta),
     resolveSelectionLabel,
     sumLines,
     validateSelections,

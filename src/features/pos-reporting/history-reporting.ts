@@ -13,6 +13,7 @@ import type {
   PosReportRange,
 } from '@/features/pos-kernel/types'
 import { MENU_CATEGORY_KEYS, POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
+import { getBusinessDayRange, getBusinessMonthRange, getBusinessWeekRange, toBusinessDate } from '@/shared/business-day'
 import { findElement } from '@/shared/dom-helpers'
 import { getErrorMessage } from '@/shared/errors'
 import { getGroupedOrderLines } from '@/shared/grouped-order-lines'
@@ -20,15 +21,11 @@ import { getGroupedOrderLines } from '@/shared/grouped-order-lines'
 type HistoryReportingDeps = {
   getIsHistorySimpleMode: () => boolean
   getItemCategoryType: (name: string) => PosCategoryKey
-  listClosedOrdersByDay: (targetDate: Date) => Promise<PosOrder[]>
+  listClosedOrdersForBusinessDay: (anchor: Date) => Promise<PosOrder[]>
   listClosedOrdersByRange: (start: Date, endExclusive: Date) => Promise<PosOrder[]>
   loadDailySummariesRange: (start: Date, endExclusive: Date) => Promise<Record<string, V3DailySummary>>
   loadItemStatsRange: (start: Date, endExclusive: Date) => Promise<Record<string, Record<string, V3DailyItemStat>>>
-  watchClosedOrdersRange: (
-    start: Date,
-    endExclusive: Date,
-    listener: (event: V3HistoryRangeEvent) => void
-  ) => () => void
+  watchClosedOrdersForBusinessDay: (anchor: Date, listener: (event: V3HistoryRangeEvent) => void) => () => void
   watchDailySummariesRange: (
     start: Date,
     endExclusive: Date,
@@ -66,29 +63,16 @@ function normalizeItemName(name: string) {
 }
 
 function getRangeBounds(range: PosReportRange | string) {
-  const now = new Date()
-  if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-  const start = new Date(now)
-  let end = new Date(now)
-
   if (range === 'day') {
-    start.setHours(5, 0, 0, 0)
-    end = new Date(start)
-    end.setDate(end.getDate() + 1)
-  } else if (range === 'week') {
-    const day = start.getDay() || 7
-    start.setDate(start.getDate() - (day - 1))
-    start.setHours(5, 0, 0, 0)
-    end = new Date(start)
-    end.setDate(end.getDate() + 7)
-  } else if (range === 'month') {
-    start.setDate(1)
-    start.setHours(5, 0, 0, 0)
-    end = new Date(start)
-    end.setMonth(end.getMonth() + 1)
+    const { start, endExclusive } = getBusinessDayRange(new Date())
+    return { start, end: endExclusive }
   }
-
-  return { start, end }
+  if (range === 'week') {
+    const { start, endExclusive } = getBusinessWeekRange(new Date())
+    return { start, end: endExclusive }
+  }
+  const { start, endExclusive } = getBusinessMonthRange(new Date())
+  return { start, end: endExclusive }
 }
 
 function toLocalIsoDate(date: Date) {
@@ -203,12 +187,8 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
   let stopCalendarSummaryWatch: (() => void) | null = null
   let stopItemStatsWatch: (() => void) | null = null
   let stopPublicItemStatsWatch: (() => void) | null = null
-  let historyViewDate = new Date()
+  let historyViewDate = toBusinessDate(new Date())
   let visibleOrders: PosOrder[] = []
-
-  if (historyViewDate.getHours() < 5) {
-    historyViewDate.setDate(historyViewDate.getDate() - 1)
-  }
 
   function resetWatch(stop: (() => void) | null) {
     stop?.()
@@ -223,9 +203,9 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     stopPublicItemStatsWatch = resetWatch(stopPublicItemStatsWatch)
   }
 
-  function watchHistory(start: Date, endExclusive: Date) {
+  function watchHistory(anchor: Date) {
     stopHistoryWatch = resetWatch(stopHistoryWatch)
-    stopHistoryWatch = deps.watchClosedOrdersRange(start, endExclusive, () => {
+    stopHistoryWatch = deps.watchClosedOrdersForBusinessDay(anchor, () => {
       void showHistory()
     })
   }
@@ -281,7 +261,7 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     try {
       const historyBox = findElement('history-box')
       if (!historyBox) return
-      const orders = await deps.listClosedOrdersByDay(new Date())
+      const orders = await deps.listClosedOrdersForBusinessDay(new Date())
       visibleOrders = orders
       historyBox.innerHTML = ''
       if (orders.length === 0) {
@@ -406,13 +386,11 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
 
   async function renderCalendar() {
     try {
-      const now = new Date()
-      if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-      const year = now.getFullYear()
-      const month = now.getMonth()
+      const today = toBusinessDate(new Date())
+      const year = today.getFullYear()
+      const month = today.getMonth()
       setText('calendarMonthTitle', `${year}年 ${month + 1}月`)
-      const start = new Date(year, month, 1, 5, 0, 0, 0)
-      const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
+      const { start, endExclusive: end } = getBusinessMonthRange(today)
       await deps.loadDailySummariesRange(start, end)
       stopCalendarSummaryWatch = resetWatch(stopCalendarSummaryWatch)
       stopCalendarSummaryWatch = deps.watchDailySummariesRange(start, end, () => {
@@ -449,36 +427,31 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       button.classList.add('active')
     }
 
-    const now = new Date()
-    if (now.getHours() < 5) now.setDate(now.getDate() - 1)
-    let start = new Date(now)
+    const businessNow = toBusinessDate(new Date())
+    let start = new Date(businessNow)
     let end: Date | null = null
 
     if (range === 'day') {
-      start.setHours(5, 0, 0, 0)
-      end = new Date(start)
-      end.setDate(end.getDate() + 1)
+      const rangeBounds = getBusinessDayRange(new Date())
+      start = rangeBounds.start
+      end = rangeBounds.endExclusive
     } else if (range === 'week') {
-      const day = start.getDay() || 7
-      start.setDate(start.getDate() - (day - 1))
-      start.setHours(5, 0, 0, 0)
-      end = new Date(start)
-      end.setDate(end.getDate() + 7)
+      const rangeBounds = getBusinessWeekRange(new Date())
+      start = rangeBounds.start
+      end = rangeBounds.endExclusive
     } else if (range === 'month') {
-      start.setDate(1)
-      start.setHours(5, 0, 0, 0)
-      end = new Date(start)
-      end.setMonth(end.getMonth() + 1)
+      const rangeBounds = getBusinessMonthRange(new Date())
+      start = rangeBounds.start
+      end = rangeBounds.endExclusive
     } else if (range === 'custom') {
       const sInput = findElement<HTMLInputElement>('statsStartDate')
       const eInput = findElement<HTMLInputElement>('statsEndDate')
-      if (sInput && !sInput.value) sInput.value = toLocalIsoDate(new Date())
-      if (eInput && !eInput.value) eInput.value = toLocalIsoDate(new Date())
+      if (sInput && !sInput.value) sInput.value = toLocalIsoDate(businessNow)
+      if (eInput && !eInput.value) eInput.value = toLocalIsoDate(businessNow)
       start = getDateInputValue(sInput, start)
-      start.setHours(5, 0, 0, 0)
       end = getDateInputValue(eInput, start)
-      end.setDate(end.getDate() + 1)
-      end.setHours(5, 0, 0, 0)
+      start = getBusinessDayRange(start).start
+      end = getBusinessDayRange(end).endExclusive
     }
 
     await deps.loadItemStatsRange(start, end || start)
@@ -507,8 +480,7 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
     const year = historyViewDate.getFullYear()
     const month = historyViewDate.getMonth()
     setText('statsMonthTitle', `${year}年 ${month + 1}月`)
-    const start = new Date(year, month, 1, 5, 0, 0, 0)
-    const end = new Date(year, month + 1, 1, 5, 0, 0, 0)
+    const { start, endExclusive: end } = getBusinessMonthRange(historyViewDate)
     await deps.loadItemStatsRange(start, end)
     const render = () => {
       renderCategoryStatColumns(

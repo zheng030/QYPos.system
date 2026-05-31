@@ -1,17 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { menuMeta } from '@/features/pos-kernel/data'
+import { buildEntryDisplaySummary as buildKernelEntryDisplaySummary } from '@/features/pos-kernel/item-helpers'
 import type { PosOrderBatch, PosOrderEntry, PosReceiptData } from '@/features/pos-kernel/types'
 import {
   acceptPendingBatchAndPrint,
   buildReceiptMarkup,
   calculateSplitCheckoutTotal,
+  calculateStaffOrderTotal,
   getBuilderGroupSelector,
+  getEntryDisplaySummary,
   getFloatingBarViewModel,
+  getStaffWorkspaceRowActions,
   getVisibleOrderBatches,
   guideBuilderIssue,
   persistCustomerInfoSilently,
   selectPendingOverlayBatch,
   submitDraftBatch,
+  summarizeStaffWorkspace,
   updateSubmittedBatchAndPrint,
 } from './runtime-support'
 
@@ -49,7 +55,7 @@ function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
         unitPrice: 250,
         priceDelta: 0,
         lineTotal: 250,
-        selectionSummary: '青醬 / 義大利麵',
+        selectionSummary: '主食：義大利麵 / 口味：青醬',
         isTreat: false,
         sourceEntryId: 'entry_1',
       },
@@ -69,7 +75,7 @@ function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
         unitPrice: 60,
         priceDelta: 60,
         lineTotal: 60,
-        selectionSummary: '熱',
+        selectionSummary: '溫度：冰',
         isTreat: false,
         sourceEntryId: 'entry_1',
       },
@@ -77,7 +83,7 @@ function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
     subtotal: 310,
     summary: {
       title: '雞胸',
-      subtitle: '附飲：拿鐵咖啡',
+      subtitle: '主食：義大利麵 / 口味：青醬',
       quantityLabel: '1 份',
       totalLabel: '$310',
     },
@@ -95,6 +101,7 @@ function createBatch(overrides: Partial<PosOrderBatch> = {}): PosOrderBatch {
     customer: { name: '王小明', phone: '0900' },
     createdAt: 10,
     updatedAt: 10,
+    requestSeq: 1,
     requestLabel: '#12-1',
     entries,
     subtotal: entries.reduce((sum, entry) => sum + entry.subtotal, 0),
@@ -119,18 +126,136 @@ describe('pos-sales runtime-support', () => {
   it('selects the first pending overlay batch only for staff mode', () => {
     const match = selectPendingOverlayBatch('staff', {
       A1: [],
-      A2: [createBatch({ batchId: 'pending_2', table: 'A2' })],
+      A2: [
+        {
+          batchId: 'pending_2',
+          requestSeq: 1,
+          requestLabel: '#2-1',
+          createdAt: 2,
+          entries: [{ entryId: 'preview_1', title: '雞胸', quantityLabel: '2 份' }],
+        },
+      ],
     })
     expect(match).toMatchObject({
       table: 'A2',
       batch: { batchId: 'pending_2' },
     })
-    expect(selectPendingOverlayBatch('customer', { A2: [createBatch()] })).toBeNull()
+    expect(
+      selectPendingOverlayBatch('customer', {
+        A2: [
+          {
+            batchId: 'pending_3',
+            requestSeq: 2,
+            requestLabel: '#2-2',
+            createdAt: 3,
+            entries: [{ entryId: 'p2', title: '可樂', quantityLabel: '1 份' }],
+          },
+        ],
+      })
+    ).toBeNull()
   })
 
   it('calculates split checkout totals with discount, service fee, and allowance', () => {
     expect(calculateSplitCheckoutTotal(1000, 90, true, 50)).toBe(940)
     expect(calculateSplitCheckoutTotal(100, 0, false, 150)).toBe(0)
+  })
+
+  it('calculates staff order totals using the same折數/service fee semantics', () => {
+    expect(calculateStaffOrderTotal(1000, 90, true, 0)).toBe(990)
+    expect(calculateStaffOrderTotal(1000, 0, false, 150)).toBe(850)
+  })
+
+  it('summarizes draft and submitted totals for the staff floating workspace', () => {
+    const entries = [createEntry({ entryId: 'entry_1' }), createEntry({ entryId: 'entry_2', subtotal: 180 })]
+    const batches = [
+      createBatch({ batchId: 'batch_1', status: 'accepted' }),
+      createBatch({ batchId: 'batch_2', status: 'accepted' }),
+    ]
+    const summary = summarizeStaffWorkspace(entries, batches)
+
+    expect(summary).toMatchObject({
+      draftSubtotal: 490,
+      submittedSubtotal: 620,
+      draftEntryCount: 2,
+      acceptedEntryCount: 2,
+      acceptedBatchCount: 2,
+      totalRowCount: 4,
+    })
+    expect(summary.rows.map((row) => row.kind)).toEqual(['draft', 'draft', 'accepted', 'accepted'])
+    expect(summary.groups).toHaveLength(3)
+    expect(summary.groups[0]).toMatchObject({
+      kind: 'draft',
+      statusLabel: '未送出',
+    })
+    expect(summary.groups[0].rows.map((row) => row.entry.entryId)).toEqual(['entry_1', 'entry_2'])
+    expect(summary.groups.slice(1).map((group) => group.kind)).toEqual(['accepted', 'accepted'])
+    expect(summary.groups.slice(1).map((group) => group.rows)).toEqual([
+      [expect.objectContaining({ entry: expect.objectContaining({ entryId: 'entry_1' }) })],
+      [expect.objectContaining({ entry: expect.objectContaining({ entryId: 'entry_1' }) })],
+    ])
+  })
+
+  it('builds the same three staff workspace actions for draft and accepted rows', () => {
+    const draftRow = summarizeStaffWorkspace([createEntry({ entryId: 'draft_1' })], []).rows[0]
+    const acceptedRow = summarizeStaffWorkspace([], [createBatch({ batchId: 'batch_9', status: 'accepted' })]).rows[0]
+
+    expect(getStaffWorkspaceRowActions(draftRow, false)).toEqual([
+      {
+        kind: 'edit',
+        label: '編輯',
+        tone: 'primary',
+        action: 'edit-draft-entry',
+        attrs: { 'data-entry-id': 'draft_1' },
+      },
+      {
+        kind: 'treat',
+        label: '招待',
+        tone: 'warning',
+        action: 'toggle-draft-entry-treat',
+        attrs: { 'data-entry-id': 'draft_1' },
+      },
+      {
+        kind: 'delete',
+        label: '刪除',
+        tone: 'danger',
+        action: 'remove-draft-entry',
+        attrs: { 'data-entry-id': 'draft_1' },
+      },
+    ])
+
+    expect(getStaffWorkspaceRowActions(acceptedRow, true)).toEqual([
+      {
+        kind: 'edit',
+        label: '編輯',
+        tone: 'primary',
+        action: 'edit-submitted-entry',
+        attrs: { 'data-batch-id': 'batch_9', 'data-entry-id': 'entry_1' },
+      },
+      {
+        kind: 'treat',
+        label: '取消招待',
+        tone: 'success',
+        action: 'toggle-submitted-entry-treat',
+        attrs: { 'data-batch-id': 'batch_9', 'data-entry-id': 'entry_1' },
+      },
+      {
+        kind: 'delete',
+        label: '刪除',
+        tone: 'danger',
+        action: 'remove-submitted-entry',
+        attrs: { 'data-batch-id': 'batch_9', 'data-entry-id': 'entry_1' },
+      },
+    ])
+  })
+
+  it('formats main and drink summaries from a finalized entry for shared renders', () => {
+    expect(getEntryDisplaySummary(createEntry(), (entry) => buildKernelEntryDisplaySummary(entry, menuMeta))).toEqual({
+      mainSummary: '主食：義大利麵 / 口味：青醬',
+      mainCompact: '義大利麵 · 青醬',
+      drinkSummary: '換購：拿鐵 · 溫度：冰',
+      drinkCompact: '拿鐵(冰)',
+      expandedSummary: '主食：義大利麵 / 口味：青醬 / 換購：拿鐵 · 溫度：冰',
+    })
   })
 
   it('maps the floating bar actions by tab and mode', () => {
@@ -173,9 +298,10 @@ describe('pos-sales runtime-support', () => {
     const html = buildReceiptMarkup(data, 'Kitchen 工作單')
     expect(html).toContain('Kitchen 工作單')
     expect(html).toContain('青醬雞胸')
-    expect(html).toContain('(青醬 / 義大利麵)')
+    expect(html).toContain('x1')
+    expect(html).toContain('(主食：義大利麵 / 口味：青醬)')
     expect(html).toContain('拿鐵')
-    expect(html).toContain('· 熱')
+    expect(html).toContain('· 溫度：冰')
   })
 
   it('guides the first builder issue to its matching group card and focusable control', () => {

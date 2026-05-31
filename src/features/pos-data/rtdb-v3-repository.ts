@@ -1,3 +1,5 @@
+import { getCanonicalDraftEntries as canonicalizeDraftEntriesBase } from '@/features/pos-kernel/item-helpers'
+import type { PosCatalogHelpers } from '@/features/pos-kernel/service'
 import type {
   CorePosState,
   PosOrder,
@@ -5,9 +7,11 @@ import type {
   PosOrderEntry,
   PosOwnerAuthMap,
   PosOwnerAuthRecord,
+  PosPendingBatchPreview,
   PosTableCustomer,
 } from '@/features/pos-kernel/types'
 import type { AttendanceEmployee, AttendanceRecord } from '@/shared/attendance-service'
+import { getBusinessDayRange } from '@/shared/business-day'
 import type { DatabaseCompat } from '@/shared/firebase-compat'
 import { decodeRtdbKeySegment, encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import {
@@ -23,6 +27,7 @@ import {
   mapStoredBatch,
   mapStoredEntry,
   orderRecordToPosOrder,
+  resolveStoredBatchRequestSeq,
   toClosedOrderRecord,
 } from './rtdb-v3-mapper'
 import type {
@@ -56,6 +61,7 @@ type HistoryRange = {
 type RepositoryDeps = {
   db: DatabaseCompat
   state: CorePosState
+  helpers?: Pick<PosCatalogHelpers, 'getCanonicalDraftEntries' | 'normalizeEntryForDisplay'>
   onLiveStateChange?: (roots: string[]) => void
 }
 
@@ -98,6 +104,11 @@ function sumEntries(entries: PosOrderEntry[]) {
 }
 
 function readSplitCounter(value: unknown) {
+  const counter = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : 0
+  return Number.isFinite(counter) && counter > 0 ? counter : 1
+}
+
+function readRequestSeqCounter(value: unknown) {
   const counter = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : 0
   return Number.isFinite(counter) && counter > 0 ? counter : 1
 }
@@ -150,7 +161,7 @@ function encodeItemStatsRecord(value: Record<string, V3DailyItemStat> | null | u
   >
 }
 
-export function createRtdbV3Repository({ db, state, onLiveStateChange }: RepositoryDeps) {
+export function createRtdbV3Repository({ db, state, helpers, onLiveStateChange }: RepositoryDeps) {
   const unsubs = new Map<string, () => void>()
   const revisionCache = new Map<string, V3RevisionValue>()
   const dailySummaryDayCache = new Map<V3BizDateKey, V3DailySummary>()
@@ -167,6 +178,15 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
   let ownerAuthLoad: Promise<void> | null = null
   let staffLiveStarted = false
   let currentTableSession: { table: string; mode: LiveMode } | null = null
+
+  function canonicalizeDraftEntries(entries: PosOrderEntry[]) {
+    if (helpers?.normalizeEntryForDisplay && helpers?.getCanonicalDraftEntries) {
+      const normalizeEntryForDisplay = helpers.normalizeEntryForDisplay
+      const normalized = entries.map((entry) => normalizeEntryForDisplay(entry))
+      return helpers.getCanonicalDraftEntries(normalized)
+    }
+    return canonicalizeDraftEntriesBase(entries)
+  }
 
   function notifyLiveStateChange(roots: string[]) {
     onLiveStateChange?.(roots)
@@ -204,58 +224,56 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     return normalizeLiveTable(snapshot.val() as V3LiveTable | null | undefined)
   }
 
+  async function readPendingBatchDetail(table: string, batchId: string): Promise<PosOrderBatch | null> {
+    const snapshot = await db
+      .ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}/pendingBatches/${encodeBatchMapKey(batchId)}`)
+      .once('value')
+    const stored = snapshot.val() as V3OrderBatch | null | undefined
+    return stored ? mapStoredBatch(stored, helpers?.normalizeEntryForDisplay) : null
+  }
+
   function toDraftEntries(liveTable: V3LiveTable | null | undefined) {
     return Object.values(liveTable?.draft || {})
-      .map((entry) => mapStoredEntry(entry))
+      .map((entry) => mapStoredEntry(entry, helpers?.normalizeEntryForDisplay))
       .sort((left, right) => left.createdAt - right.createdAt)
   }
 
   function toBatchList(value: Record<string, V3OrderBatch> | undefined) {
     return Object.values(value || {})
-      .map((batch) => mapStoredBatch(batch))
+      .map((batch) => mapStoredBatch(batch, helpers?.normalizeEntryForDisplay))
       .sort((left, right) => left.createdAt - right.createdAt)
   }
 
-  function getPreviewBatch(summary: V3PendingSummary | null | undefined): PosOrderBatch | null {
+  function getPreviewBatch(summary: V3PendingSummary | null | undefined): PosPendingBatchPreview | null {
     if (!summary?.firstBatch) return null
     const firstBatch = summary.firstBatch
     return {
       batchId: firstBatch.batchId,
-      source: 'customer',
-      status: 'pending',
-      table: '',
-      customer: {},
+      requestSeq: readRequestSeqCounter(firstBatch.requestSeq),
       createdAt: firstBatch.createdAt,
-      updatedAt: firstBatch.createdAt,
       requestLabel: firstBatch.requestLabel,
-      entries: firstBatch.itemPreview.map((name, index) => ({
+      entries: firstBatch.itemPreview.map((item, index) => ({
         entryId: `preview_${firstBatch.batchId}_${index}`,
-        groupId: `preview_${firstBatch.batchId}_${index}`,
-        itemId: `preview_${index}`,
-        catalogKey: `preview_${index}`,
-        inventoryKey: `preview_${index}`,
-        itemName: name,
-        shortName: name,
-        categoryKey: 'a_la_carte',
-        quantity: 1,
-        status: 'pending',
-        source: 'customer',
-        createdAt: firstBatch.createdAt,
-        updatedAt: firstBatch.createdAt,
-        selections: {},
-        includeSelections: {},
-        upgradeSelections: {},
-        lines: [],
-        subtotal: 0,
-        summary: {
-          title: name,
-          subtitle: '',
-          quantityLabel: '1 份',
-          totalLabel: '$0',
-        },
+        title: typeof item === 'string' ? item : item.title,
+        quantityLabel: typeof item === 'string' ? '1 份' : item.quantityLabel || '1 份',
       })),
-      subtotal: 0,
     }
+  }
+
+  function readNextRequestSeq(liveTable: V3LiveTable | null | undefined) {
+    const summaryValue = readRequestSeqCounter(liveTable?.summary?.nextRequestSeq)
+    if (liveTable?.summary?.nextRequestSeq) {
+      return summaryValue
+    }
+    const existing = [
+      ...Object.values(liveTable?.pendingBatches || {}),
+      ...Object.values(liveTable?.submittedBatches || {}),
+    ].reduce((maxSeq, batch) => Math.max(maxSeq, resolveStoredBatchRequestSeq(batch)), 0)
+    return Math.max(summaryValue, existing + 1, 1)
+  }
+
+  function buildRequestLabel(displaySeqBase: number, requestSeq: number) {
+    return `#${displaySeqBase}-${requestSeq}`
   }
 
   function applyTableSummary(tableId: string, summary: V3TableSummary | null | undefined) {
@@ -316,8 +334,8 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       return
     }
     const preview = getPreviewBatch(summary)
-    if (preview) state.pendingBatches[tableId] = [preview]
-    else if (!state.submittedBatches[tableId]) delete state.pendingBatches[tableId]
+    if (preview) state.pendingBatchPreviews[tableId] = [preview]
+    else if (!state.submittedBatches[tableId]) delete state.pendingBatchPreviews[tableId]
   }
 
   async function _persistLiveTable(table: string, liveTable: V3LiveTable | null) {
@@ -664,18 +682,15 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         const byDay = await ensureHistoryBizDate(bizDate)
         return Object.values(byDay || {})
           .sort((left, right) => left.closedAt - right.closedAt)
-          .map((order) => orderRecordToPosOrder(order))
+          .map((order) => orderRecordToPosOrder(order, helpers?.normalizeEntryForDisplay))
       })
     )
     return orders.flat()
   }
 
-  async function listClosedOrdersByDay(targetDate: Date) {
-    const start = new Date(targetDate)
-    start.setHours(5, 0, 0, 0)
-    const end = new Date(start)
-    end.setDate(end.getDate() + 1)
-    return listClosedOrdersByRange({ start, endExclusive: end })
+  async function listClosedOrdersForBusinessDay(anchor: Date) {
+    const { start, endExclusive } = getBusinessDayRange(anchor)
+    return listClosedOrdersByRange({ start, endExclusive })
   }
 
   async function loadDailySummariesRange(start: Date, endExclusive: Date) {
@@ -774,6 +789,11 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     }
   }
 
+  function watchClosedOrdersForBusinessDay(anchor: Date, onInvalidate: (event: V3HistoryRangeEvent) => void) {
+    const { start, endExclusive } = getBusinessDayRange(anchor)
+    return watchClosedOrdersRange(start, endExclusive, onInvalidate)
+  }
+
   function watchDailySummariesRange(
     start: Date,
     endExclusive: Date,
@@ -838,9 +858,12 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     state.tableCustomers[table] = customer
     state.tableTimers[table] ||= Date.now()
     const updatedAt = Date.now()
+    const nextDraft = canonicalizeDraftEntries(
+      entries.map((entry) => ({ ...entry, status: 'draft', source: 'customer', updatedAt }))
+    )
     await transactLiveTable(table, (liveTable) =>
       buildLiveTable({
-        draft: sortEntries(entries.map((entry) => ({ ...entry, status: 'draft', source: 'customer', updatedAt }))),
+        draft: nextDraft,
         pendingBatches: toBatchList(liveTable.pendingBatches),
         submittedBatches: toBatchList(liveTable.submittedBatches),
         status:
@@ -851,6 +874,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
             : undefined,
         timerStartedAt: state.tableTimers[table],
         batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextRequestSeq: readNextRequestSeq(liveTable),
         nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
         customer,
         updatedAt,
@@ -872,6 +896,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
             : undefined,
         timerStartedAt: state.tableTimers[table],
         batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextRequestSeq: readNextRequestSeq(liveTable),
         nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
         customer: state.tableCustomers[table],
         updatedAt,
@@ -890,6 +915,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     const createdAt = Date.now()
     let batch: PosOrderBatch | null = null
     await transactLiveTable(table, (liveTable) => {
+      const requestSeq = readNextRequestSeq(liveTable)
       batch = {
         batchId: toBatchId('pending'),
         source: 'customer',
@@ -898,7 +924,8 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         customer,
         createdAt,
         updatedAt: createdAt,
-        requestLabel: `#${displaySeqBase}-${Object.keys(liveTable.pendingBatches).length + 1}`,
+        requestSeq,
+        requestLabel: buildRequestLabel(displaySeqBase, requestSeq),
         entries: sortEntries(
           entries.map((entry) => ({ ...entry, status: 'pending', source: 'customer', updatedAt: createdAt }))
         ),
@@ -913,6 +940,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         status: 'yellow',
         timerStartedAt: state.tableTimers[table] || createdAt,
         batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextRequestSeq: requestSeq + 1,
         nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
         customer,
         updatedAt: createdAt,
@@ -931,7 +959,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       if (!target) {
         return liveTable
       }
-      const acceptedBatch = mapStoredBatch(target)
+      const acceptedBatch = mapStoredBatch(target, helpers?.normalizeEntryForDisplay)
       acceptedBatch.status = 'accepted'
       acceptedBatch.acceptedAt = Date.now()
       acceptedBatch.updatedAt = acceptedBatch.acceptedAt
@@ -953,6 +981,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         status: 'yellow',
         timerStartedAt: state.tableTimers[table],
         batchCount: nextSubmitted.length,
+        nextRequestSeq: readNextRequestSeq(liveTable),
         nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
         customer: state.tableCustomers[table],
         updatedAt: acceptedBatch.updatedAt,
@@ -967,23 +996,25 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       if (!target) {
         return liveTable
       }
-      const rejected = mapStoredBatch(target)
+      const rejected = mapStoredBatch(target, helpers?.normalizeEntryForDisplay)
       const currentDraft = toDraftEntries(liveTable)
       const returnedEntries = rejected.entries.map((entry) => ({
         ...entry,
         status: 'draft' as const,
         updatedAt: Date.now(),
       }))
+      const nextDraft = canonicalizeDraftEntries([...currentDraft, ...returnedEntries])
       const nextPending = toBatchList(
         Object.fromEntries(Object.entries(liveTable.pendingBatches).filter(([id]) => id !== batchId))
       )
       return buildLiveTable({
-        draft: [...currentDraft, ...returnedEntries],
+        draft: nextDraft,
         pendingBatches: nextPending,
         submittedBatches: toBatchList(liveTable.submittedBatches),
         status: 'yellow',
         timerStartedAt: state.tableTimers[table],
         batchCount: Object.keys(liveTable.submittedBatches).length,
+        nextRequestSeq: readNextRequestSeq(liveTable),
         nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter),
         customer: state.tableCustomers[table],
         updatedAt: Date.now(),
@@ -992,7 +1023,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
   }
 
   async function saveStaffDraft(table: string, entries: PosOrderEntry[]) {
-    const next = sortEntries(entries.map((entry) => ({ ...entry, source: 'staff', status: 'draft' })))
+    const next = canonicalizeDraftEntries(entries.map((entry) => ({ ...entry, source: 'staff', status: 'draft' })))
     state.staffDrafts[table] = next
     if (currentTableSession?.table === table && currentTableSession.mode === 'staff') {
       state.activeDraftEntries = next
@@ -1008,6 +1039,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     const createdAt = Date.now()
     let batch: PosOrderBatch | null = null
     await transactLiveTable(table, (liveTable) => {
+      const requestSeq = readNextRequestSeq(liveTable)
       const nextSplitCounter = readSplitCounter(liveTable.summary?.nextSplitCounter)
       batch = {
         batchId: toBatchId('submitted'),
@@ -1018,7 +1050,8 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         createdAt,
         updatedAt: createdAt,
         acceptedAt: createdAt,
-        requestLabel: `#${displaySeqBase}-${Object.keys(liveTable.submittedBatches).length + 1}`,
+        requestSeq,
+        requestLabel: buildRequestLabel(displaySeqBase, requestSeq),
         entries: sortEntries(
           entries.map((entry) => ({ ...entry, source: 'staff', status: 'accepted', updatedAt: createdAt }))
         ),
@@ -1034,6 +1067,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         status: 'yellow',
         timerStartedAt: state.tableTimers[table] || createdAt,
         batchCount: nextSubmitted.length,
+        nextRequestSeq: requestSeq + 1,
         nextSplitCounter,
         customer: batch.customer,
         updatedAt: createdAt,
@@ -1056,9 +1090,28 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       if (!stored) {
         return liveTable
       }
-      const current = mapStoredBatch(stored)
+      const current = mapStoredBatch(stored, helpers?.normalizeEntryForDisplay)
       const updatedAt = Date.now()
       const nextSplitCounter = readSplitCounter(liveTable.summary?.nextSplitCounter)
+      if (entries.length === 0) {
+        const nextSubmitted = toBatchList(
+          Object.fromEntries(
+            Object.entries(liveTable.submittedBatches).filter(([id]) => id !== encodeBatchMapKey(batchId))
+          )
+        )
+        return buildLiveTable({
+          draft: toDraftEntries(liveTable),
+          pendingBatches: toBatchList(liveTable.pendingBatches),
+          submittedBatches: nextSubmitted,
+          status: 'yellow',
+          timerStartedAt: state.tableTimers[table],
+          batchCount: nextSubmitted.length,
+          nextRequestSeq: readNextRequestSeq(liveTable),
+          nextSplitCounter,
+          customer: state.tableCustomers[table],
+          updatedAt,
+        })
+      }
       nextBatch = {
         ...current,
         updatedAt,
@@ -1076,6 +1129,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         status: 'yellow',
         timerStartedAt: state.tableTimers[table],
         batchCount: nextSubmitted.length,
+        nextRequestSeq: readNextRequestSeq(liveTable),
         nextSplitCounter,
         customer: state.tableCustomers[table],
         updatedAt,
@@ -1165,6 +1219,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         status: 'yellow',
         timerStartedAt: state.tableTimers[payload.table],
         batchCount: remainingSubmitted.length,
+        nextRequestSeq: readNextRequestSeq(liveTable),
         nextSplitCounter: readSplitCounter(liveTable.summary?.nextSplitCounter) + 1,
         customer: state.tableCustomers[payload.table] || payload.customer,
         updatedAt: closedAt,
@@ -1213,7 +1268,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
       }
     }
 
-    return orderRecordToPosOrder(orderRecord)
+    return orderRecordToPosOrder(orderRecord, helpers?.normalizeEntryForDisplay)
   }
 
   async function deleteClosedOrder(order: PosOrder) {
@@ -1313,6 +1368,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
         const decodedTableId = decodeTableKey(tableId)
         applyTableSummary(decodedTableId, null)
         delete state.tableDrafts[decodedTableId]
+        delete state.pendingBatchPreviews[decodedTableId]
         delete state.pendingBatches[decodedTableId]
         delete state.submittedBatches[decodedTableId]
         notifyLiveStateChange(['tableSummaries'])
@@ -1384,10 +1440,11 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     ensureAttendanceWindow,
     ensureCatalog,
     ensureOwnerAuth,
-    listClosedOrdersByDay,
+    listClosedOrdersForBusinessDay,
     listClosedOrdersByRange,
     loadDailySummariesRange,
     loadItemStatsRange,
+    readPendingBatchDetail,
     readDailySummariesRange,
     readItemStatsRange,
     rejectPendingBatch,
@@ -1406,6 +1463,7 @@ export function createRtdbV3Repository({ db, state, onLiveStateChange }: Reposit
     updateSubmittedBatch,
     watchAttendanceWindow,
     watchCatalogRevision,
+    watchClosedOrdersForBusinessDay,
     watchClosedOrdersRange,
     watchDailySummariesRange,
     watchItemStatsRange,

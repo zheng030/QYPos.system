@@ -3,11 +3,14 @@ import { POS_DATA_SERVICE_KEY, type PosDataService } from '@/features/pos-data/s
 import { POS_KERNEL_SERVICE_KEY, type PosKernelService } from '@/features/pos-kernel/service'
 import type {
   PosBuilderState,
+  PosCategoryKey,
   PosMenuCategoryKey,
   PosOrderBatch,
   PosOrderEntry,
+  PosPendingBatchPreview,
   PosReceiptData,
 } from '@/features/pos-kernel/types'
+import { POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
 import { POS_UI_SERVICE_KEY, type PosUiService } from '@/features/pos-shell/service'
 import { CHECKIN_PAGE_SERVICE_KEY, type CheckinPageService } from '@/shared/checkin-page-service'
 import { findElement, requireElement, requireInput } from '@/shared/dom-helpers'
@@ -27,18 +30,25 @@ import {
   acceptPendingBatchAndPrint,
   buildReceiptMarkup,
   calculateSplitCheckoutTotal,
+  calculateStaffOrderTotal,
   getBatchStatusChip,
   getFloatingBarViewModel,
+  getStaffWorkspaceRowActions,
   getVisibleOrderBatches,
   guideBuilderIssue,
   persistCustomerInfoSilently,
   selectPendingOverlayBatch,
   submitDraftBatch,
+  summarizeStaffWorkspace,
   updateSubmittedBatchAndPrint,
 } from './runtime-support'
 import { POS_SALES_SERVICE_KEY, type PosSalesService } from './service'
 
 let booted = false
+
+type StaffWorkspaceSummaryView = ReturnType<typeof summarizeStaffWorkspace>
+type StaffWorkspaceRowView = StaffWorkspaceSummaryView['rows'][number]
+type StaffWorkspaceGroupView = StaffWorkspaceSummaryView['groups'][number]
 
 type BuilderTarget = PosBuilderState['target']
 
@@ -60,6 +70,13 @@ type PendingOrderAction = null | {
   onConfirm: () => Promise<void>
 }
 
+type PendingOverlayState = {
+  requestKey: string | null
+  loading: boolean
+  batch: PosOrderBatch | null
+  error: string | null
+}
+
 type CatalogWatchStop = (() => void) | null
 
 function formatCurrency(value: number) {
@@ -79,16 +96,41 @@ function formatDateTime(value: number) {
   return new Date(value).toLocaleString('zh-TW', { hour12: false })
 }
 
-function flattenBatchLines(batch: PosOrderBatch) {
-  return batch.entries.flatMap((entry) => entry.lines)
-}
-
 function groupChildLines(entry: PosOrderEntry) {
   return entry.lines.filter((line) => line.parentLineId)
 }
 
+function getVisibleDetailChildLines(entry: PosOrderEntry) {
+  return groupChildLines(entry).filter((line) => line.courseKind !== 'drink')
+}
+
 function _sortByCreated<T extends { createdAt: number }>(items: T[]) {
   return [...items].sort((left, right) => left.createdAt - right.createdAt)
+}
+
+function cloneEntryWithTreatState(entry: PosOrderEntry, isTreat: boolean): PosOrderEntry {
+  const nextLines = entry.lines.map((line) => ({
+    ...line,
+    isTreat,
+    lineTotal: isTreat ? 0 : line.unitPrice * line.quantity,
+  }))
+  const subtotal = nextLines.reduce((sum, line) => sum + line.lineTotal, 0)
+  const title = entry.itemName + (isTreat ? ' (招待)' : '')
+  return {
+    ...entry,
+    updatedAt: Date.now(),
+    lines: nextLines,
+    subtotal,
+    summary: {
+      ...entry.summary,
+      title,
+      totalLabel: `$${subtotal}`,
+    },
+  }
+}
+
+function getStaffCategoryLabel(categoryKey: PosCategoryKey) {
+  return POS_CATEGORY_LABELS[categoryKey] || POS_CATEGORY_LABELS.other
 }
 
 export function createPosSalesFeature(context: AppContext): FeatureRuntime {
@@ -115,8 +157,16 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       const splitCheckoutState: SplitCheckoutState = {
         selectedEntryIds: new Set<string>(),
       }
+      const pendingOverlayState: PendingOverlayState = {
+        requestKey: null,
+        loading: false,
+        batch: null,
+        error: null,
+      }
       let pendingOrderAction: PendingOrderAction = null
       let stopCatalogRevisionWatch: CatalogWatchStop = null
+      let printCleanupTimer: number | null = null
+      let removePrintListener: (() => void) | null = null
 
       function currentTable() {
         if (!kernel.state.selectedTable) {
@@ -125,14 +175,20 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         return kernel.state.selectedTable
       }
 
+      function maybeCurrentTable() {
+        return kernel.state.selectedTable
+      }
+
       function isCustomerMode() {
         return kernel.state.currentMode === 'customer'
       }
 
       function currentDraftEntries() {
-        return kernel.state.currentMode === 'staff'
-          ? kernel.state.staffDrafts[currentTable()] || []
-          : kernel.state.activeDraftEntries
+        if (kernel.state.currentMode === 'staff') {
+          const table = maybeCurrentTable()
+          return table ? kernel.state.staffDrafts[table] || [] : []
+        }
+        return kernel.state.activeDraftEntries
       }
 
       function currentCustomerInfo() {
@@ -141,10 +197,13 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       }
 
       function readCustomerInfo() {
+        const currentInfo = currentCustomerInfo()
+        const nameInput = findElement<HTMLInputElement>('custName')
+        const phoneInput = findElement<HTMLInputElement>('custPhone')
         return {
-          name: requireInput('custName').value.trim(),
-          phone: requireInput('custPhone').value.trim(),
-          orderId: currentCustomerInfo().orderId,
+          name: nameInput?.value.trim() || String(currentInfo.name || ''),
+          phone: phoneInput?.value.trim() || String(currentInfo.phone || ''),
+          orderId: currentInfo.orderId,
         }
       }
 
@@ -177,6 +236,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       function setCustomerMode(mode: 'staff' | 'customer') {
         kernel.state.currentMode = mode
         document.body.classList.toggle('customer-mode', mode === 'customer')
+        document.body.classList.toggle('staff-mode', mode === 'staff')
         if (mode === 'customer') {
           sessionStorage.setItem('customerMode', 'true')
         } else {
@@ -186,13 +246,22 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
 
       function updateFloatingActions() {
         const floatingBar = findElement('customerFloatingBar')
+        const customerMain = findElement('customerFloatingMain')
+        const staffWorkspace = findElement('staffFloatingWorkspace')
         const floatingLabel = findElement('floatingActionLabel')
         const clearBtn = findElement<HTMLButtonElement>('floatingClearBtn')
         const primaryBtn = findElement<HTMLButtonElement>('floatingPrimaryBtn')
-        if (!floatingBar || !floatingLabel || !clearBtn || !primaryBtn) return
+        if (!floatingBar || !customerMain || !staffWorkspace || !floatingLabel || !clearBtn || !primaryBtn) return
+
+        floatingBar.style.display = 'flex'
+        customerMain.style.display = isCustomerMode() ? 'flex' : 'none'
+        staffWorkspace.style.display = isCustomerMode() ? 'none' : 'flex'
+        if (!isCustomerMode()) {
+          updateStaffWorkspace()
+          return
+        }
 
         const viewModel = getFloatingBarViewModel(kernel.state.currentMode, kernel.state.menuFilter.activeTab)
-        floatingBar.style.display = viewModel.visible ? 'flex' : 'none'
         floatingLabel.innerText = viewModel.label
         clearBtn.style.display = viewModel.clearVisible ? 'inline-flex' : 'none'
         clearBtn.innerText = viewModel.clearText
@@ -200,6 +269,187 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         primaryBtn.style.display = viewModel.primaryVisible ? 'inline-flex' : 'none'
         primaryBtn.innerText = viewModel.primaryText
         primaryBtn.dataset.action = viewModel.primaryAction
+      }
+
+      function currentStaffDiscountPercent() {
+        return kernel.state.staffWorkspace.discount?.percent || 0
+      }
+
+      function currentSubmittedTotal() {
+        return kernel.state.activeSubmittedBatches.reduce((sum, batch) => sum + batch.subtotal, 0)
+      }
+
+      function isEntryTreat(entry: PosOrderEntry) {
+        return entry.lines.every((line) => line.isTreat)
+      }
+
+      function normalizeEntry(entry: PosOrderEntry) {
+        return kernel.helpers.normalizeEntryForDisplay(entry)
+      }
+
+      function getDisplaySummary(entry: PosOrderEntry) {
+        return kernel.helpers.buildEntryDisplaySummary(entry)
+      }
+
+      function flattenBatchLines(batch: PosOrderBatch) {
+        return batch.entries.flatMap((entry) => normalizeEntry(entry).lines)
+      }
+
+      function buildStaffRowSummary(entry: PosOrderEntry) {
+        const summary = getDisplaySummary(entry)
+        const parts = [entry.summary.quantityLabel]
+        if (summary.mainCompact) {
+          parts.push(summary.mainCompact)
+        }
+        if (summary.drinkCompact) {
+          parts.push(summary.drinkCompact)
+        }
+        return parts.join(' · ')
+      }
+
+      function renderEntrySubtitleLines(lines: Array<{ text: string; className?: string } | null | undefined | false>) {
+        return lines
+          .filter((line): line is { text: string; className?: string } =>
+            Boolean(line && typeof line === 'object' && line.text)
+          )
+          .map(
+            (line) =>
+              `<div class="entry-card-subtitle${line.className ? ` ${line.className}` : ''}">${escapeHtml(line.text)}</div>`
+          )
+          .join('')
+      }
+
+      function renderStaffWorkspaceActions(row: ReturnType<typeof summarizeStaffWorkspace>['rows'][number]) {
+        const isTreat = isEntryTreat(row.entry)
+        return `
+          <div class="entry-card-actions entry-card-actions--compact">
+            ${getStaffWorkspaceRowActions(row, isTreat)
+              .map((action) => {
+                const attrs = Object.entries(action.attrs)
+                  .map(([key, value]) => `${key}="${escapeHtml(value)}"`)
+                  .join(' ')
+                return `<button class="mini-btn mini-btn--compact ${action.tone} btn-effect" data-action="${action.action}" ${attrs}>${action.label}</button>`
+              })
+              .join('')}
+          </div>
+        `
+      }
+
+      function renderStaffWorkspaceEntry(row: StaffWorkspaceRowView) {
+        const entry = row.entry
+        const compactSummary = buildStaffRowSummary(entry)
+        const categoryLabel = getStaffCategoryLabel(entry.categoryKey)
+        const summary = getDisplaySummary(entry)
+        if (!kernel.state.staffWorkspace.expanded) {
+          return `
+            <div class="staff-stream-entry-line is-collapsed">
+              <div class="staff-stream-row-inline">
+                <span class="staff-stream-row-inline-main">
+                  <span class="staff-stream-inline-title">${escapeHtml(entry.summary.title)}</span>
+                  <span class="staff-stream-inline-summary">${escapeHtml(compactSummary)}</span>
+                </span>
+                <span class="staff-stream-row-inline-side">
+                  <span class="entry-card-total">${formatCurrency(entry.subtotal)}</span>
+                  <span class="staff-stream-row-actions-inline">${renderStaffWorkspaceActions(row)}</span>
+                </span>
+              </div>
+            </div>
+          `
+        }
+
+        return `
+          <div class="staff-stream-entry-line">
+            <div class="staff-stream-row-head">
+              <div class="staff-stream-row-title-group">
+                <div class="staff-stream-row-meta">
+                  <span class="staff-category-chip">${escapeHtml(categoryLabel)}</span>
+                  <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
+                  <span class="staff-stream-title-qty">${escapeHtml(entry.summary.quantityLabel)}</span>
+                </div>
+                ${summary.expandedSummary ? `<div class="entry-card-subtitle">${escapeHtml(summary.expandedSummary)}</div>` : ''}
+              </div>
+              <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+            </div>
+            <div class="staff-stream-row-actions">${renderStaffWorkspaceActions(row)}</div>
+          </div>
+        `
+      }
+
+      function renderStaffWorkspaceGroup(group: StaffWorkspaceGroupView) {
+        const badgeClass = group.kind === 'draft' ? 'draft' : 'accepted'
+        const requestMeta = group.requestLabel
+          ? `<span class="staff-stream-ref">${escapeHtml(group.requestLabel)}</span>`
+          : ''
+        return `
+          <article class="staff-stream-row ${badgeClass}${kernel.state.staffWorkspace.expanded ? '' : ' is-collapsed'}">
+            <div class="staff-stream-row-meta staff-stream-group-meta">
+              <span class="staff-stream-chip ${badgeClass}">${group.statusLabel}</span>
+              ${requestMeta}
+            </div>
+            <div class="staff-stream-group-list">
+              ${group.rows.map((row) => renderStaffWorkspaceEntry(row)).join('')}
+            </div>
+          </article>
+        `
+      }
+
+      function applyStaffWorkspaceState() {
+        const floatingBar = findElement('customerFloatingBar')
+        const staffWorkspace = findElement('staffFloatingWorkspace')
+        const toggleLabel = findElement('staffWorkspaceToggleLabel')
+        const toggleButton = findElement('staffWorkspaceToggleButton')
+        const serviceFeeBtn = findElement('staffServiceFeeBtn')
+        const discountBtn = findElement('staffDiscountBtn')
+        if (floatingBar) {
+          floatingBar.classList.toggle('is-expanded', kernel.state.staffWorkspace.expanded)
+          floatingBar.classList.toggle('is-collapsed', !kernel.state.staffWorkspace.expanded)
+        }
+        if (staffWorkspace) {
+          staffWorkspace.classList.toggle('is-expanded', kernel.state.staffWorkspace.expanded)
+          staffWorkspace.classList.toggle('is-collapsed', !kernel.state.staffWorkspace.expanded)
+        }
+        if (toggleLabel) {
+          toggleLabel.innerText = kernel.state.staffWorkspace.expanded ? '收合明細' : '展開明細'
+        }
+        if (toggleButton) {
+          toggleButton.setAttribute('aria-expanded', kernel.state.staffWorkspace.expanded ? 'true' : 'false')
+        }
+        if (serviceFeeBtn) {
+          serviceFeeBtn.classList.toggle('active', kernel.state.staffWorkspace.serviceFeeEnabled)
+        }
+        if (discountBtn) {
+          discountBtn.classList.toggle('active', currentStaffDiscountPercent() > 0)
+          discountBtn.innerText =
+            currentStaffDiscountPercent() > 0 ? `🏷️ ${currentStaffDiscountPercent()}%折數` : '🏷️ 折扣'
+        }
+      }
+
+      function updateStaffWorkspace() {
+        const streamList = findElement('staffWorkspaceStreamList')
+        const metaEl = findElement('staffWorkspaceMeta')
+        const totalEl = findElement('staffWorkspaceTotal')
+        if (!streamList || !metaEl || !totalEl) {
+          return
+        }
+
+        const entries = currentDraftEntries()
+        const batches = kernel.state.activeSubmittedBatches
+        const totals = summarizeStaffWorkspace(entries, batches)
+        const estimatedCheckout = calculateStaffOrderTotal(
+          totals.submittedSubtotal,
+          currentStaffDiscountPercent(),
+          kernel.state.staffWorkspace.serviceFeeEnabled
+        )
+        metaEl.innerText = `${totals.draftEntryCount} 項未送出 · ${totals.acceptedEntryCount} 項已接單 · ${totals.acceptedBatchCount} 張已接單${currentStaffDiscountPercent() > 0 || kernel.state.staffWorkspace.serviceFeeEnabled ? ' · 已套用整單設定' : ''}`
+        totalEl.innerText = formatCurrency(estimatedCheckout)
+
+        streamList.innerHTML =
+          totals.groups.length === 0
+            ? "<div class='staff-stream-empty'>目前沒有未送出或已接單品項</div>"
+            : totals.groups.map((group) => renderStaffWorkspaceGroup(group)).join('')
+
+        streamList.classList.toggle('is-expanded', kernel.state.staffWorkspace.expanded)
+        applyStaffWorkspaceState()
       }
 
       function stopInventoryRevisionWatch() {
@@ -250,9 +500,15 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         if (draftTitle) draftTitle.innerText = '購物車'
         if (draftSubtitle) draftSubtitle.innerText = '僅保留在目前終端，送出後直接成立訂單紀錄'
         if (submittedTitle) submittedTitle.innerText = '訂單紀錄'
-        if (submittedSubtitle) submittedSubtitle.innerText = '可補印、回編，結帳只統計訂單紀錄'
+        if (submittedSubtitle) submittedSubtitle.innerText = '可補印、編輯，結帳只統計訂單紀錄'
         if (menuSubtitle) menuSubtitle.innerText = '依主分類瀏覽與加點'
         updateFloatingActions()
+      }
+
+      function resetStaffWorkspaceState() {
+        kernel.state.staffWorkspace.expanded = false
+        kernel.state.staffWorkspace.serviceFeeEnabled = false
+        kernel.state.staffWorkspace.discount = null
       }
 
       function renderMenuGrid() {
@@ -328,14 +584,19 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         }
       }
 
-      function renderEntryCard(entry: PosOrderEntry, actions: { editAction: string; deleteAction: string }) {
-        const childLines = groupChildLines(entry)
+      function renderEntryCard(
+        entry: PosOrderEntry,
+        actions: { editAction: string; deleteAction: string; treatAction?: string }
+      ) {
+        const childLines = getVisibleDetailChildLines(entry)
+        const isTreat = entry.lines.every((line) => line.isTreat)
+        const summary = getDisplaySummary(entry)
         return `
           <article class="entry-card">
             <div class="entry-card-head">
               <div>
                 <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
-                ${entry.summary.subtitle ? `<div class="entry-card-subtitle">${escapeHtml(entry.summary.subtitle)}</div>` : ''}
+                ${renderEntrySubtitleLines([{ text: summary.mainSummary }])}
               </div>
               <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
             </div>
@@ -351,9 +612,16 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
                 : ''
             }
             <div class="entry-card-head" style="margin-top:12px;">
-              <div class="entry-card-subtitle">${escapeHtml(entry.summary.quantityLabel)}</div>
+              <div>
+                ${renderEntrySubtitleLines([{ text: entry.summary.quantityLabel }, { text: summary.drinkSummary }])}
+              </div>
               <div class="entry-card-actions">
                 <button class="mini-btn primary btn-effect" data-action="${actions.editAction}" data-entry-id="${escapeHtml(entry.entryId)}">編輯</button>
+                ${
+                  actions.treatAction
+                    ? `<button class="mini-btn ${isTreat ? 'success' : 'warning'} btn-effect" data-action="${actions.treatAction}" data-entry-id="${escapeHtml(entry.entryId)}">${isTreat ? '取消招待' : '招待'}</button>`
+                    : ''
+                }
                 <button class="mini-btn danger btn-effect" data-action="${actions.deleteAction}" data-entry-id="${escapeHtml(entry.entryId)}">刪除</button>
               </div>
             </div>
@@ -376,6 +644,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
             renderEntryCard(entry, {
               editAction: 'edit-draft-entry',
               deleteAction: 'remove-draft-entry',
+              treatAction: kernel.state.currentMode === 'staff' ? 'toggle-draft-entry-treat' : undefined,
             })
           )
           .join('')
@@ -388,7 +657,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
           : options.editable
             ? `
                 <div class="batch-card-actions">
-                  <button class="mini-btn primary btn-effect" data-action="edit-submitted-batch" data-batch-id="${escapeHtml(batch.batchId)}">回編</button>
+                  <button class="mini-btn primary btn-effect" data-action="edit-submitted-batch" data-batch-id="${escapeHtml(batch.batchId)}">編輯</button>
                   <button class="mini-btn primary btn-effect" data-action="reprint-submitted-batch" data-batch-id="${escapeHtml(batch.batchId)}">補印</button>
                 </div>
               `
@@ -406,20 +675,27 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
               ${batch.entries
                 .map((entry) => {
                   const grouped = groupOrderLines(entry.lines)[0]
-                  const childLines = grouped?.children || groupChildLines(entry)
+                  const childLines = (grouped?.children || groupChildLines(entry)).filter(
+                    (line) => line.courseKind !== 'drink'
+                  )
+                  const summary = getDisplaySummary(entry)
                   const entryActions =
                     options.pending || !options.editable
                       ? ''
                       : `
                           <div class="entry-card-actions">
-                            <button class="mini-btn primary btn-effect" data-action="edit-submitted-entry" data-batch-id="${escapeHtml(batch.batchId)}" data-entry-id="${escapeHtml(entry.entryId)}">回編</button>
+                            <button class="mini-btn primary btn-effect" data-action="edit-submitted-entry" data-batch-id="${escapeHtml(batch.batchId)}" data-entry-id="${escapeHtml(entry.entryId)}">編輯</button>
                           </div>
                         `
                   return `
                     <div class="entry-line-row">
                       <div>
                         <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
-                        ${entry.summary.subtitle ? `<div class="entry-card-subtitle">${escapeHtml(entry.summary.subtitle)}</div>` : ''}
+                        ${renderEntrySubtitleLines([
+                          { text: entry.summary.quantityLabel },
+                          { text: summary.mainSummary },
+                          { text: summary.drinkSummary },
+                        ])}
                         ${childLines
                           .map(
                             (line) =>
@@ -455,12 +731,66 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
             : "<div class='batch-card'>目前沒有訂單紀錄</div>")
       }
 
+      function renderPendingOverlayEntries(entries: PosOrderEntry[]) {
+        return entries
+          .map((entry) => {
+            const summary = getDisplaySummary(entry)
+            return `
+              <div class="entry-card">
+                <div class="entry-card-head">
+                  <div>
+                    <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
+                    ${renderEntrySubtitleLines([
+                      { text: entry.summary.quantityLabel },
+                      { text: summary.mainSummary },
+                      { text: summary.drinkSummary },
+                    ])}
+                  </div>
+                  <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+                </div>
+              </div>
+            `
+          })
+          .join('')
+      }
+
+      function renderPendingOverlayPreview(
+        preview: PosPendingBatchPreview,
+        options?: { loading?: boolean; error?: string | null }
+      ) {
+        return preview.entries
+          .map(
+            (entry) => `
+              <div class="entry-card pending-overlay-preview-card${options?.loading ? ' is-loading' : ''}${options?.error ? ' is-error' : ''}">
+                <div class="entry-card-head">
+                  <div>
+                    <div class="entry-card-title">${escapeHtml(entry.title)}</div>
+                    ${renderEntrySubtitleLines([
+                      { text: entry.quantityLabel },
+                      {
+                        text: options?.error
+                          ? options.error
+                          : options?.loading
+                            ? '正在載入訂單明細…'
+                            : '等待載入完整明細',
+                        className: 'pending-overlay-preview-copy',
+                      },
+                    ])}
+                  </div>
+                  <div class="entry-card-total pending-overlay-preview-total">${options?.error ? '明細未載入' : '載入中'}</div>
+                </div>
+              </div>
+            `
+          )
+          .join('')
+      }
+
       function renderPendingOverlay() {
         const overlay = findElement('pendingBatchOverlay')
         const title = findElement('pendingOverlayTitle')
         const list = findElement('pendingOverlayList')
         if (!overlay || !title || !list) return
-        const pending = selectPendingOverlayBatch(kernel.state.currentMode, kernel.state.pendingBatches)
+        const pending = selectPendingOverlayBatch(kernel.state.currentMode, kernel.state.pendingBatchPreviews)
         if (!pending) {
           overlay.classList.remove('show')
           kernel.state.currentPendingBatchId = null
@@ -471,22 +801,67 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         kernel.state.currentPendingTable = pending.table
         kernel.state.currentPendingBatchId = pending.batch.batchId
         title.innerText = `桌號：${pending.table} · ${pending.batch.requestLabel}`
-        list.innerHTML = pending.batch.entries
-          .map(
-            (entry) => `
-              <div class="entry-card">
-                <div class="entry-card-head">
-                  <div>
-                    <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
-                    ${entry.summary.subtitle ? `<div class="entry-card-subtitle">${escapeHtml(entry.summary.subtitle)}</div>` : ''}
-                  </div>
-                  <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
-                </div>
-              </div>
-            `
-          )
-          .join('')
+
+        const requestKey = `${pending.table}:${pending.batch.batchId}`
+        if (
+          pendingOverlayState.requestKey &&
+          pendingOverlayState.requestKey !== requestKey &&
+          !pendingOverlayState.loading
+        ) {
+          pendingOverlayState.batch = null
+          pendingOverlayState.error = null
+        }
+        const resolvedBatch =
+          pendingOverlayState.requestKey === requestKey && pendingOverlayState.batch?.batchId === pending.batch.batchId
+            ? pendingOverlayState.batch
+            : null
+
+        list.innerHTML = resolvedBatch
+          ? renderPendingOverlayEntries(resolvedBatch.entries)
+          : renderPendingOverlayPreview(pending.batch, {
+              loading: pendingOverlayState.requestKey === requestKey && pendingOverlayState.loading,
+              error:
+                pendingOverlayState.requestKey === requestKey && pendingOverlayState.error
+                  ? pendingOverlayState.error
+                  : null,
+            })
         overlay.classList.add('show')
+      }
+
+      async function ensurePendingOverlayBatchDetail(table: string, preview: PosPendingBatchPreview) {
+        const requestKey = `${table}:${preview.batchId}`
+        if (
+          pendingOverlayState.requestKey === requestKey &&
+          (pendingOverlayState.loading || pendingOverlayState.batch)
+        ) {
+          renderPendingOverlay()
+          return
+        }
+
+        pendingOverlayState.requestKey = requestKey
+        pendingOverlayState.loading = true
+        pendingOverlayState.batch = null
+        pendingOverlayState.error = null
+        renderPendingOverlay()
+
+        try {
+          const batch = await data.readPendingBatchDetail(table, preview.batchId)
+          if (pendingOverlayState.requestKey !== requestKey) {
+            return
+          }
+          pendingOverlayState.loading = false
+          pendingOverlayState.batch = batch
+          pendingOverlayState.error = batch ? null : '找不到完整訂單明細'
+        } catch {
+          if (pendingOverlayState.requestKey !== requestKey) {
+            return
+          }
+          pendingOverlayState.loading = false
+          pendingOverlayState.batch = null
+          pendingOverlayState.error = '完整訂單明細載入失敗'
+        }
+
+        renderPendingOverlay()
       }
 
       function openBuilder(itemId: string, target: BuilderTarget, entry?: PosOrderEntry, batchId?: string) {
@@ -585,26 +960,29 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         }
 
         const current = currentDraftEntries()
-        const next = builderState.editingEntryId
-          ? current.map((entry) => (entry.entryId === result.entry.entryId ? result.entry : entry))
-          : [...current, result.entry]
+        const next = kernel.helpers.getCanonicalDraftEntries(
+          builderState.editingEntryId
+            ? current.map((entry) => (entry.entryId === result.entry.entryId ? result.entry : entry))
+            : [...current, result.entry]
+        )
         await persistDraft(next)
         closeBuilder()
-        if (!isCustomerMode()) {
-          setOrderTab('cart')
-        }
         renderCart()
       }
 
       function renderCart() {
         setCustomerBoxVisibility()
         updatePanelCopy()
-        setOrderTab(kernel.state.menuFilter.activeTab)
         renderMenuGrid()
         renderBuilder()
         renderDraftEntries()
         renderSubmittedBatches()
         renderPendingOverlay()
+        if (isCustomerMode()) {
+          setOrderTab(kernel.state.menuFilter.activeTab)
+        } else {
+          updateFloatingActions()
+        }
       }
 
       function closeOrderActionConfirmModal() {
@@ -668,6 +1046,43 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         renderCart()
       }
 
+      async function toggleDraftEntryTreat(entryId: string) {
+        const next = currentDraftEntries().map((entry) => {
+          if (entry.entryId !== entryId) {
+            return entry
+          }
+          const isTreat = !isEntryTreat(entry)
+          return cloneEntryWithTreatState(entry, isTreat)
+        })
+        await persistDraft(next)
+        renderCart()
+      }
+
+      async function updateSubmittedEntrySet(
+        batchId: string,
+        buildNext: (entries: PosOrderEntry[]) => PosOrderEntry[]
+      ) {
+        const batch = kernel.state.activeSubmittedBatches.find((candidate) => candidate.batchId === batchId)
+        if (!batch) return
+        await data.updateSubmittedBatch(currentTable(), batchId, buildNext(batch.entries))
+        renderCart()
+      }
+
+      async function toggleSubmittedEntryTreat(batchId: string, entryId: string) {
+        await updateSubmittedEntrySet(batchId, (entries) =>
+          entries.map((entry) => {
+            if (entry.entryId !== entryId) {
+              return entry
+            }
+            return cloneEntryWithTreatState(entry, !isEntryTreat(entry))
+          })
+        )
+      }
+
+      async function removeSubmittedEntry(batchId: string, entryId: string) {
+        await updateSubmittedEntrySet(batchId, (entries) => entries.filter((entry) => entry.entryId !== entryId))
+      }
+
       async function discardCustomerDraft() {
         await data.discardCustomerDraft(currentTable())
         closeBuilder()
@@ -678,6 +1093,26 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         await data.saveStaffDraft(currentTable(), [])
         closeBuilder()
         renderCart()
+      }
+
+      async function saveAndExitStaffOrder() {
+        const entries = currentDraftEntries()
+        if (entries.length === 0) {
+          await openTableSelect()
+          return
+        }
+        await submitDraftBatch({
+          mode: 'staff',
+          table: currentTable(),
+          entries,
+          customer: readCustomerInfo(),
+          submitCustomerDraft: data.submitCustomerDraft,
+          createStaffBatch: data.createStaffBatch,
+          printKitchenTicket: printKitchenTicketForBatch,
+        })
+        closeBuilder()
+        resetStaffWorkspaceState()
+        await openTableSelect()
       }
 
       async function submitActiveDraft() {
@@ -696,7 +1131,9 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
           printKitchenTicket: printKitchenTicketForBatch,
         })
         closeBuilder()
-        setOrderTab('orders')
+        if (isCustomerMode()) {
+          setOrderTab('orders')
+        }
         renderCart()
       }
 
@@ -711,7 +1148,9 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         if (!batch || batch.entries.length === 0) return
         const targetEntry = batch.entries[0]
         openBuilder(targetEntry.itemId, 'submitted-batch', targetEntry, batchId)
-        setOrderTab('orders')
+        if (isCustomerMode()) {
+          setOrderTab('orders')
+        }
       }
 
       async function editSubmittedEntry(batchId: string, entryId: string) {
@@ -719,7 +1158,9 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         const targetEntry = batch?.entries.find((entry) => entry.entryId === entryId)
         if (!batch || !targetEntry) return
         openBuilder(targetEntry.itemId, 'submitted-batch', targetEntry, batchId)
-        setOrderTab('orders')
+        if (isCustomerMode()) {
+          setOrderTab('orders')
+        }
       }
 
       async function acceptPendingBatchFromOverlay() {
@@ -732,6 +1173,10 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
           acceptPendingBatch: data.acceptPendingBatch,
           printKitchenTicket: printKitchenTicketForBatch,
         })
+        pendingOverlayState.requestKey = null
+        pendingOverlayState.loading = false
+        pendingOverlayState.batch = null
+        pendingOverlayState.error = null
         renderCart()
       }
 
@@ -740,14 +1185,26 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         const batchId = kernel.state.currentPendingBatchId
         if (!table || !batchId) return
         await data.rejectPendingBatch(table, batchId)
+        pendingOverlayState.requestKey = null
+        pendingOverlayState.loading = false
+        pendingOverlayState.batch = null
+        pendingOverlayState.error = null
         renderCart()
       }
 
       function showPendingBatchOverlay() {
+        const pending = selectPendingOverlayBatch(kernel.state.currentMode, kernel.state.pendingBatchPreviews)
         renderPendingOverlay()
+        if (pending) {
+          void ensurePendingOverlayBatchDetail(pending.table, pending.batch)
+        }
       }
 
       function closePendingBatchOverlay() {
+        pendingOverlayState.requestKey = null
+        pendingOverlayState.loading = false
+        pendingOverlayState.batch = null
+        pendingOverlayState.error = null
         renderPendingOverlay()
       }
 
@@ -761,12 +1218,23 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         if (!modal) return
         const entries = kernel.state.activeSubmittedBatches.flatMap((batch) => batch.entries)
         const total = entries.reduce((sum, entry) => sum + entry.subtotal, 0)
+        const discountPercent = isCustomerMode() ? 0 : currentStaffDiscountPercent()
+        const payDiscountRow = findElement('payDiscountRow')
+        const payDiscountValue = findElement('payDiscountValue')
         requireElement('payOriginal').innerText = formatCurrency(total)
         requireElement('payOriginal').dataset.amount = String(total)
         requireElement('payDiscLabel').innerText = ''
-        requireInput('payServiceFee').checked = false
+        requireInput('payServiceFee').checked = isCustomerMode() ? false : kernel.state.staffWorkspace.serviceFeeEnabled
         requireInput('payAllowance').value = '0'
-        requireInput('payFinal').value = String(total)
+        if (payDiscountRow) {
+          payDiscountRow.style.display = discountPercent > 0 ? 'flex' : 'none'
+        }
+        if (payDiscountValue) {
+          payDiscountValue.innerText = discountPercent > 0 ? `${discountPercent}%` : '無'
+        }
+        requireInput('payFinal').value = String(
+          calculateStaffOrderTotal(total, discountPercent, requireInput('payServiceFee').checked)
+        )
         modal.style.display = 'flex'
       }
 
@@ -799,13 +1267,15 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         return entries
           .map((entry) => {
             const grouped = groupOrderLines(entry.lines)[0]
-            const children = grouped?.children || groupChildLines(entry)
+            const children = (grouped?.children || groupChildLines(entry)).filter((line) => line.courseKind !== 'drink')
+            const summary = getDisplaySummary(entry)
             return `
               <article class="entry-card split-entry-card">
                 <div class="entry-card-head">
                   <div>
                     <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
-                    ${entry.summary.subtitle ? `<div class="entry-card-subtitle">${escapeHtml(entry.summary.subtitle)}</div>` : ''}
+                    ${summary.mainSummary ? `<div class="entry-card-subtitle">${escapeHtml(summary.mainSummary)}</div>` : ''}
+                    ${summary.drinkSummary ? `<div class="entry-card-subtitle">${escapeHtml(summary.drinkSummary)}</div>` : ''}
                   </div>
                   <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
                 </div>
@@ -885,11 +1355,18 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
 
       function recalcFinalPay() {
         const original = Number.parseInt(requireElement('payOriginal').dataset.amount || '0', 10) || 0
+        const discountPercent = isCustomerMode() ? 0 : currentStaffDiscountPercent()
         const serviceFeeEnabled = requireInput('payServiceFee').checked
         const allowance = Number.parseInt(requireInput('payAllowance').value || '0', 10) || 0
-        const withServiceFee = serviceFeeEnabled ? original + Math.round(original * 0.1) : original
-        requireElement('payDiscLabel').innerText = serviceFeeEnabled ? '(含 10% 服務費)' : ''
-        requireInput('payFinal').value = String(Math.max(0, withServiceFee - allowance))
+        requireElement('payDiscLabel').innerText =
+          discountPercent > 0
+            ? `(已套用 ${discountPercent}% 折數${serviceFeeEnabled ? '，含 10% 服務費' : ''})`
+            : serviceFeeEnabled
+              ? '(含 10% 服務費)'
+              : ''
+        requireInput('payFinal').value = String(
+          calculateStaffOrderTotal(original, discountPercent, serviceFeeEnabled, allowance)
+        )
       }
 
       async function checkoutAll() {
@@ -934,11 +1411,58 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       async function printReceipt(data: PosReceiptData, isTicket = false) {
         const container = requireElement('receipt-print-area')
         const title = isTicket ? 'Kitchen 工作單' : '結帳明細'
-        container.innerHTML = buildReceiptMarkup(data, title)
+        const resetPrintHost = () => {
+          if (printCleanupTimer !== null) {
+            window.clearTimeout(printCleanupTimer)
+            printCleanupTimer = null
+          }
+          removePrintListener?.()
+          removePrintListener = null
+          document.body.classList.remove('receipt-printing')
+          container.classList.remove('print-area-active')
+          container.classList.add('print-area-hidden')
+          container.innerHTML = ''
+        }
 
-        window.print()
-        await new Promise((resolve) => window.setTimeout(resolve, 20))
-        container.innerHTML = ''
+        resetPrintHost()
+        container.innerHTML = buildReceiptMarkup(
+          {
+            ...data,
+            lines: data.lines,
+          },
+          title
+        )
+        container.classList.remove('print-area-hidden')
+        container.classList.add('print-area-active')
+        document.body.classList.add('receipt-printing')
+
+        await new Promise<void>((resolve, reject) => {
+          let settled = false
+          const finalize = () => {
+            if (settled) {
+              return
+            }
+            settled = true
+            resetPrintHost()
+            resolve()
+          }
+          const handleAfterPrint = () => {
+            finalize()
+          }
+
+          window.addEventListener('afterprint', handleAfterPrint, { once: true })
+          removePrintListener = () => {
+            window.removeEventListener('afterprint', handleAfterPrint)
+          }
+          printCleanupTimer = window.setTimeout(finalize, 2000)
+
+          try {
+            window.print()
+          } catch (error) {
+            resetPrintHost()
+            reject(error)
+          }
+        })
       }
 
       async function printKitchenTicketForBatch(batch: PosOrderBatch) {
@@ -992,6 +1516,58 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       function closeReprintModal() {
         const modal = findElement('reprintSelectionModal')
         if (modal) modal.style.display = 'none'
+      }
+
+      function openStaffDiscountModal() {
+        if (isCustomerMode()) return
+        const modal = findElement('staffDiscountModal')
+        const original = currentSubmittedTotal()
+        const currentPercent = currentStaffDiscountPercent()
+        if (findElement('staffDiscountOriginal')) {
+          requireElement('staffDiscountOriginal').innerText = formatCurrency(original)
+        }
+        if (findElement<HTMLInputElement>('staffDiscountInput')) {
+          requireInput('staffDiscountInput').value = currentPercent > 0 ? String(currentPercent) : ''
+        }
+        previewStaffDiscount()
+        if (modal) modal.style.display = 'flex'
+      }
+
+      function closeStaffDiscountModal() {
+        const modal = findElement('staffDiscountModal')
+        if (modal) modal.style.display = 'none'
+      }
+
+      function previewStaffDiscount() {
+        const preview = findElement('staffDiscountPreview')
+        const input = findElement<HTMLInputElement>('staffDiscountInput')
+        if (!preview || !input) return
+        const percent = Number.parseFloat(input.value || '0')
+        const original = currentSubmittedTotal()
+        if (Number.isNaN(percent) || percent <= 0 || percent > 100) {
+          preview.innerText = ''
+          return
+        }
+        preview.innerText = `原價 ${formatCurrency(original)} → 折後 ${formatCurrency(Math.round(original * (percent / 100)))}`
+      }
+
+      function confirmStaffDiscount() {
+        const input = findElement<HTMLInputElement>('staffDiscountInput')
+        if (!input) return
+        const percent = Number.parseFloat(input.value || '0')
+        kernel.state.staffWorkspace.discount =
+          Number.isFinite(percent) && percent > 0 && percent <= 100 ? { percent } : null
+        closeStaffDiscountModal()
+        updateFloatingActions()
+      }
+
+      function resetStaffDiscount() {
+        kernel.state.staffWorkspace.discount = null
+        if (findElement<HTMLInputElement>('staffDiscountInput')) {
+          requireInput('staffDiscountInput').value = ''
+        }
+        previewStaffDiscount()
+        updateFloatingActions()
       }
 
       function toggleAllReprint(checked: boolean) {
@@ -1088,6 +1664,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
 
       async function openTableSelect() {
         closeBuilder()
+        resetStaffWorkspaceState()
         ui.hideAll()
         ui.activatePage('tableSelect')
         await renderTableGrid()
@@ -1111,6 +1688,9 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
           return
         }
         setCustomerMode(mode)
+        if (mode === 'staff') {
+          resetStaffWorkspaceState()
+        }
         requireElement('seatLabel').innerText = `（${table}）`
         kernel.state.menuFilter.activeCategoryKey = defaultCategory
         kernel.state.menuFilter.activeTab = 'menu'
@@ -1127,9 +1707,11 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       }
 
       async function updateCustomerInfoSilently() {
+        const table = maybeCurrentTable()
+        if (!table) return
         await persistCustomerInfoSilently({
           mode: kernel.state.currentMode,
-          table: currentTable(),
+          table,
           entries: currentDraftEntries(),
           customer: readCustomerInfo(),
           saveCustomerDraft: data.saveCustomerDraft,
@@ -1138,7 +1720,7 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
 
       async function openCloseBusinessModal() {
         const modal = findElement('summaryModal')
-        const orders = await data.listClosedOrdersByDay(new Date())
+        const orders = await data.listClosedOrdersForBusinessDay(new Date())
         const total = orders.reduce((sum, order) => sum + (order.total || 0), 0)
         const countEl = findElement('sumCount')
         const totalEl = findElement('sumTotal')
@@ -1217,6 +1799,12 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
         const entryId = element.dataset.entryId
         if (entryId) {
           void removeDraftEntry(entryId)
+        }
+      })
+      ui.on('click', 'toggle-draft-entry-treat', (_event, element) => {
+        const entryId = element.dataset.entryId
+        if (entryId) {
+          void toggleDraftEntryTreat(entryId)
         }
       })
       ui.on('click', 'discard-customer-draft', () => {
@@ -1354,6 +1942,20 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
           void editSubmittedEntry(batchId, entryId)
         }
       })
+      ui.on('click', 'toggle-submitted-entry-treat', (_event, element) => {
+        const batchId = element.dataset.batchId
+        const entryId = element.dataset.entryId
+        if (batchId && entryId) {
+          void toggleSubmittedEntryTreat(batchId, entryId)
+        }
+      })
+      ui.on('click', 'remove-submitted-entry', (_event, element) => {
+        const batchId = element.dataset.batchId
+        const entryId = element.dataset.entryId
+        if (batchId && entryId) {
+          void removeSubmittedEntry(batchId, entryId)
+        }
+      })
       ui.on('click', 'reprint-submitted-batch', (_event, element) => {
         const batchId = element.dataset.batchId
         if (batchId) {
@@ -1362,6 +1964,38 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       })
       ui.on('click', 'open-reprint-modal', () => {
         void openReprintModal()
+      })
+      ui.on('click', 'toggle-staff-workspace', () => {
+        kernel.state.staffWorkspace.expanded = !kernel.state.staffWorkspace.expanded
+        updateFloatingActions()
+      })
+      ui.on('keydown', 'toggle-staff-workspace', (event) => {
+        if (!(event instanceof KeyboardEvent) || (event.key !== 'Enter' && event.key !== ' ')) return
+        event.preventDefault()
+        kernel.state.staffWorkspace.expanded = !kernel.state.staffWorkspace.expanded
+        updateFloatingActions()
+      })
+      ui.on('click', 'toggle-staff-service-fee', () => {
+        kernel.state.staffWorkspace.serviceFeeEnabled = !kernel.state.staffWorkspace.serviceFeeEnabled
+        updateFloatingActions()
+      })
+      ui.on('click', 'open-staff-discount-modal', () => {
+        openStaffDiscountModal()
+      })
+      ui.on('click', 'close-staff-discount-modal', () => {
+        closeStaffDiscountModal()
+      })
+      ui.on('input', 'preview-staff-discount', () => {
+        previewStaffDiscount()
+      })
+      ui.on('click', 'confirm-staff-discount', () => {
+        confirmStaffDiscount()
+      })
+      ui.on('click', 'reset-staff-discount', () => {
+        resetStaffDiscount()
+      })
+      ui.on('click', 'staff-save-and-exit', () => {
+        void saveAndExitStaffOrder()
       })
       ui.on('click', 'close-reprint-modal', () => {
         closeReprintModal()

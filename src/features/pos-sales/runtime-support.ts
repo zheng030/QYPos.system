@@ -1,8 +1,10 @@
 import type {
   PosBatchStatus,
+  PosEntryDisplaySummary,
   PosOrderBatch,
   PosOrderEntry,
   PosOrderLine,
+  PosPendingBatchPreview,
   PosReceiptData,
   PosTableCustomer,
 } from '@/features/pos-kernel/types'
@@ -18,7 +20,7 @@ type VisibleBatchCard = {
 
 type PendingOverlayBatch = {
   table: string
-  batch: PosOrderBatch
+  batch: PosPendingBatchPreview
 }
 
 type ReceiptGroup = {
@@ -86,6 +88,63 @@ type FloatingBarViewModel = {
   primaryAction: string
 }
 
+type StaffWorkspaceDraftRow = {
+  kind: 'draft'
+  statusLabel: '未送出'
+  createdAt: number
+  requestLabel: null
+  entry: PosOrderEntry
+}
+
+type StaffWorkspaceAcceptedRow = {
+  kind: 'accepted'
+  statusLabel: '已接單'
+  createdAt: number
+  requestLabel: string
+  batchId: string
+  entry: PosOrderEntry
+}
+
+export type StaffWorkspaceRow = StaffWorkspaceDraftRow | StaffWorkspaceAcceptedRow
+
+type StaffWorkspaceDraftGroup = {
+  kind: 'draft'
+  statusLabel: '未送出'
+  createdAt: number
+  requestLabel: null
+  rows: StaffWorkspaceDraftRow[]
+}
+
+type StaffWorkspaceAcceptedGroup = {
+  kind: 'accepted'
+  statusLabel: '已接單'
+  createdAt: number
+  requestLabel: string
+  batchId: string
+  rows: StaffWorkspaceAcceptedRow[]
+}
+
+export type StaffWorkspaceGroup = StaffWorkspaceDraftGroup | StaffWorkspaceAcceptedGroup
+
+export type StaffWorkspaceSummary = {
+  groups: StaffWorkspaceGroup[]
+  rows: StaffWorkspaceRow[]
+  draftSubtotal: number
+  submittedSubtotal: number
+  draftEntryCount: number
+  acceptedEntryCount: number
+  acceptedBatchCount: number
+  totalRowCount: number
+}
+
+export type StaffWorkspaceRowAction = {
+  kind: 'edit' | 'treat' | 'delete'
+  label: string
+  tone: 'primary' | 'warning' | 'success' | 'danger'
+  action: string
+  attrs: Record<string, string>
+}
+
 function escapeHtml(value: unknown) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -97,6 +156,11 @@ function escapeHtml(value: unknown) {
 
 function formatCurrency(value: number) {
   return `$${Math.round(value || 0)}`
+}
+
+function formatQuantity(quantity: number | null | undefined) {
+  const safeQuantity = typeof quantity === 'number' && Number.isFinite(quantity) && quantity > 0 ? quantity : 1
+  return `x${safeQuantity}`
 }
 
 function escapeAttributeValue(value: string) {
@@ -151,7 +215,7 @@ export function getVisibleOrderBatches(
 
 export function selectPendingOverlayBatch(
   mode: PosOrderMode,
-  pendingByTable: Record<string, PosOrderBatch[] | undefined>
+  pendingByTable: Record<string, PosPendingBatchPreview[] | undefined>
 ): PendingOverlayBatch | null {
   if (mode !== 'staff') {
     return null
@@ -184,6 +248,141 @@ export function calculateSplitCheckoutTotal(
   return Math.max(0, finalTotal)
 }
 
+export function calculateStaffOrderTotal(
+  baseTotal: number,
+  discountPercent: number,
+  serviceFeeEnabled: boolean,
+  allowance = 0
+) {
+  let finalTotal = baseTotal
+  if (discountPercent > 0 && discountPercent <= 100) {
+    finalTotal = Math.round(finalTotal * (discountPercent / 100))
+  }
+  if (serviceFeeEnabled) {
+    finalTotal += Math.round(finalTotal * 0.1)
+  }
+  finalTotal -= allowance
+  return Math.max(0, finalTotal)
+}
+
+export function summarizeStaffWorkspace(
+  draftEntries: PosOrderEntry[],
+  submittedBatches: PosOrderBatch[]
+): StaffWorkspaceSummary {
+  const draftRows = draftEntries
+    .map<StaffWorkspaceDraftRow>((entry) => ({
+      kind: 'draft' as const,
+      statusLabel: '未送出' as const,
+      createdAt: entry.createdAt,
+      requestLabel: null,
+      entry,
+    }))
+    .sort((left, right) => left.createdAt - right.createdAt)
+
+  const acceptedGroups = sortByCreated(submittedBatches).map<StaffWorkspaceAcceptedGroup>((batch) => ({
+    kind: 'accepted' as const,
+    statusLabel: '已接單' as const,
+    createdAt: batch.createdAt,
+    requestLabel: batch.requestLabel,
+    batchId: batch.batchId,
+    rows: batch.entries.map<StaffWorkspaceAcceptedRow>((entry) => ({
+      kind: 'accepted' as const,
+      statusLabel: '已接單' as const,
+      createdAt: entry.createdAt,
+      requestLabel: batch.requestLabel,
+      batchId: batch.batchId,
+      entry,
+    })),
+  }))
+
+  const draftGroup: StaffWorkspaceDraftGroup | null =
+    draftRows.length > 0
+      ? {
+          kind: 'draft',
+          statusLabel: '未送出',
+          createdAt: draftRows[0].createdAt,
+          requestLabel: null,
+          rows: draftRows,
+        }
+      : null
+
+  const groups: StaffWorkspaceGroup[] = [...(draftGroup ? [draftGroup] : []), ...acceptedGroups]
+
+  const rows: StaffWorkspaceRow[] = [...draftRows, ...acceptedGroups.flatMap((group) => group.rows)]
+
+  return {
+    groups,
+    rows,
+    draftSubtotal: draftEntries.reduce((sum, entry) => sum + entry.subtotal, 0),
+    submittedSubtotal: submittedBatches.reduce((sum, batch) => sum + batch.subtotal, 0),
+    draftEntryCount: draftEntries.length,
+    acceptedEntryCount: submittedBatches.reduce((sum, batch) => sum + batch.entries.length, 0),
+    acceptedBatchCount: submittedBatches.length,
+    totalRowCount: rows.length,
+  }
+}
+
+export function getStaffWorkspaceRowActions(row: StaffWorkspaceRow, isTreat: boolean): StaffWorkspaceRowAction[] {
+  if (row.kind === 'draft') {
+    return [
+      {
+        kind: 'edit',
+        label: '編輯',
+        tone: 'primary',
+        action: 'edit-draft-entry',
+        attrs: { 'data-entry-id': row.entry.entryId },
+      },
+      {
+        kind: 'treat',
+        label: isTreat ? '取消招待' : '招待',
+        tone: isTreat ? 'success' : 'warning',
+        action: 'toggle-draft-entry-treat',
+        attrs: { 'data-entry-id': row.entry.entryId },
+      },
+      {
+        kind: 'delete',
+        label: '刪除',
+        tone: 'danger',
+        action: 'remove-draft-entry',
+        attrs: { 'data-entry-id': row.entry.entryId },
+      },
+    ]
+  }
+
+  return [
+    {
+      kind: 'edit',
+      label: '編輯',
+      tone: 'primary',
+      action: 'edit-submitted-entry',
+      attrs: {
+        'data-batch-id': row.batchId,
+        'data-entry-id': row.entry.entryId,
+      },
+    },
+    {
+      kind: 'treat',
+      label: isTreat ? '取消招待' : '招待',
+      tone: isTreat ? 'success' : 'warning',
+      action: 'toggle-submitted-entry-treat',
+      attrs: {
+        'data-batch-id': row.batchId,
+        'data-entry-id': row.entry.entryId,
+      },
+    },
+    {
+      kind: 'delete',
+      label: '刪除',
+      tone: 'danger',
+      action: 'remove-submitted-entry',
+      attrs: {
+        'data-batch-id': row.batchId,
+        'data-entry-id': row.entry.entryId,
+      },
+    },
+  ]
+}
+
 export function buildReceiptMarkup(data: PosReceiptData, title: string) {
   const groups = groupReceiptLines(data.lines || [])
 
@@ -204,13 +403,13 @@ export function buildReceiptMarkup(data: PosReceiptData, title: string) {
           .map(
             ({ main, children }) => `
               <div class="receipt-item">
-                <span>${escapeHtml(main.shortName)}${main.selectionSummary ? ` (${escapeHtml(main.selectionSummary)})` : ''}</span>
+                <span>${escapeHtml(main.shortName)} ${formatQuantity(main.quantity)}${main.selectionSummary ? ` (${escapeHtml(main.selectionSummary)})` : ''}</span>
                 <span>${formatCurrency(main.lineTotal)}</span>
               </div>
               ${children
                 .map(
                   (line) => `
-                    <div class="entry-child-line">${escapeHtml(line.shortName)}${line.selectionSummary ? ` · ${escapeHtml(line.selectionSummary)}` : ''}${line.lineTotal > 0 ? ` ${formatCurrency(line.lineTotal)}` : ''}</div>
+                    <div class="entry-child-line">${escapeHtml(line.shortName)} ${formatQuantity(line.quantity)}${line.selectionSummary ? ` · ${escapeHtml(line.selectionSummary)}` : ''}${line.lineTotal > 0 ? ` ${formatCurrency(line.lineTotal)}` : ''}</div>
                   `
                 )
                 .join('')}
@@ -225,6 +424,13 @@ export function buildReceiptMarkup(data: PosReceiptData, title: string) {
       </div>
     </section>
   `
+}
+
+export function getEntryDisplaySummary(
+  entry: PosOrderEntry,
+  buildDisplaySummary: (entry: PosOrderEntry) => PosEntryDisplaySummary
+) {
+  return buildDisplaySummary(entry)
 }
 
 export async function persistCustomerInfoSilently({

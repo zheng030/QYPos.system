@@ -42,7 +42,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         getItemCategoryType: kernel.helpers.getItemCategoryType,
         getItemCosts: () => kernel.state.itemCosts,
         getItemPrices: () => kernel.state.itemPrices,
-        listClosedOrdersByDay: data.listClosedOrdersByDay,
+        listClosedOrdersForBusinessDay: data.listClosedOrdersForBusinessDay,
         listClosedOrdersByRange: data.listClosedOrdersByRange,
         loadDailySummariesRange: data.loadDailySummariesRange,
         watchDailySummariesRange: data.watchDailySummariesRange,
@@ -121,7 +121,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
           specificBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`
           specificBtn.dataset.date = `${year}-${mm}-${dd}`
           specificBtn.style.display = 'inline-block'
-          void ownerFinance.updateFinanceStats('specific', new Date(year, month, day, 5, 0, 0, 0))
+          void ownerFinance.updateFinanceStats('specific', new Date(year, month, day))
         }
       })
       ui.on('click', 'archived-order-readonly', () => {

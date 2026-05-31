@@ -30,13 +30,14 @@ export type PosDataService = {
   stopTableLiveSession(): void
   ensureCatalog(): Promise<void>
   ensureOwnerAuth(): Promise<void>
-  listClosedOrdersByDay(targetDate: Date): Promise<PosOrder[]>
+  listClosedOrdersForBusinessDay(anchor: Date): Promise<PosOrder[]>
   listClosedOrdersByRange(start: Date, endExclusive: Date): Promise<PosOrder[]>
   loadDailySummariesRange(start: Date, endExclusive: Date): Promise<Record<string, V3DailySummary>>
   loadItemStatsRange(start: Date, endExclusive: Date): Promise<Record<string, Record<string, V3DailyItemStat>>>
   watchCatalogRevision(listener: (event: V3CatalogRevisionEvent) => void): () => void
   watchOwnerAuthRevision(listener: (event: V3OwnerAuthRevisionEvent) => void): () => void
   watchClosedOrdersRange(start: Date, endExclusive: Date, listener: (event: V3HistoryRangeEvent) => void): () => void
+  watchClosedOrdersForBusinessDay(anchor: Date, listener: (event: V3HistoryRangeEvent) => void): () => void
   watchDailySummariesRange(
     start: Date,
     endExclusive: Date,
@@ -52,6 +53,7 @@ export type PosDataService = {
   ): Promise<{ displaySeqBase: number }>
   submitCustomerDraft(table: string, entries: PosOrderEntry[], customer: PosTableCustomer): Promise<PosOrderBatch>
   discardCustomerDraft(table: string): Promise<void>
+  readPendingBatchDetail(table: string, batchId: string): Promise<PosOrderBatch | null>
   acceptPendingBatch(table: string, batchId: string): Promise<PosOrderBatch | null>
   rejectPendingBatch(table: string, batchId: string): Promise<void>
   saveStaffDraft(table: string, entries: PosOrderEntry[]): Promise<void>

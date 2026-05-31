@@ -11,7 +11,12 @@ import type {
 
 type BuilderHelpers = Pick<
   PosCatalogHelpers,
-  'getItemById' | 'getItemDisplayPrice' | 'isInventoryKeySoldOut' | 'isItemSoldOut' | 'sumLines'
+  | 'getItemById'
+  | 'getItemDisplayPrice'
+  | 'isInventoryKeySoldOut'
+  | 'isItemSoldOut'
+  | 'normalizeEntryForDisplay'
+  | 'sumLines'
 >
 
 type SelectionRuleValue = string
@@ -239,14 +244,6 @@ function buildSummary(item: PosMenuItem, state: PosBuilderState): string {
     if (displayValue) {
       parts.push(`${label}：${displayValue}`)
     }
-  }
-
-  for (const group of item.upgradeGroups || []) {
-    const value = state.upgradeSelections[group.id] || ''
-    if (!value) continue
-    const option = group.options.find((candidate) => candidate.value === value)
-    if (!option) continue
-    parts.push(`${group.summaryLabel || group.label}：${option.label}`)
   }
 
   return parts.join(' / ')
@@ -593,7 +590,12 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
     priceDelta: 0,
     lineTotal: helpers.getItemDisplayPrice(item.id) * quantity,
     selections: cloneSelections(state.selections),
-    selectionSummary: summary,
+    selectionSummary: summary
+      .split('/')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => part.split('：')[1]?.trim() || part)
+      .join(' / '),
     isTreat: false,
     sourceEntryId: resolvedEntryId,
   })
@@ -623,9 +625,8 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
         .map((rule) => {
           const value = resolution.childSelections[rule.id] || ''
           if (!value.trim()) return ''
-          const label = rule.summaryLabel || rule.label
           const displayValue = resolveSingleOptionLabel(rule, value)
-          return displayValue ? `${label}：${displayValue}` : ''
+          return displayValue || ''
         })
         .filter(Boolean)
         .join(' / '),
@@ -636,34 +637,36 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
 
   const subtotal = helpers.sumLines(lines)
 
+  const normalizedEntry = helpers.normalizeEntryForDisplay({
+    entryId: resolvedEntryId,
+    groupId,
+    itemId: item.id,
+    catalogKey: item.productKey,
+    inventoryKey: item.inventoryKey,
+    itemName: item.name,
+    shortName: item.shortName || item.name,
+    categoryKey: item.categoryKey,
+    quantity,
+    status,
+    source,
+    createdAt: createdAt ?? now,
+    updatedAt: now,
+    selections: cloneSelections(state.selections),
+    includeSelections: resolvedIncludeSelections,
+    upgradeSelections: { ...(state.upgradeSelections || {}) },
+    lines,
+    subtotal,
+    summary: {
+      title: item.name,
+      subtitle: summary,
+      quantityLabel: `${quantity} 份`,
+      totalLabel: `$${subtotal}`,
+    },
+  })
+
   return {
     ok: true,
-    entry: {
-      entryId: resolvedEntryId,
-      groupId,
-      itemId: item.id,
-      catalogKey: item.productKey,
-      inventoryKey: item.inventoryKey,
-      itemName: item.name,
-      shortName: item.shortName || item.name,
-      categoryKey: item.categoryKey,
-      quantity,
-      status,
-      source,
-      createdAt: createdAt ?? now,
-      updatedAt: now,
-      selections: cloneSelections(state.selections),
-      includeSelections: resolvedIncludeSelections,
-      upgradeSelections: { ...(state.upgradeSelections || {}) },
-      lines,
-      subtotal,
-      summary: {
-        title: item.name,
-        subtitle: summary,
-        quantityLabel: `${quantity} 份`,
-        totalLabel: `$${subtotal}`,
-      },
-    },
+    entry: normalizedEntry,
   }
 }
 

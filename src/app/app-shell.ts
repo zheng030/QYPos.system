@@ -81,7 +81,7 @@ export const appShellHtml = `
         </div>
 
         <div class="order-page-body" id="orderPageBody">
-          <div class="order-tab-shell">
+          <div class="order-tab-shell" id="customerOrderShell">
             <div class="order-toolbar-actions" id="orderToolbarTabs">
               <button class="btn-effect" data-action="set-order-tab" data-tab="menu">菜單</button>
               <button class="btn-effect" data-action="set-order-tab" data-tab="cart">購物車</button>
@@ -127,13 +127,54 @@ export const appShellHtml = `
         <div id="builderHost"></div>
 
         <div id="customerFloatingBar" class="customer-floating-bar">
-          <div class="floating-main">
-            <div class="floating-label" id="floatingActionLabel">購物車</div>
-            <div class="floating-value" id="floatingDraftSummary">0 件 · $0</div>
+          <div id="customerFloatingMain" class="floating-bar-customer">
+            <div class="floating-main">
+              <div class="floating-label" id="floatingActionLabel">購物車</div>
+              <div class="floating-value" id="floatingDraftSummary">0 件 · $0</div>
+            </div>
+            <div class="floating-actions">
+              <button class="btn-effect floating-clear-btn" id="floatingClearBtn" data-action="floating-clear-action">清空</button>
+              <button class="btn-effect floating-submit-btn" id="floatingPrimaryBtn" data-action="floating-primary-action">送出</button>
+            </div>
           </div>
-          <div class="floating-actions">
-            <button class="btn-effect floating-clear-btn" id="floatingClearBtn" data-action="floating-clear-action">清空</button>
-            <button class="btn-effect floating-submit-btn" id="floatingPrimaryBtn" data-action="floating-primary-action">送出</button>
+
+          <div id="staffFloatingWorkspace" class="floating-bar-staff is-collapsed">
+            <div class="staff-workspace-toggle" id="staffWorkspaceToggle">
+              <div
+                class="staff-workspace-toggle-trigger"
+                id="staffWorkspaceToggleButton"
+                data-action="toggle-staff-workspace"
+                role="button"
+                tabindex="0"
+                aria-expanded="false"
+              >
+                <span class="staff-workspace-toggle-main">
+                  <span id="staffWorkspaceToggleLabel">展開明細</span>
+                  <span id="staffWorkspaceMeta">未送出 0 項 · 已接單 0 項 · 0 張已接單</span>
+                </span>
+                <span class="staff-workspace-toggle-side">
+                  <span class="staff-workspace-toggle-tools">
+                    <button class="btn-effect staff-tool-btn staff-tool-btn-fee" id="staffServiceFeeBtn" data-action="toggle-staff-service-fee">🧾 10%服務費</button>
+                    <button class="btn-effect staff-tool-btn staff-tool-btn-discount" id="staffDiscountBtn" data-action="open-staff-discount-modal">🏷️ 折扣</button>
+                  </span>
+                  <span class="staff-workspace-total" id="staffWorkspaceTotal">$0</span>
+                  <span class="staff-workspace-toggle-chevron" aria-hidden="true">⌄</span>
+                </span>
+              </div>
+            </div>
+
+            <div class="staff-workspace-body" id="staffWorkspaceBody">
+              <div id="staffWorkspaceStreamList" class="staff-workspace-stream"></div>
+            </div>
+
+            <div class="staff-workspace-dock">
+              <div class="staff-workspace-toolbar">
+                <button class="btn-effect staff-tool-btn staff-tool-btn-save" data-action="staff-save-and-exit">📝 暫存</button>
+                <button class="btn-effect staff-tool-btn staff-tool-btn-print" data-action="open-reprint-modal">🖨️ 補單</button>
+                <button class="btn-effect staff-tool-btn staff-tool-btn-pay" data-action="open-payment-modal">💳 全結</button>
+                <button class="btn-effect staff-tool-btn staff-tool-btn-split" data-action="open-split-checkout">✂️ 拆單</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -338,7 +379,7 @@ export const appShellHtml = `
   </div>
 
   <div id="orderActionConfirmModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content modal-sheet modal-sheet-compact">
       <h2 id="orderActionConfirmTitle">確認操作</h2>
       <p id="orderActionConfirmMessage" class="modal-copy">請確認是否繼續。</p>
       <div class="modal-actions">
@@ -349,10 +390,11 @@ export const appShellHtml = `
   </div>
 
   <div id="paymentModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content modal-sheet modal-sheet-compact">
       <h2>結帳確認</h2>
       <div class="payment-info">
         <div class="pay-row"><span>應收金額 <small id="payDiscLabel"></small></span><span id="payOriginal">$0</span></div>
+        <div class="pay-row" id="payDiscountRow" style="display:none;"><span>折數</span><span id="payDiscountValue">無</span></div>
         <div class="pay-row"><span>收 10% 服務費</span><input type="checkbox" id="payServiceFee" data-action="calc-final-pay"></div>
         <div class="pay-row"><span>折讓</span><input type="number" id="payAllowance" data-action="calc-final-pay"></div>
         <hr>
@@ -366,7 +408,7 @@ export const appShellHtml = `
   </div>
 
   <div id="checkoutModal" class="modal">
-    <div class="modal-content split-modal">
+    <div class="modal-content modal-sheet modal-sheet-wide split-modal">
       <div class="modal-header"><h2>拆單結帳</h2></div>
       <div class="modal-body">
         <div class="split-checkout-container">
@@ -397,7 +439,7 @@ export const appShellHtml = `
   </div>
 
   <div id="reprintSelectionModal" class="modal">
-    <div class="modal-content reprint-modal">
+    <div class="modal-content modal-sheet modal-sheet-compact reprint-modal">
       <div class="modal-header"><h2>補印選擇</h2></div>
       <div class="modal-body">
         <label><input type="checkbox" id="toggleAllReprint" data-action="toggle-all-reprint"> 全選</label>
@@ -406,6 +448,28 @@ export const appShellHtml = `
       <div class="modal-actions">
         <button class="btn-effect cancel" data-action="close-reprint-modal">取消</button>
         <button class="btn-effect confirm-success" data-action="confirm-reprint-selection">補印</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="staffDiscountModal" class="modal">
+    <div class="modal-content modal-sheet modal-sheet-compact">
+      <h2>整單折數</h2>
+      <div class="payment-info">
+        <div class="pay-row"><span>原價</span><span id="staffDiscountOriginal">$0</span></div>
+        <div class="pay-row">
+          <span>折數 (%)</span>
+          <div class="discount-input-inline">
+            <input type="number" id="staffDiscountInput" min="1" max="100" data-action="preview-staff-discount">
+            <span class="discount-percent">%</span>
+          </div>
+        </div>
+        <p id="staffDiscountPreview" class="discount-preview"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-effect cancel" data-action="close-staff-discount-modal">取消</button>
+        <button class="btn-effect floating-clear-btn" data-action="reset-staff-discount">清除折扣</button>
+        <button class="btn-effect confirm-primary" data-action="confirm-staff-discount">套用</button>
       </div>
     </div>
   </div>

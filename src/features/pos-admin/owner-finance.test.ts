@@ -113,7 +113,7 @@ describe('owner-finance', () => {
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [
         {
           formattedSeq: '12',
@@ -194,7 +194,7 @@ describe('owner-finance', () => {
       getItemCategoryType: () => 'a_la_carte',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [
         {
           formattedSeq: '12-1',
@@ -297,7 +297,7 @@ describe('owner-finance', () => {
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [
         {
           formattedSeq: '12-1',
@@ -390,7 +390,7 @@ describe('owner-finance', () => {
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       watchDailySummariesRange: () => () => {},
@@ -467,7 +467,7 @@ describe('owner-finance', () => {
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       watchDailySummariesRange: () => () => {},
@@ -531,7 +531,7 @@ describe('owner-finance', () => {
       getItemPrices: () => ({
         'drink.black-tea': 80,
       }),
-      listClosedOrdersByDay: async () => [],
+      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       watchDailySummariesRange: () => () => {},

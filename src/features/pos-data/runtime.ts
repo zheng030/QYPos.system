@@ -69,6 +69,10 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
       const repository = createRtdbV3Repository({
         db: kernel.db,
         state: kernel.state,
+        helpers: {
+          getCanonicalDraftEntries: kernel.helpers.getCanonicalDraftEntries,
+          normalizeEntryForDisplay: kernel.helpers.normalizeEntryForDisplay,
+        },
         onLiveStateChange(roots) {
           emitDataChange(roots)
           void uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
@@ -125,8 +129,8 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           await repository.ensureOwnerAuth()
           await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
-        async listClosedOrdersByDay(targetDate) {
-          const orders = await repository.listClosedOrdersByDay(targetDate)
+        async listClosedOrdersForBusinessDay(anchor) {
+          const orders = await repository.listClosedOrdersForBusinessDay(anchor)
           emitDataChange(['historyOrders'])
           return orders
         },
@@ -149,6 +153,9 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         },
         watchClosedOrdersRange(start, endExclusive, listener) {
           return repository.watchClosedOrdersRange(start, endExclusive, listener)
+        },
+        watchClosedOrdersForBusinessDay(anchor, listener) {
+          return repository.watchClosedOrdersForBusinessDay(anchor, listener)
         },
         watchDailySummariesRange(start, endExclusive, listener) {
           return repository.watchDailySummariesRange(start, endExclusive, listener)
@@ -179,6 +186,9 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           await repository.discardCustomerDraft(table)
           emitDataChange(['tableDrafts'])
           await uiBridge.refreshUiAfterDataChange()
+        },
+        async readPendingBatchDetail(table, batchId) {
+          return repository.readPendingBatchDetail(table, batchId)
         },
         async acceptPendingBatch(table, batchId) {
           const batch = await repository.acceptPendingBatch(table, batchId)
