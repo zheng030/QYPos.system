@@ -9,15 +9,25 @@ import type {
 } from '@/features/pos-kernel/types'
 import type { AttendanceRecord } from '@/shared/attendance-service'
 import type { DatabaseCompat } from '@/shared/firebase-compat'
+import { sanitizeFirebaseUpdatePayload } from '@/shared/firebase-payload'
+import { createBatchId, createOrderId } from '@/shared/rtdb-entity-id'
+import {
+  createPayloadHash,
+  createPersistentCacheStore,
+  isRegisteredResourceDescriptor,
+  type PersistentCacheStore,
+  type ResourceDescriptor,
+} from './rtdb-v3-cache'
 import { decodeRtdbKeySegment, encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import {
-  buildPendingSummary,
   createEmptyLiveTable,
   getBizDateKey,
   mapStoredBatch,
   mapStoredEntry,
   resolveStoredBatchRequestSeq,
 } from './rtdb-v3-mapper'
+import { createLiveTableShardDescriptor } from './rtdb-v3-resource-registry'
+import { decodeLiveTableShardValue, orderBatchStorageCodec, tableSummaryStorageCodec } from './rtdb-v3-storage-codecs'
 import type {
   V3BizDateKey,
   V3CatalogSegment,
@@ -27,11 +37,10 @@ import type {
   V3LiveTable,
   V3MonthKey,
   V3OrderBatch,
-  V3PendingSummary,
   V3RevisionValue,
   V3TableSummary,
 } from './rtdb-v3-types'
-import { RTDB_V3_ROOT } from './rtdb-v3-types'
+import { RTDB_V3_ROOT, RTDB_V3_SCHEMA_VERSION } from './rtdb-v3-types'
 
 export type LiveMode = 'staff' | 'customer'
 
@@ -43,6 +52,8 @@ export type HistoryRange = {
 type RepositoryDeps = {
   db: DatabaseCompat
   state: CorePosState
+  tables?: string[]
+  cacheStore?: PersistentCacheStore
   helpers?: Pick<PosCatalogHelpers, 'getCanonicalDraftEntries' | 'normalizeEntryForDisplay'>
   onLiveStateChange?: (roots: string[]) => void
 }
@@ -54,13 +65,11 @@ function toRevValue(value: unknown): number {
 }
 
 export function toBatchId(prefix: 'pending' | 'submitted') {
-  const random = globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
-  return `${prefix}_${Date.now()}_${random}`
+  return createBatchId(prefix)
 }
 
 export function toOrderId() {
-  const random = globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
-  return `ord_${Date.now()}_${random}`
+  return createOrderId()
 }
 
 export function readDisplaySeqBase(summary: V3TableSummary | null | undefined) {
@@ -107,6 +116,22 @@ export function normalizeLiveTable(value: V3LiveTable | null | undefined) {
   } satisfies V3LiveTable
 }
 
+export function isLiveTableEmpty(value: V3LiveTable | null | undefined) {
+  return Boolean(
+    !value?.summary &&
+      Object.keys(value?.draft || {}).length === 0 &&
+      Object.keys(value?.pendingBatches || {}).length === 0 &&
+      Object.keys(value?.submittedBatches || {}).length === 0
+  )
+}
+
+export function toLiveTableShardValue<K extends keyof V3LiveTable>(shard: K, value: V3LiveTable[K] | null | undefined) {
+  if (shard === 'summary') {
+    return (value || null) as V3LiveTable[K]
+  }
+  return (value && typeof value === 'object' ? { ...value } : {}) as V3LiveTable[K]
+}
+
 export function encodeTableKey(table: string) {
   return encodeRtdbKeySegment(table)
 }
@@ -143,19 +168,28 @@ export function encodeItemStatsRecord(value: Record<string, V3DailyItemStat> | n
   >
 }
 
-export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateChange }: RepositoryDeps) {
+export function createRtdbV3RepositoryContext({
+  db,
+  state,
+  tables,
+  cacheStore,
+  helpers,
+  onLiveStateChange,
+}: RepositoryDeps) {
   const ctx = {
     db,
     state,
+    cacheStore: cacheStore || createPersistentCacheStore(),
+    tables: [...(tables || [])],
     helpers,
     onLiveStateChange,
     unsubs: new Map<string, () => void>(),
     revisionCache: new Map<string, V3RevisionValue>(),
+    liveTableCache: new Map<string, V3LiveTable>(),
     dailySummaryDayCache: new Map<V3BizDateKey, V3DailySummary>(),
     itemStatsDayCache: new Map<V3BizDateKey, Record<string, V3DailyItemStat>>(),
     historyDayCache: new Map<V3BizDateKey, Record<string, V3ClosedOrder>>(),
     attendanceMonthCache: new Map<V3MonthKey, AttendanceMonthMap>(),
-    pendingSummaryCache: new Map<string, V3PendingSummary | null>(),
     attendanceRecordLocationCache: new Map<string, V3MonthKey>(),
     loadedCatalogSegments: new Set<V3CatalogSegment>(),
     catalogSegmentLoads: new Map<V3CatalogSegment, Promise<void>>(),
@@ -191,23 +225,192 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
     },
     async updateRoot(payload: Record<string, unknown>) {
       if (Object.keys(payload).length === 0) return
-      await db.ref('/').update(payload)
+      const sanitizedPayload = sanitizeFirebaseUpdatePayload(payload)
+      await db.ref('/').update(sanitizedPayload)
       const prefix = `${RTDB_V3_ROOT}/meta/revisions/`
-      Object.entries(payload).forEach(([path, value]) => {
+      Object.entries(sanitizedPayload).forEach(([path, value]) => {
         if (path.startsWith(prefix)) {
           ctx.revisionCache.set(path.slice(prefix.length), toRevValue(value))
         }
       })
     },
+    async readRevision(path: string) {
+      if (ctx.revisionCache.has(path)) {
+        return ctx.revisionCache.get(path) || 0
+      }
+      const snapshot = await db.ref(`${RTDB_V3_ROOT}/meta/revisions/${path}`).once('value')
+      const revision = toRevValue(snapshot.val())
+      ctx.revisionCache.set(path, revision)
+      return revision
+    },
+    assertDescriptorRegistered(descriptor: ResourceDescriptor<unknown, unknown>) {
+      if (!descriptor.remotePath) {
+        throw new Error(`Descriptor missing remote path: ${descriptor.resourceKey}`)
+      }
+      if (!descriptor.revision.path) {
+        throw new Error(`Descriptor missing revision path: ${descriptor.resourceKey}`)
+      }
+      if (!isRegisteredResourceDescriptor(descriptor)) {
+        throw new Error(`Descriptor not registered: ${descriptor.resourceKey}`)
+      }
+    },
+    async loadCachedResource<TDomain, TStored = TDomain>(descriptor: ResourceDescriptor<TDomain, TStored>) {
+      ctx.assertDescriptorRegistered(descriptor)
+      const manifest = await ctx.cacheStore.readManifest(descriptor.resourceKey)
+      if (!manifest) {
+        return null
+      }
+      const body = await ctx.cacheStore.readBody<TStored>(descriptor.resourceKey)
+      if (body === null) {
+        await ctx.cacheStore.deleteManifest(descriptor.resourceKey)
+        return null
+      }
+      if (createPayloadHash(body) !== manifest.payloadHash) {
+        await ctx.cacheStore.deleteManifest(descriptor.resourceKey)
+        await ctx.cacheStore.deleteBody(descriptor.resourceKey)
+        return null
+      }
+      try {
+        return {
+          revision: manifest.revision,
+          value: descriptor.codec.decode(body),
+        }
+      } catch {
+        await ctx.cacheStore.deleteManifest(descriptor.resourceKey)
+        await ctx.cacheStore.deleteBody(descriptor.resourceKey)
+        return null
+      }
+    },
+    async saveCachedResource<TDomain, TStored = TDomain>(
+      descriptor: ResourceDescriptor<TDomain, TStored>,
+      revision: number,
+      value: TDomain
+    ) {
+      ctx.assertDescriptorRegistered(descriptor)
+      const encoded = descriptor.codec.encode(value)
+      const payloadSize = JSON.stringify(encoded).length
+      const payloadHash = createPayloadHash(encoded)
+      await ctx.cacheStore.writeBody(descriptor.resourceKey, encoded)
+      await ctx.cacheStore.writeManifest({
+        schemaVersion: RTDB_V3_SCHEMA_VERSION,
+        resourceKey: descriptor.resourceKey,
+        revision,
+        updatedAt: Date.now(),
+        payloadSize,
+        payloadHash,
+      })
+    },
+    async invalidateCachedResource(resourceKey: string) {
+      await ctx.cacheStore.deleteManifest(resourceKey)
+      await ctx.cacheStore.deleteBody(resourceKey)
+    },
+    async loadCacheFirstResource<TDomain, TStored = TDomain>(params: {
+      descriptor: ResourceDescriptor<TDomain, TStored>
+      readRemote: () => Promise<TDomain>
+    }) {
+      const cached = await ctx.loadCachedResource(params.descriptor)
+      if (!cached) {
+        const revision = await ctx.readRevision(params.descriptor.revision.path)
+        const remote = await params.readRemote()
+        await ctx.saveCachedResource(params.descriptor, revision, remote)
+        return remote
+      }
+
+      const remoteRevision = await ctx.readRevision(params.descriptor.revision.path)
+      if (remoteRevision === cached.revision) {
+        return cached.value
+      }
+
+      const remote = await params.readRemote()
+      await ctx.saveCachedResource(params.descriptor, remoteRevision, remote)
+      return remote
+    },
+    liveTablePath(table: string) {
+      return `${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`
+    },
+    liveTableShardPath(table: string, shard: keyof V3LiveTable) {
+      return `${ctx.liveTablePath(table)}/${shard}`
+    },
+    liveTableShardDescriptor<K extends keyof V3LiveTable>(table: string, shard: K) {
+      return createLiveTableShardDescriptor(table, shard)
+    },
+    setCachedLiveTable(table: string, liveTable: V3LiveTable | null | undefined) {
+      const normalized = normalizeLiveTable(liveTable)
+      if (isLiveTableEmpty(normalized)) {
+        ctx.liveTableCache.delete(table)
+        return createEmptyLiveTable()
+      }
+      ctx.liveTableCache.set(table, normalized)
+      return normalizeLiveTable(normalized)
+    },
+    getCachedLiveTable(table: string) {
+      return normalizeLiveTable(ctx.liveTableCache.get(table))
+    },
+    applyLiveTableShard<K extends keyof V3LiveTable>(
+      table: string,
+      shard: K,
+      value: V3LiveTable[K] | null | undefined,
+      mode?: LiveMode
+    ) {
+      const current = ctx.getCachedLiveTable(table)
+      const next = normalizeLiveTable({
+        ...current,
+        [shard]: toLiveTableShardValue(shard, value),
+      } as V3LiveTable)
+      ctx.applyLiveTable(table, next, mode)
+      return next
+    },
+    async readLiveTableSummary(table: string) {
+      const descriptor = ctx.liveTableShardDescriptor(table, 'summary')
+      return await ctx.loadCacheFirstResource({
+        descriptor,
+        readRemote: async () => {
+          const snapshot = await db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return tableSummaryStorageCodec.decode(snapshot.val() || null)
+        },
+      })
+    },
+    async readLiveTableShard<K extends keyof V3LiveTable>(table: string, shard: K) {
+      const descriptor = ctx.liveTableShardDescriptor(table, shard)
+      return await ctx.loadCacheFirstResource({
+        descriptor,
+        readRemote: async () => {
+          const snapshot = await db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return toLiveTableShardValue(shard, decodeLiveTableShardValue(shard, snapshot.val()))
+        },
+      })
+    },
+    async saveLiveTableShardCache<K extends keyof V3LiveTable>(table: string, shard: K, value: V3LiveTable[K]) {
+      const descriptor = ctx.liveTableShardDescriptor(table, shard)
+      await ctx.saveCachedResource(
+        descriptor,
+        ctx.revisionCache.get(descriptor.revision.path) || 0,
+        toLiveTableShardValue(shard, value)
+      )
+    },
     async readLiveTable(table: string) {
-      const snapshot = await db.ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`).once('value')
-      return normalizeLiveTable(snapshot.val() as V3LiveTable | null | undefined)
+      const [summary, draft, pendingBatches, submittedBatches] = await Promise.all([
+        ctx.readLiveTableShard(table, 'summary'),
+        ctx.readLiveTableShard(table, 'draft'),
+        ctx.readLiveTableShard(table, 'pendingBatches'),
+        ctx.readLiveTableShard(table, 'submittedBatches'),
+      ])
+      return ctx.setCachedLiveTable(table, {
+        summary,
+        draft,
+        pendingBatches,
+        submittedBatches,
+      })
     },
     functionReadPendingBatchDetail: async (table: string, batchId: string): Promise<PosOrderBatch | null> => {
       const snapshot = await db
-        .ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}/pendingBatches/${encodeBatchMapKey(batchId)}`)
+        .ref(`${ctx.liveTableShardPath(table, 'pendingBatches')}/${encodeBatchMapKey(batchId)}`)
         .once('value')
-      const stored = snapshot.val() as V3OrderBatch | null | undefined
+      const raw = snapshot.val()
+      if (!raw) {
+        return null
+      }
+      const stored = orderBatchStorageCodec.decode(raw as never) as V3OrderBatch
       return stored ? mapStoredBatch(stored, helpers?.normalizeEntryForDisplay) : null
     },
     toDraftEntries(liveTable: V3LiveTable | null | undefined) {
@@ -220,20 +423,34 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
         .map((batch) => mapStoredBatch(batch, helpers?.normalizeEntryForDisplay))
         .sort((left, right) => left.createdAt - right.createdAt)
     },
-    getPreviewBatch(summary: V3PendingSummary | null | undefined): PosPendingBatchPreview | null {
-      if (!summary?.firstBatch) return null
-      const firstBatch = summary.firstBatch
+    getPendingPreviewBatch(value: Record<string, V3OrderBatch> | undefined): PosPendingBatchPreview | null {
+      const firstBatch = ctx.toBatchList(value)[0]
+      if (!firstBatch) return null
       return {
         batchId: firstBatch.batchId,
         requestSeq: readRequestSeqCounter(firstBatch.requestSeq),
         createdAt: firstBatch.createdAt,
         requestLabel: firstBatch.requestLabel,
-        entries: firstBatch.itemPreview.map((item, index) => ({
+        entries: firstBatch.entries.slice(0, 3).map((entry, index) => ({
           entryId: `preview_${firstBatch.batchId}_${index}`,
-          title: typeof item === 'string' ? item : item.title,
-          quantityLabel: typeof item === 'string' ? '1 份' : item.quantityLabel || '1 份',
+          title: entry.summary?.title || entry.shortName,
+          quantityLabel: entry.summary?.quantityLabel || `${entry.quantity || 1} 份`,
         })),
       }
+    },
+    syncPendingBatchPreview(tableId: string, value: Record<string, V3OrderBatch> | undefined) {
+      if (ctx.currentTableSession?.table === tableId) {
+        delete state.pendingBatchPreviews[tableId]
+        return
+      }
+
+      const preview = ctx.getPendingPreviewBatch(value)
+      if (preview) {
+        state.pendingBatchPreviews[tableId] = [preview]
+        return
+      }
+
+      delete state.pendingBatchPreviews[tableId]
     },
     readNextRequestSeq(liveTable: V3LiveTable | null | undefined) {
       const summaryValue = readRequestSeqCounter(liveTable?.summary?.nextRequestSeq)
@@ -254,25 +471,31 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
         delete state.tableTimers[tableId]
         delete state.tableStatuses[tableId]
         delete state.tableCustomers[tableId]
-        delete state.tableBatchCounts[tableId]
         delete state.tableSplitCounters[tableId]
         return
       }
       if (summary.timerStartedAt) state.tableTimers[tableId] = summary.timerStartedAt
       else delete state.tableTimers[tableId]
-      if (summary.status) state.tableStatuses[tableId] = summary.status
+      if (
+        (summary.draftEntryCount || 0) > 0 ||
+        (summary.pendingBatchCount || 0) > 0 ||
+        (summary.submittedBatchCount || 0) > 0
+      )
+        state.tableStatuses[tableId] = 'yellow'
       else delete state.tableStatuses[tableId]
       state.tableCustomers[tableId] = {
         name: summary.customer?.name || '',
         phone: summary.customer?.phone || '',
         orderId: summary.displaySeqBase ?? undefined,
       }
-      state.tableBatchCounts[tableId] = summary.batchCount ?? 0
-      state.tableSplitCounters[tableId] = readSplitCounter(
-        (summary as V3TableSummary & { nextSplitCounter?: unknown }).nextSplitCounter
-      )
+      if ('nextSplitCounter' in summary) {
+        state.tableSplitCounters[tableId] = readSplitCounter(
+          (summary as V3TableSummary & { nextSplitCounter?: unknown }).nextSplitCounter
+        )
+      }
     },
     applyLiveTable(tableId: string, liveTable: V3LiveTable | null | undefined, mode?: LiveMode) {
+      ctx.setCachedLiveTable(tableId, liveTable)
       ctx.applyTableSummary(tableId, liveTable?.summary || null)
       const draft = ctx.toDraftEntries(liveTable)
       const pending = ctx.toBatchList(liveTable?.pendingBatches)
@@ -282,6 +505,7 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
       else delete state.tableDrafts[tableId]
       if (pending.length > 0) state.pendingBatches[tableId] = pending
       else delete state.pendingBatches[tableId]
+      ctx.syncPendingBatchPreview(tableId, liveTable?.pendingBatches)
       if (submitted.length > 0) state.submittedBatches[tableId] = submitted
       else delete state.submittedBatches[tableId]
 
@@ -297,54 +521,6 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
         }
       }
     },
-    applyPendingSummary(tableId: string, summary: V3PendingSummary | null | undefined) {
-      ctx.pendingSummaryCache.set(tableId, summary || null)
-      if (ctx.currentTableSession?.table === tableId) {
-        return
-      }
-      const preview = ctx.getPreviewBatch(summary)
-      if (preview) state.pendingBatchPreviews[tableId] = [preview]
-      else if (!state.submittedBatches[tableId]) delete state.pendingBatchPreviews[tableId]
-    },
-    async persistLiveTable(table: string, liveTable: V3LiveTable | null) {
-      const encodedTable = encodeTableKey(table)
-      const payload: Record<string, unknown> = {
-        [`${RTDB_V3_ROOT}/live/tables/${encodedTable}`]: liveTable,
-        [`${RTDB_V3_ROOT}/live/tableSummaries/${encodedTable}`]: liveTable?.summary || null,
-        [`${RTDB_V3_ROOT}/live/pendingSummaries/${encodedTable}`]:
-          buildPendingSummary(liveTable?.pendingBatches) || null,
-      }
-      await ctx.updateRoot(payload)
-      ctx.applyLiveTable(
-        table,
-        liveTable,
-        ctx.currentTableSession?.table === table ? ctx.currentTableSession.mode : undefined
-      )
-    },
-    async syncLiveTableDerivedState(table: string) {
-      const liveTable = await ctx.readLiveTable(table)
-      const encodedTable = encodeTableKey(table)
-      const payload: Record<string, unknown> = {
-        [`${RTDB_V3_ROOT}/live/tableSummaries/${encodedTable}`]: liveTable.summary || null,
-        [`${RTDB_V3_ROOT}/live/pendingSummaries/${encodedTable}`]:
-          buildPendingSummary(liveTable.pendingBatches) || null,
-      }
-      await ctx.updateRoot(payload)
-      ctx.applyLiveTable(
-        table,
-        liveTable,
-        ctx.currentTableSession?.table === table ? ctx.currentTableSession.mode : undefined
-      )
-      return liveTable
-    },
-    async transactLiveTable(table: string, updater: (current: V3LiveTable) => V3LiveTable) {
-      await db
-        .ref(`${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`)
-        .transaction<V3LiveTable>((currentValue) =>
-          updater(normalizeLiveTable(currentValue as V3LiveTable | null | undefined))
-        )
-      return ctx.syncLiveTableDerivedState(table)
-    },
     async reserveDisplaySeqBase(value = Date.now()) {
       const bizDate = getBizDateKey(value)
       const ref = db.ref(`${RTDB_V3_ROOT}/history/sequenceByDate/${bizDate}/nextDisplaySeq`)
@@ -353,6 +529,30 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
       return {
         bizDate,
         displaySeqBase: Math.max(1, next - 1),
+      }
+    },
+    async reserveLiveNextRequestSeq(table: string, minimumNextRequestSeq = 1) {
+      const ref = db.ref(`${ctx.liveTableShardPath(table, 'summary')}/nextRequestSeq`)
+      const tx = await ref.transaction<number>((current) => {
+        const currentNext = readRequestSeqCounter(current)
+        return Math.max(currentNext, minimumNextRequestSeq) + 1
+      })
+      const nextRequestSeq = readRequestSeqCounter(tx.snapshot.val())
+      return {
+        requestSeq: Math.max(1, nextRequestSeq - 1),
+        nextRequestSeq,
+      }
+    },
+    async reserveLiveNextSplitCounter(table: string, minimumNextSplitCounter = 1) {
+      const ref = db.ref(`${ctx.liveTableShardPath(table, 'summary')}/nextSplitCounter`)
+      const tx = await ref.transaction<number>((current) => {
+        const currentNext = readSplitCounter(current)
+        return Math.max(currentNext, minimumNextSplitCounter) + 1
+      })
+      const nextSplitCounter = readSplitCounter(tx.snapshot.val())
+      return {
+        splitCounter: Math.max(1, nextSplitCounter - 1),
+        nextSplitCounter,
       }
     },
     async ensureDisplaySeqBase(table: string, customer: PosTableCustomer | undefined) {
@@ -379,8 +579,7 @@ export function createRtdbV3RepositoryContext({ db, state, helpers, onLiveStateC
         return cachedValue
       }
 
-      const liveTable = await ctx.readLiveTable(table)
-      const remote = readDisplaySeqBase(liveTable.summary)
+      const remote = readDisplaySeqBase(await ctx.readLiveTableSummary(table))
       if (remote > 0) {
         state.tableCustomers[table] = { ...cloneCustomer(customer), orderId: remote }
         return remote

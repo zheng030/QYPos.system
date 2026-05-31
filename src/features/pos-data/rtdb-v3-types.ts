@@ -1,5 +1,5 @@
 export const RTDB_V3_ROOT = 'v3'
-export const RTDB_V3_SCHEMA_VERSION = 3
+export const RTDB_V3_SCHEMA_VERSION = 5
 
 export type V3CatalogKey = string
 export type V3MonthKey = `${number}-${string}`
@@ -81,10 +81,11 @@ export type V3OrderBatch = {
 }
 
 export type V3TableSummary = {
-  status: string | null
   timerStartedAt: number | null
   displaySeqBase: number | null
-  batchCount: number
+  draftEntryCount: number
+  pendingBatchCount: number
+  submittedBatchCount: number
   nextRequestSeq?: number | null
   nextSplitCounter?: number | null
   customer: V3TableCustomer
@@ -116,6 +117,10 @@ export type V3ClosedOrderLine = V3OrderLine & {
   unitCost: number
 }
 
+export type V3ClosedOrderEntry = Omit<V3OrderEntry, 'lines'> & {
+  lines: Record<string, V3ClosedOrderLine>
+}
+
 export type V3ClosedOrder = {
   orderId: string
   bizDate: V3BizDateKey
@@ -133,8 +138,7 @@ export type V3ClosedOrder = {
   }
   status: 'closed'
   batchIds: string[]
-  entries: Record<string, V3OrderEntry>
-  lines: Record<string, V3ClosedOrderLine>
+  entries: Record<string, V3ClosedOrderEntry>
 }
 
 export type V3DailySummary = {

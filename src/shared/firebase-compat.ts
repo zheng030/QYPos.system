@@ -14,6 +14,7 @@ import {
   runTransaction,
   update,
 } from 'firebase/database'
+import { sanitizeFirebaseUpdatePayload } from './firebase-payload'
 
 type FirebaseConfig = {
   apiKey: string
@@ -89,7 +90,7 @@ export class DatabaseRefCompat {
   }
 
   async update(payload: Record<string, unknown>) {
-    await update(this.getRef(), payload)
+    await update(this.getRef(), sanitizeFirebaseUpdatePayload(payload))
   }
 
   async transaction<T>(updater: (currentValue: T | null) => T) {

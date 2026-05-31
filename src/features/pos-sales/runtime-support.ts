@@ -137,6 +137,16 @@ export type StaffWorkspaceSummary = {
   totalRowCount: number
 }
 
+export type AdjustedAmountDisplayTone = 'danger' | 'success'
+
+export type AdjustedAmountDisplay = {
+  originalLabel: string
+  finalLabel: string
+  hasAdjustment: boolean
+  noteLabel?: string
+  finalTone?: AdjustedAmountDisplayTone
+}
+
 export type StaffWorkspaceRowAction = {
   kind: 'edit' | 'treat' | 'delete'
   label: string
@@ -169,6 +179,22 @@ function escapeAttributeValue(value: string) {
 
 function sortByCreated<T extends { createdAt: number }>(items: T[]) {
   return [...items].sort((left, right) => left.createdAt - right.createdAt)
+}
+
+function normalizeAmount(value: number) {
+  return Math.max(0, Math.round(value || 0))
+}
+
+function joinAdjustmentNotes(parts: Array<string | null | undefined | false>) {
+  return parts.filter((part): part is string => typeof part === 'string' && part.trim().length > 0).join(' · ')
+}
+
+function getEntryOriginalSubtotal(entry: PosOrderEntry) {
+  return normalizeAmount(entry.lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0))
+}
+
+function sumEntryOriginalSubtotals(entries: PosOrderEntry[]) {
+  return normalizeAmount(entries.reduce((sum, entry) => sum + getEntryOriginalSubtotal(entry), 0))
 }
 
 function groupReceiptLines(lines: PosOrderLine[]) {
@@ -215,13 +241,22 @@ export function getVisibleOrderBatches(
 
 export function selectPendingOverlayBatch(
   mode: PosOrderMode,
-  pendingByTable: Record<string, PosPendingBatchPreview[] | undefined>
+  pendingByTable: Record<string, PosPendingBatchPreview[] | undefined>,
+  tableOrder?: string[]
 ): PendingOverlayBatch | null {
   if (mode !== 'staff') {
     return null
   }
 
-  for (const [table, batches] of Object.entries(pendingByTable)) {
+  const orderedTables = (tableOrder && tableOrder.length > 0 ? tableOrder : Object.keys(pendingByTable)).filter(Boolean)
+  const seen = new Set<string>()
+
+  for (const table of [...orderedTables, ...Object.keys(pendingByTable)]) {
+    if (seen.has(table)) {
+      continue
+    }
+    seen.add(table)
+    const batches = pendingByTable[table]
     const batch = batches?.[0]
     if (batch) {
       return { table, batch }
@@ -263,6 +298,86 @@ export function calculateStaffOrderTotal(
   }
   finalTotal -= allowance
   return Math.max(0, finalTotal)
+}
+
+export function buildAdjustedAmountDisplay(
+  originalAmount: number,
+  finalAmount: number,
+  options: {
+    noteLabel?: string
+    finalTone?: AdjustedAmountDisplayTone
+  } = {}
+): AdjustedAmountDisplay {
+  const normalizedOriginal = normalizeAmount(originalAmount)
+  const normalizedFinal = normalizeAmount(finalAmount)
+  const hasAdjustment = normalizedOriginal !== normalizedFinal
+
+  return {
+    originalLabel: formatCurrency(normalizedOriginal),
+    finalLabel: formatCurrency(normalizedFinal),
+    hasAdjustment,
+    noteLabel: hasAdjustment ? options.noteLabel : undefined,
+    finalTone: options.finalTone,
+  }
+}
+
+export function getEntryAdjustedAmountDisplay(entry: PosOrderEntry): AdjustedAmountDisplay {
+  const originalSubtotal = getEntryOriginalSubtotal(entry)
+  const hasTreat = entry.lines.some((line) => line.isTreat)
+
+  return buildAdjustedAmountDisplay(hasTreat ? originalSubtotal : entry.subtotal, entry.subtotal, {
+    finalTone: hasTreat ? 'success' : undefined,
+  })
+}
+
+export function getStaffWorkspaceTotalDisplay(
+  submittedEntries: PosOrderEntry[],
+  discountPercent: number,
+  serviceFeeEnabled: boolean
+): AdjustedAmountDisplay {
+  const originalSubtotal = sumEntryOriginalSubtotals(submittedEntries)
+  const adjustedSubtotal = normalizeAmount(submittedEntries.reduce((sum, entry) => sum + entry.subtotal, 0))
+  const discountedSubtotal =
+    discountPercent > 0 && discountPercent <= 100
+      ? normalizeAmount(adjustedSubtotal * (discountPercent / 100))
+      : adjustedSubtotal
+  const serviceFeeAmount = serviceFeeEnabled ? normalizeAmount(discountedSubtotal * 0.1) : 0
+  const finalTotal = calculateStaffOrderTotal(adjustedSubtotal, discountPercent, serviceFeeEnabled)
+  const noteLabel = joinAdjustmentNotes([
+    discountPercent > 0 && discountPercent <= 100 && discountedSubtotal !== adjustedSubtotal
+      ? `折數 ${discountPercent}%`
+      : null,
+    serviceFeeAmount > 0 ? `含服務費 +${formatCurrency(serviceFeeAmount)}` : null,
+  ])
+
+  return buildAdjustedAmountDisplay(originalSubtotal, finalTotal, {
+    noteLabel: noteLabel || undefined,
+    finalTone: 'danger',
+  })
+}
+
+export function renderAdjustedAmountHtml(
+  display: AdjustedAmountDisplay,
+  options: {
+    stacked?: boolean
+  } = {}
+) {
+  if (!display.hasAdjustment) {
+    return escapeHtml(display.finalLabel)
+  }
+
+  const toneClass = display.finalTone ? ` price-adjusted-final--${display.finalTone}` : ''
+  const noteHtml = display.noteLabel ? `<span class="price-adjusted-note">${escapeHtml(display.noteLabel)}</span>` : ''
+
+  return `
+    <span class="price-adjusted${options.stacked ? ' price-adjusted--stack' : ''}">
+      <span class="price-adjusted-main">
+        <span class="price-adjusted-original">${escapeHtml(display.originalLabel)}</span>
+        <span class="price-adjusted-final${toneClass}">${escapeHtml(display.finalLabel)}</span>
+      </span>
+      ${noteHtml}
+    </span>
+  `
 }
 
 export function summarizeStaffWorkspace(

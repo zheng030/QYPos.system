@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
+import { createMemoryPersistentCacheStore } from './rtdb-v3-cache'
 import { encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import { createRtdbV3Repository } from './rtdb-v3-repository'
-import { createDbStub, createEntry, createState, readAtPath } from './rtdb-v3-repository.test-support'
+import {
+  createDbStub,
+  createEntry,
+  createState,
+  measurePayloadSize,
+  readAtPath,
+  setAtPath,
+} from './rtdb-v3-repository.test-support'
+import { encodeLiveTableShardValue } from './rtdb-v3-storage-codecs'
+import type { V3OrderLine } from './rtdb-v3-types'
 
 describe('rtdb-v3-repository', () => {
   it('deletes attendance record from its original month bucket', async () => {
@@ -127,9 +137,321 @@ describe('rtdb-v3-repository', () => {
     expect(Object.keys(state.attendanceRecords).sort()).toEqual(['rec_1', 'rec_2'])
   })
 
-  it('avoids revision preflight reads for initial catalog and owner auth loads', async () => {
+  it('keeps attendance window reads under full-history baseline', async () => {
     const db = createDbStub({
       v3: {
+        meta: {
+          revisions: {
+            attendance: {
+              employees: 1,
+              recordsByMonth: {
+                '2026-04': 1,
+                '2026-05': 1,
+              },
+            },
+          },
+        },
+        attendance: {
+          employees: {
+            emp_1: { id: 'emp_1', name: 'A' },
+          },
+          recordsByMonth: {
+            '2026-04': {
+              rec_1: {
+                id: 'rec_1',
+                eid: 'emp_1',
+                type: 'CLOCK_IN',
+                ts: new Date('2026-04-30T06:00:00+08:00').getTime(),
+              },
+            },
+            '2026-05': {
+              rec_2: {
+                id: 'rec_2',
+                eid: 'emp_1',
+                type: 'CLOCK_OUT',
+                ts: new Date('2026-05-01T06:00:00+08:00').getTime(),
+              },
+            },
+          },
+        },
+      },
+    })
+    const repository = createRtdbV3Repository({ db: db as never, state: createState() })
+
+    await repository.ensureAttendanceWindow(['2026-04'])
+
+    const actualReadSize = db.readEvents
+      .filter((event) => event.phase === 'once' && event.path.startsWith('v3/attendance/'))
+      .reduce((sum, event) => sum + event.payloadSize, 0)
+    const fullHistoryBaseline =
+      measurePayloadSize(readAtPath(db.data, 'v3/attendance/employees')) +
+      measurePayloadSize(readAtPath(db.data, 'v3/attendance/recordsByMonth'))
+
+    expect(actualReadSize).toBeLessThan(fullHistoryBaseline)
+  })
+
+  it('reuses warm cache for attendance employees and active month when revisions stay unchanged', async () => {
+    const cacheStore = createMemoryPersistentCacheStore()
+    const initialDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            attendance: {
+              employees: 1,
+              recordsByMonth: {
+                '2026-04': 1,
+              },
+            },
+          },
+        },
+        attendance: {
+          employees: {
+            emp_1: { id: 'emp_1', name: 'A' },
+          },
+          recordsByMonth: {
+            '2026-04': {
+              rec_1: {
+                id: 'rec_1',
+                eid: 'emp_1',
+                type: 'CLOCK_IN',
+                ts: new Date('2026-04-30T06:00:00+08:00').getTime(),
+              },
+            },
+          },
+        },
+      },
+    })
+    const initialRepository = createRtdbV3Repository({
+      db: initialDb as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    await initialRepository.ensureAttendanceWindow(['2026-04'])
+
+    const warmDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            attendance: {
+              employees: 1,
+              recordsByMonth: {
+                '2026-04': 1,
+              },
+            },
+          },
+        },
+        attendance: {
+          employees: {
+            emp_1: { id: 'emp_1', name: 'Changed' },
+          },
+          recordsByMonth: {
+            '2026-04': {},
+          },
+        },
+      },
+    })
+    const state = createState()
+    const warmRepository = createRtdbV3Repository({
+      db: warmDb as never,
+      state,
+      cacheStore,
+    })
+
+    await warmRepository.ensureAttendanceWindow(['2026-04'])
+
+    expect(state.attendanceEmployees.emp_1?.name).toBe('A')
+    expect(Object.keys(state.attendanceRecords)).toEqual(['rec_1'])
+    expect([...warmDb.onceCalls].sort()).toEqual(
+      ['v3/meta/revisions/attendance/employees', 'v3/meta/revisions/attendance/recordsByMonth/2026-04'].sort()
+    )
+  })
+
+  it('refetches only changed attendance month after revision invalidation with warm cache', async () => {
+    const cacheStore = createMemoryPersistentCacheStore()
+    const initialDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            attendance: {
+              employees: 1,
+              recordsByMonth: {
+                '2026-04': 1,
+                '2026-05': 1,
+              },
+            },
+          },
+        },
+        attendance: {
+          employees: {
+            emp_1: { id: 'emp_1', name: 'A' },
+          },
+          recordsByMonth: {
+            '2026-04': {
+              rec_1: {
+                id: 'rec_1',
+                eid: 'emp_1',
+                type: 'CLOCK_IN',
+                ts: new Date('2026-04-30T06:00:00+08:00').getTime(),
+              },
+            },
+            '2026-05': {
+              rec_2: {
+                id: 'rec_2',
+                eid: 'emp_1',
+                type: 'CLOCK_OUT',
+                ts: new Date('2026-05-01T06:00:00+08:00').getTime(),
+              },
+            },
+          },
+        },
+      },
+    })
+    const initialRepository = createRtdbV3Repository({
+      db: initialDb as never,
+      state: createState(),
+      cacheStore,
+    })
+    await initialRepository.ensureAttendanceWindow(['2026-04', '2026-05'])
+
+    const warmDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            attendance: {
+              employees: 1,
+              recordsByMonth: {
+                '2026-04': 1,
+                '2026-05': 1,
+              },
+            },
+          },
+        },
+        attendance: {
+          employees: {
+            emp_1: { id: 'emp_1', name: 'A' },
+          },
+          recordsByMonth: {
+            '2026-04': {
+              rec_1: {
+                id: 'rec_1',
+                eid: 'emp_1',
+                type: 'CLOCK_IN',
+                ts: new Date('2026-04-30T06:00:00+08:00').getTime(),
+              },
+            },
+            '2026-05': {
+              rec_2: {
+                id: 'rec_2',
+                eid: 'emp_1',
+                type: 'CLOCK_OUT',
+                ts: new Date('2026-05-01T06:00:00+08:00').getTime(),
+              },
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    const repository = createRtdbV3Repository({
+      db: warmDb as never,
+      state,
+      cacheStore,
+    })
+
+    await repository.ensureAttendanceWindow(['2026-04', '2026-05'])
+    let resolveInvalidation: (() => void) | null = null
+    const invalidated = new Promise<void>((resolve) => {
+      resolveInvalidation = resolve
+    })
+    const stop = repository.watchAttendanceWindow(['2026-04', '2026-05'], () => {
+      resolveInvalidation?.()
+    })
+    warmDb.onceCalls.length = 0
+
+    setAtPath(warmDb.data, 'v3/attendance/recordsByMonth/2026-05/rec_3', {
+      id: 'rec_3',
+      eid: 'emp_1',
+      type: 'CLOCK_IN',
+      ts: new Date('2026-05-02T06:00:00+08:00').getTime(),
+    })
+    warmDb.emit('v3/meta/revisions/attendance/recordsByMonth/2026-05', 'value', 2)
+    await invalidated
+
+    expect(warmDb.onceCalls).toEqual(['v3/attendance/recordsByMonth/2026-05'])
+    expect(Object.keys(state.attendanceRecords).sort()).toEqual(['rec_1', 'rec_2', 'rec_3'])
+    stop()
+  })
+
+  it('refetches attendance employees when employee revision changes', async () => {
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            attendance: {
+              employees: 1,
+              recordsByMonth: {
+                '2026-04': 1,
+              },
+            },
+          },
+        },
+        attendance: {
+          employees: {
+            emp_1: { id: 'emp_1', name: 'A' },
+          },
+          recordsByMonth: {
+            '2026-04': {
+              rec_1: {
+                id: 'rec_1',
+                eid: 'emp_1',
+                type: 'CLOCK_IN',
+                ts: new Date('2026-04-30T06:00:00+08:00').getTime(),
+              },
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    const repository = createRtdbV3Repository({ db: db as never, state })
+
+    await repository.ensureAttendanceWindow(['2026-04'])
+    let resolveInvalidation: (() => void) | null = null
+    const invalidated = new Promise<void>((resolve) => {
+      resolveInvalidation = resolve
+    })
+    const stop = repository.watchAttendanceWindow(['2026-04'], (event) => {
+      if (event.employeesChanged) {
+        resolveInvalidation?.()
+      }
+    })
+    db.onceCalls.length = 0
+
+    setAtPath(db.data, 'v3/attendance/employees/emp_2', { id: 'emp_2', name: 'B' })
+    db.emit('v3/meta/revisions/attendance/employees', 'value', 2)
+    await invalidated
+
+    expect(db.onceCalls).toEqual(['v3/attendance/employees'])
+    expect(state.attendanceEmployees.emp_2?.name).toBe('B')
+    stop()
+  })
+
+  it('uses revision preflight on initial catalog and owner auth loads, then reuses warm cache', async () => {
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            catalog: {
+              inventory: 1,
+              prices: 1,
+              costs: 1,
+            },
+            auth: {
+              owners: 1,
+            },
+          },
+        },
         catalog: {
           inventory: { cola: true },
           prices: { cola: 100 },
@@ -142,16 +464,173 @@ describe('rtdb-v3-repository', () => {
         },
       },
     })
+    const cacheStore = createMemoryPersistentCacheStore()
     const repository = createRtdbV3Repository({
       db: db as never,
       state: createState(),
+      cacheStore,
     })
 
     await repository.ensureCatalog()
     await repository.ensureOwnerAuth()
 
-    expect(db.onceCalls).toEqual(['v3/catalog/inventory', 'v3/catalog/prices', 'v3/catalog/costs', 'v3/auth/owners'])
-    expect(db.onceCalls.some((path) => path.startsWith('v3/meta/revisions/'))).toBe(false)
+    expect([...db.onceCalls].sort()).toEqual(
+      [
+        'v3/meta/revisions/catalog/inventory',
+        'v3/meta/revisions/catalog/costs',
+        'v3/meta/revisions/catalog/prices',
+        'v3/meta/revisions/auth/owners',
+        'v3/catalog/costs',
+        'v3/catalog/inventory',
+        'v3/catalog/prices',
+        'v3/auth/owners',
+      ].sort()
+    )
+
+    const warmDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            catalog: {
+              inventory: 1,
+              prices: 1,
+              costs: 1,
+            },
+            auth: {
+              owners: 1,
+            },
+          },
+        },
+        catalog: {
+          inventory: { cola: false },
+          prices: { cola: 999 },
+          costs: { cola: 999 },
+        },
+        auth: {
+          owners: {
+            景偉: { passwordHash: 'changed', passwordSalt: 'changed' },
+          },
+        },
+      },
+    })
+    const warmRepository = createRtdbV3Repository({
+      db: warmDb as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    await warmRepository.ensureCatalog()
+    await warmRepository.ensureOwnerAuth()
+
+    expect([...warmDb.onceCalls].sort()).toEqual(
+      [
+        'v3/meta/revisions/catalog/inventory',
+        'v3/meta/revisions/catalog/costs',
+        'v3/meta/revisions/catalog/prices',
+        'v3/meta/revisions/auth/owners',
+      ].sort()
+    )
+  })
+
+  it('refetches changed catalog segment after revision invalidation even with warm cache', async () => {
+    const cacheStore = createMemoryPersistentCacheStore()
+    const initialDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            catalog: {
+              inventory: 1,
+              prices: 1,
+              costs: 1,
+            },
+          },
+        },
+        catalog: {
+          inventory: { cola: true },
+          prices: {},
+          costs: {},
+        },
+      },
+    })
+    const initialRepository = createRtdbV3Repository({
+      db: initialDb as never,
+      state: createState(),
+      cacheStore,
+    })
+    await initialRepository.ensureCatalog()
+
+    const warmDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            catalog: {
+              inventory: 1,
+              prices: 1,
+              costs: 1,
+            },
+          },
+        },
+        catalog: {
+          inventory: { cola: false },
+          prices: {},
+          costs: {},
+        },
+      },
+    })
+    const repository = createRtdbV3Repository({
+      db: warmDb as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    await repository.ensureCatalog()
+    const stop = repository.watchCatalogRevision(() => {})
+    warmDb.onceCalls.length = 0
+
+    warmDb.emit('v3/meta/revisions/catalog/inventory', 'value', 2)
+    await Promise.resolve()
+
+    expect(warmDb.onceCalls).toContain('v3/catalog/inventory')
+    stop()
+  })
+
+  it('refetches owner auth when auth revision changes', async () => {
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            auth: {
+              owners: 1,
+            },
+          },
+        },
+        auth: {
+          owners: {
+            景偉: { passwordHash: 'h', passwordSalt: 's' },
+          },
+        },
+      },
+    })
+    const state = createState()
+    const repository = createRtdbV3Repository({ db: db as never, state })
+
+    await repository.ensureOwnerAuth()
+    let resolveInvalidation: (() => void) | null = null
+    const invalidated = new Promise<void>((resolve) => {
+      resolveInvalidation = resolve
+    })
+    const stop = repository.watchOwnerAuthRevision(() => {
+      resolveInvalidation?.()
+    })
+    db.onceCalls.length = 0
+
+    setAtPath(db.data, 'v3/auth/owners/景偉/passwordHash', 'new-h')
+    db.emit('v3/meta/revisions/auth/owners', 'value', 2)
+    await invalidated
+
+    expect(db.onceCalls).toEqual(['v3/auth/owners'])
+    expect(state.ownerPasswords.景偉?.passwordHash).toBe('new-h')
+    stop()
   })
 
   it('does not duplicate staff live subscriptions on repeated start', async () => {
@@ -164,30 +643,121 @@ describe('rtdb-v3-repository', () => {
         },
         live: {
           tableSummaries: {},
-          pendingSummaries: {},
         },
       },
     })
     const repository = createRtdbV3Repository({
       db: db as never,
       state: createState(),
+      tables: ['A1', 'A2'],
     })
 
     await repository.startStaffLive()
     await repository.startStaffLive()
 
     expect(db.onceCalls.filter((path) => path === 'v3/live/tableSummaries')).toHaveLength(0)
-    expect(db.onceCalls.filter((path) => path === 'v3/live/pendingSummaries')).toHaveLength(0)
+    expect(db.onceCalls.filter((path) => path === 'v3/live/tables/A1/pendingBatches')).toHaveLength(1)
     expect(
       db.onCalls.filter(
         ({ path, eventName }) =>
-          (path === 'v3/live/tableSummaries' || path === 'v3/live/pendingSummaries') &&
-          ['child_added', 'child_changed', 'child_removed'].includes(eventName)
+          (path === 'v3/live/tableSummaries' &&
+            ['child_added', 'child_changed', 'child_removed'].includes(eventName)) ||
+          (path.startsWith('v3/meta/revisions/live/tables/') &&
+            path.endsWith('/pendingBatches') &&
+            eventName === 'value')
       )
-    ).toHaveLength(6)
+    ).toHaveLength(5)
   })
 
-  it('seeds staff live preview batches from pending summary subscriptions', async () => {
+  it('seeds staff live preview batches from canonical pending shard subscriptions', async () => {
+    const previewEntry = createEntry({ entryId: 'entry_1', shortName: '可樂', itemName: '可樂' })
+    const encodedPendingBatches = encodeLiveTableShardValue('pendingBatches', {
+      pending_1: {
+        batchId: 'pending_1',
+        source: 'customer',
+        status: 'pending',
+        table: 'A1',
+        customer: { name: 'A', phone: '' },
+        updatedAt: 1,
+        requestSeq: 1,
+        createdAt: 1,
+        requestLabel: '#8-1',
+        entries: {
+          entry_1: {
+            ...previewEntry,
+            summary: {
+              title: '可樂',
+              subtitle: '',
+              quantityLabel: '2 份',
+              totalLabel: '$100',
+            },
+            quantity: 2,
+            lines: {
+              entry_1_main: {
+                ...previewEntry.lines[0],
+                lineId: 'entry_1_main',
+                shortName: '可樂',
+                displayName: '可樂',
+                sourceEntryId: 'entry_1',
+                quantity: 2,
+              } satisfies V3OrderLine,
+            },
+          },
+        },
+        subtotal: 100,
+      },
+    })
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            live: {
+              tables: {
+                A1: {
+                  pendingBatches: 1,
+                },
+              },
+            },
+          },
+        },
+        catalog: {
+          inventory: {},
+          prices: {},
+          costs: {},
+        },
+        live: {
+          tableSummaries: {
+            A1: {
+              timerStartedAt: 1,
+              displaySeqBase: 8,
+              draftEntryCount: 0,
+              pendingBatchCount: 1,
+              submittedBatchCount: 0,
+              customer: { name: 'A', phone: '' },
+              updatedAt: 1,
+            },
+          },
+          tables: {
+            A1: {
+              pendingBatches: encodedPendingBatches,
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    const repository = createRtdbV3Repository({ db: db as never, state, tables: ['A1'] })
+
+    await repository.startStaffLive()
+
+    expect(state.tableStatuses.A1).toBe('yellow')
+    expect(state.pendingBatchPreviews.A1?.[0]?.batchId).toBe('pending_1')
+    expect(state.pendingBatchPreviews.A1?.[0]?.requestSeq).toBe(1)
+    expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.title).toBe('可樂')
+    expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.quantityLabel).toBe('2 份')
+  })
+
+  it('keeps local split counter when staff summary mirror update omits counter fields', async () => {
     const db = createDbStub({
       v3: {
         catalog: {
@@ -206,31 +776,29 @@ describe('rtdb-v3-repository', () => {
               updatedAt: 1,
             },
           },
-          pendingSummaries: {
-            A1: {
-              pendingCount: 1,
-              firstBatch: {
-                batchId: 'pending_1',
-                requestSeq: 1,
-                createdAt: 1,
-                requestLabel: '#8-1',
-                itemPreview: [{ title: '可樂', quantityLabel: '2 份' }],
-              },
-            },
-          },
         },
       },
     })
     const state = createState()
-    const repository = createRtdbV3Repository({ db: db as never, state })
+    state.tableSplitCounters.A1 = 7
+    const repository = createRtdbV3Repository({ db: db as never, state, tables: ['A1'] })
 
     await repository.startStaffLive()
+    db.emit(
+      'v3/live/tableSummaries',
+      'child_changed',
+      {
+        status: 'yellow',
+        timerStartedAt: 2,
+        displaySeqBase: 8,
+        batchCount: 2,
+        customer: { name: 'A', phone: '' },
+        updatedAt: 2,
+      },
+      'A1'
+    )
 
-    expect(state.tableStatuses.A1).toBe('yellow')
-    expect(state.pendingBatchPreviews.A1?.[0]?.batchId).toBe('pending_1')
-    expect(state.pendingBatchPreviews.A1?.[0]?.requestSeq).toBe(1)
-    expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.title).toBe('可樂')
-    expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.quantityLabel).toBe('2 份')
+    expect(state.tableSplitCounters.A1).toBe(7)
   })
 
   it('reads a single pending batch detail from the live table path only', async () => {

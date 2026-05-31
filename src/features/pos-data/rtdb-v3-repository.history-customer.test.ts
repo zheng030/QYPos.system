@@ -1,10 +1,38 @@
 import { describe, expect, it } from 'vitest'
 
+import { createMemoryPersistentCacheStore } from './rtdb-v3-cache'
 import { encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import { createRtdbV3Repository } from './rtdb-v3-repository'
-import { createDbStub, createEntry, createState, readAtPath } from './rtdb-v3-repository.test-support'
+import {
+  createDbStub,
+  createEntry,
+  createState,
+  measurePayloadSize,
+  readAtPath,
+} from './rtdb-v3-repository.test-support'
+import { dailySummaryStorageCodec, itemStatsStorageCodec } from './rtdb-v3-storage-codecs'
 
 describe('rtdb-v3-repository', () => {
+  const sampleDailySummary = {
+    orderCount: 1,
+    paidTotal: 100,
+    originalTotal: 100,
+    itemQtyTotal: 0,
+    categoryRevenue: { drink: 100 },
+    categoryCost: { drink: 10 },
+    updatedAt: 1,
+  }
+  const sampleItemStats = {
+    cola: {
+      displayName: '可樂',
+      categoryKey: 'drink',
+      qty: 1,
+      revenue: 100,
+      cost: 10,
+      updatedAt: 1,
+    },
+  }
+
   it('reads a_la_carte-day history and item stats from child paths only', async () => {
     const db = createDbStub({
       v3: {
@@ -45,29 +73,12 @@ describe('rtdb-v3-repository', () => {
         reports: {
           dailyByMonth: {
             '2026-05': {
-              '2026-05-30': {
-                orderCount: 1,
-                paidTotal: 100,
-                originalTotal: 100,
-                itemQtyTotal: 0,
-                categoryRevenue: { drink: 100 },
-                categoryCost: { drink: 10 },
-                updatedAt: 1,
-              },
+              '2026-05-30': dailySummaryStorageCodec.encode(sampleDailySummary),
             },
           },
           itemStatsByMonth: {
             '2026-05': {
-              '2026-05-30': {
-                cola: {
-                  displayName: '可樂',
-                  categoryKey: 'drink',
-                  qty: 1,
-                  revenue: 100,
-                  cost: 10,
-                  updatedAt: 1,
-                },
-              },
+              '2026-05-30': itemStatsStorageCodec.encode(sampleItemStats),
             },
           },
         },
@@ -92,6 +103,176 @@ describe('rtdb-v3-repository', () => {
     expect(db.onceCalls).not.toContain('v3/history/ordersByMonth/2026-05')
     expect(db.onceCalls).not.toContain('v3/reports/dailyByMonth/2026-05')
     expect(db.onceCalls).not.toContain('v3/reports/itemStatsByMonth/2026-05')
+  })
+
+  it('keeps day report read traffic under month-root baseline', async () => {
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            history: { ordersByDay: { '2026-05-30': 1, '2026-05-31': 1 } },
+            reports: {
+              dailyByDay: { '2026-05-30': 1, '2026-05-31': 1 },
+              itemStatsByDay: { '2026-05-30': 1, '2026-05-31': 1 },
+            },
+          },
+        },
+        history: {
+          ordersByMonth: {
+            '2026-05': {
+              '2026-05-30': {},
+              '2026-05-31': {},
+            },
+          },
+        },
+        reports: {
+          dailyByMonth: {
+            '2026-05': {
+              '2026-05-30': dailySummaryStorageCodec.encode(sampleDailySummary),
+              '2026-05-31': dailySummaryStorageCodec.encode({ ...sampleDailySummary, paidTotal: 150, updatedAt: 2 }),
+            },
+          },
+          itemStatsByMonth: {
+            '2026-05': {
+              '2026-05-30': itemStatsStorageCodec.encode(sampleItemStats),
+              '2026-05-31': itemStatsStorageCodec.encode({
+                tea: { displayName: '茶', categoryKey: 'drink', qty: 2, revenue: 150, cost: 20, updatedAt: 2 },
+              }),
+            },
+          },
+        },
+      },
+    })
+    const repository = createRtdbV3Repository({ db: db as never, state: createState() })
+    const start = new Date('2026-05-30T05:00:00+08:00')
+    const end = new Date('2026-06-01T05:00:00+08:00')
+
+    await repository.loadDailySummariesRange(start, end)
+    await repository.loadItemStatsRange(start, end)
+
+    const actualReadSize = db.readEvents
+      .filter((event) => event.phase === 'once' && event.path.startsWith('v3/reports/'))
+      .reduce((sum, event) => sum + event.payloadSize, 0)
+    const monthRootBaseline =
+      measurePayloadSize(readAtPath(db.data, 'v3/reports/dailyByMonth/2026-05')) +
+      measurePayloadSize(readAtPath(db.data, 'v3/reports/itemStatsByMonth/2026-05'))
+
+    expect(actualReadSize).toBeLessThan(monthRootBaseline)
+  })
+
+  it('reuses warm cache for history and reports when day revisions stay unchanged', async () => {
+    const cacheStore = createMemoryPersistentCacheStore()
+    const initialDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            history: { ordersByDay: { '2026-05-30': 1 } },
+            reports: {
+              dailyByDay: { '2026-05-30': 1 },
+              itemStatsByDay: { '2026-05-30': 1 },
+            },
+          },
+        },
+        history: {
+          ordersByMonth: {
+            '2026-05': {
+              '2026-05-30': {
+                ord_1: {
+                  orderId: 'ord_1',
+                  bizDate: '2026-05-30',
+                  monthKey: '2026-05',
+                  createdAt: 1,
+                  closedAt: 2,
+                  tableLabel: 'A1',
+                  displaySeqBase: 3,
+                  splitCounter: null,
+                  displaySeqLabel: '3',
+                  customer: { name: '', phone: '' },
+                  totals: { paid: 100, original: 100 },
+                  status: 'closed',
+                  batchIds: [],
+                  entries: {},
+                },
+              },
+            },
+          },
+        },
+        reports: {
+          dailyByMonth: {
+            '2026-05': {
+              '2026-05-30': dailySummaryStorageCodec.encode(sampleDailySummary),
+            },
+          },
+          itemStatsByMonth: {
+            '2026-05': {
+              '2026-05-30': itemStatsStorageCodec.encode(sampleItemStats),
+            },
+          },
+        },
+      },
+    })
+    const start = new Date('2026-05-30T05:00:00+08:00')
+    const end = new Date('2026-05-31T05:00:00+08:00')
+    const initialRepository = createRtdbV3Repository({
+      db: initialDb as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    await initialRepository.listClosedOrdersByRange({ start, endExclusive: end })
+    await initialRepository.loadDailySummariesRange(start, end)
+    await initialRepository.loadItemStatsRange(start, end)
+
+    const warmDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            history: { ordersByDay: { '2026-05-30': 1 } },
+            reports: {
+              dailyByDay: { '2026-05-30': 1 },
+              itemStatsByDay: { '2026-05-30': 1 },
+            },
+          },
+        },
+        history: {
+          ordersByMonth: {
+            '2026-05': {
+              '2026-05-30': {},
+            },
+          },
+        },
+        reports: {
+          dailyByMonth: {
+            '2026-05': {
+              '2026-05-30': null,
+            },
+          },
+          itemStatsByMonth: {
+            '2026-05': {
+              '2026-05-30': itemStatsStorageCodec.encode({}),
+            },
+          },
+        },
+      },
+    })
+    const warmRepository = createRtdbV3Repository({
+      db: warmDb as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    const orders = await warmRepository.listClosedOrdersByRange({ start, endExclusive: end })
+    const summaries = await warmRepository.loadDailySummariesRange(start, end)
+    const stats = await warmRepository.loadItemStatsRange(start, end)
+
+    expect(orders).toHaveLength(1)
+    expect(summaries['2026-05-30']?.paidTotal).toBe(100)
+    expect(stats['2026-05-30']?.cola?.revenue).toBe(100)
+    expect([...warmDb.onceCalls].sort()).toEqual([
+      'v3/meta/revisions/history/ordersByDay/2026-05-30',
+      'v3/meta/revisions/reports/dailyByDay/2026-05-30',
+      'v3/meta/revisions/reports/itemStatsByDay/2026-05-30',
+    ])
   })
 
   it('normalizes legacy mixed summaries when reading live and history entries', async () => {
@@ -390,7 +571,7 @@ describe('rtdb-v3-repository', () => {
     const result = await repository.saveCustomerDraft('A1', [entry], state.tableCustomers.A1)
 
     expect(result.displaySeqBase).toBe(9)
-    expect(readAtPath(db.data, 'v3/live/tables/A1/draft/entry_1')).toBeTruthy()
+    expect(readAtPath(db.data, `v3/live/tables/A1/draft/${entry.entryId}`)).toBeTruthy()
     expect(readAtPath(db.data, 'v3/live/tables/A1/pendingBatches/pending_1')).toBeTruthy()
     expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1')).toBeTruthy()
   })
@@ -449,7 +630,7 @@ describe('rtdb-v3-repository', () => {
     const encodedEntryId = encodeRtdbKeySegment(entry.entryId)
     const encodedLineId = encodeRtdbKeySegment(entry.lines[0]?.lineId || '')
     expect(readAtPath(db.data, `v3/live/tables/A1/draft/${encodedEntryId}`)).toBeTruthy()
-    expect(readAtPath(db.data, `v3/live/tables/A1/draft/${encodedEntryId}/lines/${encodedLineId}`)).toBeTruthy()
+    expect(readAtPath(db.data, `v3/live/tables/A1/draft/${encodedEntryId}/l/${encodedLineId}`)).toBeTruthy()
   })
 
   it('moves customer draft to pending batch and can accept or reject it', async () => {
@@ -485,7 +666,7 @@ describe('rtdb-v3-repository', () => {
     const batch = await repository.submitCustomerDraft('A1', [entry], state.tableCustomers.A1)
     expect(batch).toMatchObject({ requestSeq: 1, requestLabel: '#5-1' })
     expect(readAtPath(db.data, `v3/live/tables/A1/pendingBatches/${batch.batchId}`)).toBeTruthy()
-    expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toEqual({})
+    expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toBeUndefined()
 
     const accepted = await repository.acceptPendingBatch('A1', batch.batchId)
     expect(accepted?.status).toBe('accepted')

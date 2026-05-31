@@ -12,8 +12,10 @@ import { buildBuilderPresentation, createBuilderState, getFirstBuilderIssue, hyd
 import { renderBuilderMarkup, renderBuilderMissingMarkup } from './builder-view'
 import {
   getBatchStatusChip,
+  getEntryAdjustedAmountDisplay,
   getVisibleOrderBatches,
   guideBuilderIssue,
+  renderAdjustedAmountHtml,
   selectPendingOverlayBatch,
 } from './runtime-support'
 import { escapeHtml, formatCurrency, getVisibleDetailChildLines, groupChildLines } from './runtime-utils'
@@ -121,6 +123,7 @@ export function createPosSalesOrderUiModule({
     const childLines = getVisibleDetailChildLines(entry)
     const isTreat = entry.lines.every((line) => line.isTreat)
     const summary = getDisplaySummary(entry)
+    const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
     return `
       <article class="entry-card">
         <div class="entry-card-head">
@@ -128,7 +131,7 @@ export function createPosSalesOrderUiModule({
             <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
             ${renderEntrySubtitleLines([{ text: summary.mainSummary }])}
           </div>
-          <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+          <div class="entry-card-total">${totalHtml}</div>
         </div>
         ${
           childLines.length > 0
@@ -209,6 +212,7 @@ export function createPosSalesOrderUiModule({
                 (line) => line.courseKind !== 'drink'
               )
               const summary = getDisplaySummary(entry)
+              const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
               const entryActions =
                 options.pending || !options.editable
                   ? ''
@@ -234,7 +238,7 @@ export function createPosSalesOrderUiModule({
                       .join('')}
                     ${entryActions}
                   </div>
-                  <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+                  <div class="entry-card-total">${totalHtml}</div>
                 </div>
               `
             })
@@ -261,6 +265,7 @@ export function createPosSalesOrderUiModule({
     return entries
       .map((entry) => {
         const summary = getDisplaySummary(entry)
+        const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
         return `
           <div class="entry-card">
             <div class="entry-card-head">
@@ -272,7 +277,7 @@ export function createPosSalesOrderUiModule({
                   { text: summary.drinkSummary },
                 ])}
               </div>
-              <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+              <div class="entry-card-total">${totalHtml}</div>
             </div>
           </div>
         `
@@ -312,7 +317,11 @@ export function createPosSalesOrderUiModule({
     const title = document.getElementById('pendingOverlayTitle')
     const list = document.getElementById('pendingOverlayList')
     if (!overlay || !title || !list) return
-    const pending = selectPendingOverlayBatch(kernel.state.currentMode, kernel.state.pendingBatchPreviews)
+    const pending = selectPendingOverlayBatch(
+      kernel.state.currentMode,
+      kernel.state.pendingBatchPreviews,
+      kernel.tables
+    )
     if (!pending) {
       overlay.classList.remove('show')
       kernel.state.currentPendingBatchId = null
@@ -425,7 +434,11 @@ export function createPosSalesOrderUiModule({
   }
 
   function showPendingBatchOverlay() {
-    const pending = selectPendingOverlayBatch(kernel.state.currentMode, kernel.state.pendingBatchPreviews)
+    const pending = selectPendingOverlayBatch(
+      kernel.state.currentMode,
+      kernel.state.pendingBatchPreviews,
+      kernel.tables
+    )
     renderPendingOverlay()
     if (pending) {
       void ensurePendingOverlayBatchDetail(pending.table, pending.batch)

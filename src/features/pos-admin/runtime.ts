@@ -37,12 +37,9 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         ensureSubscriptions: async () => {
           await Promise.all([data.ensureOwnerAuth(), data.ensureCatalog()])
         },
-        getBusinessDate: kernel.dates.getBusinessDate,
-        getDateFromOrder: kernel.dates.getDateFromOrder,
         getItemCategoryType: kernel.helpers.getItemCategoryType,
         getItemCosts: () => kernel.state.itemCosts,
         getItemPrices: () => kernel.state.itemPrices,
-        listClosedOrdersForBusinessDay: data.listClosedOrdersForBusinessDay,
         listClosedOrdersByRange: data.listClosedOrdersByRange,
         loadDailySummariesRange: data.loadDailySummariesRange,
         watchDailySummariesRange: data.watchDailySummariesRange,
@@ -105,23 +102,19 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         ownerFinance.closeRevenueModal()
       })
       ui.on('click', 'select-owner-finance-day', (_event, element) => {
-        const year = Number(element.dataset.year || '')
-        const month = Number(element.dataset.month || '')
-        const day = Number(element.dataset.day || '')
-        if ([year, month, day].some(Number.isNaN)) return
+        const bizDateKey = element.dataset.bizDateKey
+        if (!bizDateKey) return
         document.querySelectorAll('#finCalendarGrid .calendar-day').forEach((item) => {
           item.classList.remove('active')
         })
         element.classList.add('active')
-        ownerFinance.showOwnerDetailedOrders(year, month, day)
+        ownerFinance.showOwnerDetailedOrders(bizDateKey)
         const specificBtn = document.getElementById('finBtnSpecific')
         if (specificBtn) {
-          const mm = String(month + 1).padStart(2, '0')
-          const dd = String(day).padStart(2, '0')
-          specificBtn.innerText = `${String(year).slice(2)}-${mm}-${dd}`
-          specificBtn.dataset.date = `${year}-${mm}-${dd}`
+          specificBtn.innerText = bizDateKey.slice(2)
+          specificBtn.dataset.bizDateKey = bizDateKey
           specificBtn.style.display = 'inline-block'
-          void ownerFinance.updateFinanceStats('specific', new Date(year, month, day))
+          void ownerFinance.updateFinanceStats('specific', bizDateKey)
         }
       })
       ui.on('click', 'archived-order-readonly', () => {

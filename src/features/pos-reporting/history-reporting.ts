@@ -13,7 +13,15 @@ import type {
   PosReportRange,
 } from '@/features/pos-kernel/types'
 import { MENU_CATEGORY_KEYS, POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
-import { getBusinessDayRange, getBusinessMonthRange, getBusinessWeekRange, toBusinessDate } from '@/shared/business-day'
+import {
+  getBusinessDateKey,
+  getBusinessDayRange,
+  getBusinessDayRangeFromKey,
+  getBusinessMonthRange,
+  getBusinessWeekRange,
+  parseBusinessDateKey,
+  toBusinessDate,
+} from '@/shared/business-day'
 import { findElement } from '@/shared/dom-helpers'
 import { getErrorMessage } from '@/shared/errors'
 import { getGroupedOrderLines } from '@/shared/grouped-order-lines'
@@ -80,12 +88,15 @@ function toLocalIsoDate(date: Date) {
   return new Date(date.getTime() - offset).toISOString().split('T')[0]
 }
 
-function getDateInputValue(input: HTMLInputElement | null, fallback: Date) {
+function getDateInputValue(input: HTMLInputElement | null, fallback: string) {
   if (!input?.value) {
     return fallback
   }
-  const [year, month, day] = input.value.split('-').map((value) => Number(value))
-  return new Date(year, month - 1, day)
+  try {
+    return parseBusinessDateKey(input.value)
+  } catch {
+    return fallback
+  }
 }
 
 function _renderRankedList(list: StatsRow[], containerId: string, emptyHtml: string, detailed = true) {
@@ -448,10 +459,10 @@ export function createHistoryReportingModule(deps: HistoryReportingDeps) {
       const eInput = findElement<HTMLInputElement>('statsEndDate')
       if (sInput && !sInput.value) sInput.value = toLocalIsoDate(businessNow)
       if (eInput && !eInput.value) eInput.value = toLocalIsoDate(businessNow)
-      start = getDateInputValue(sInput, start)
-      end = getDateInputValue(eInput, start)
-      start = getBusinessDayRange(start).start
-      end = getBusinessDayRange(end).endExclusive
+      const startBizDateKey = getDateInputValue(sInput, getBusinessDateKey(businessNow))
+      const endBizDateKey = getDateInputValue(eInput, startBizDateKey)
+      start = getBusinessDayRangeFromKey(startBizDateKey).start
+      end = getBusinessDayRangeFromKey(endBizDateKey).endExclusive
     }
 
     await deps.loadItemStatsRange(start, end || start)

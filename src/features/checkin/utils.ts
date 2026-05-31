@@ -1,6 +1,7 @@
 import { authGate } from '@/shared/auth-gate'
 import { toBusinessDate as toSharedBusinessDate } from '@/shared/business-day'
 import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
+import { createAttendanceRecordId } from '@/shared/rtdb-entity-id'
 import {
   AttendanceType,
   AVATAR_COLORS,
@@ -384,9 +385,7 @@ export function groupRecordsByDay(records: AttendanceRecord[]) {
 }
 
 export function getNextRecordId() {
-  const random =
-    globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 12) ?? Math.random().toString(36).slice(2, 14)
-  return `r_${Date.now()}_${random}`
+  return createAttendanceRecordId()
 }
 
 export async function ensureData() {

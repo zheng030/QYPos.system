@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { getBusinessDateKey, getBusinessDayRange, getBusinessMonthRange, toBusinessDate } from './business-day'
+import {
+  getBusinessDateKey,
+  getBusinessDayRange,
+  getBusinessDayRangeFromKey,
+  getBusinessMonthRange,
+  toBusinessDate,
+} from './business-day'
 
 describe('business-day', () => {
   it('maps timestamps before 05:00 to the previous business date', () => {
@@ -19,6 +25,13 @@ describe('business-day', () => {
     expect(earlyMorningRange.start.getTime()).toBe(new Date('2026-05-30T05:00:00+08:00').getTime())
     expect(earlyMorningRange.endExclusive.getTime()).toBe(new Date('2026-05-31T05:00:00+08:00').getTime())
     expect(openingRange.start.getTime()).toBe(new Date('2026-05-31T05:00:00+08:00').getTime())
+  })
+
+  it('resolves business date keys without midnight drift', () => {
+    const range = getBusinessDayRangeFromKey('2026-05-31')
+
+    expect(range.start.getTime()).toBe(new Date('2026-05-31T05:00:00+08:00').getTime())
+    expect(range.endExclusive.getTime()).toBe(new Date('2026-06-01T05:00:00+08:00').getTime())
   })
 
   it('builds business-month ranges from the resolved business date', () => {

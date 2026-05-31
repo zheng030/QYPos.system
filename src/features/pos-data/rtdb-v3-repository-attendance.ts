@@ -1,6 +1,11 @@
 import type { AttendanceEmployee, AttendanceRecord } from '@/shared/attendance-service'
 import { getMonthKey } from './rtdb-v3-mapper'
 import type { RtdbV3RepositoryContext } from './rtdb-v3-repository-context'
+import {
+  createAttendanceMonthDescriptor,
+  getStaticDescriptorOrThrow,
+  RTDB_V3_RESOURCE_KEYS,
+} from './rtdb-v3-resource-registry'
 import type { V3AttendanceWindowEvent, V3MonthKey } from './rtdb-v3-types'
 import { RTDB_V3_ROOT } from './rtdb-v3-types'
 
@@ -10,6 +15,10 @@ export function createRtdbV3RepositoryAttendanceModule(
   ctx: RtdbV3RepositoryContext,
   deps: { fetchAttendanceEmployees: () => Promise<void> }
 ) {
+  function toRevisionValue(value: unknown) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0
+  }
+
   function replaceAttendanceMonth(monthKey: V3MonthKey, records: AttendanceMonthMap) {
     const previous = ctx.attendanceMonthCache.get(monthKey) || {}
     for (const recordId of Object.keys(previous)) {
@@ -35,15 +44,33 @@ export function createRtdbV3RepositoryAttendanceModule(
       return
     }
     await deps.fetchAttendanceEmployees()
-    ctx.attendanceEmployeesRev = Date.now()
+    ctx.attendanceEmployeesRev = await ctx.readRevision(
+      getStaticDescriptorOrThrow<Record<string, AttendanceEmployee>>(RTDB_V3_RESOURCE_KEYS.attendanceEmployees).revision
+        .path
+    )
   }
 
   async function ensureAttendanceMonth(monthKey: V3MonthKey) {
     if (ctx.attendanceMonthCache.has(monthKey)) {
       return
     }
-    const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/attendance/recordsByMonth/${monthKey}`).once('value')
-    replaceAttendanceMonth(monthKey, { ...((snapshot.val() || {}) as AttendanceMonthMap) })
+    const descriptor = createAttendanceMonthDescriptor(monthKey)
+    const value = await ctx.loadCacheFirstResource({
+      descriptor,
+      readRemote: async () => {
+        const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+        return { ...((snapshot.val() || {}) as AttendanceMonthMap) }
+      },
+    })
+    replaceAttendanceMonth(monthKey, value)
+  }
+
+  async function refreshAttendanceMonth(monthKey: V3MonthKey) {
+    const descriptor = createAttendanceMonthDescriptor(monthKey)
+    const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+    const value = { ...((snapshot.val() || {}) as AttendanceMonthMap) }
+    replaceAttendanceMonth(monthKey, value)
+    await ctx.saveCachedResource(descriptor, ctx.revisionCache.get(`attendance/recordsByMonth/${monthKey}`) || 0, value)
   }
 
   async function ensureAttendanceWindow(monthKeys: string[]) {
@@ -67,10 +94,19 @@ export function createRtdbV3RepositoryAttendanceModule(
     const normalized = [...new Set(monthKeys.filter(Boolean))] as V3MonthKey[]
     ctx.activeAttendanceMonths = new Set(normalized)
     rebuildAttendanceState()
+    const employeesDescriptor = getStaticDescriptorOrThrow<Record<string, AttendanceEmployee>>(
+      RTDB_V3_RESOURCE_KEYS.attendanceEmployees
+    )
     const stops = [
-      ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/attendance/employees`).on('value', () => {
+      ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${employeesDescriptor.revision.path}`).on('value', (snapshot) => {
+        const revision = toRevisionValue(snapshot.val())
+        const previousRevision = ctx.revisionCache.get(employeesDescriptor.revision.path)
+        ctx.revisionCache.set(employeesDescriptor.revision.path, revision)
+        if (previousRevision === revision) {
+          return
+        }
         void deps.fetchAttendanceEmployees().then(() => {
-          ctx.attendanceEmployeesRev = Date.now()
+          ctx.attendanceEmployeesRev = ctx.revisionCache.get(employeesDescriptor.revision.path) || 0
           onInvalidate({
             kind: 'attendance-window',
             changedMonthKeys: [],
@@ -78,25 +114,25 @@ export function createRtdbV3RepositoryAttendanceModule(
           })
         })
       }) as () => void,
-      ...normalized.map(
-        (monthKey) =>
-          ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/attendance/recordsByMonth/${monthKey}`).on('value', () => {
-            void ctx.db
-              .ref(`${RTDB_V3_ROOT}/attendance/recordsByMonth/${monthKey}`)
-              .once('value')
-              .then((snapshot) => {
-                replaceAttendanceMonth(monthKey, { ...((snapshot.val() || {}) as AttendanceMonthMap) })
-              })
-              .then(() => {
-                rebuildAttendanceState()
-                onInvalidate({
-                  kind: 'attendance-window',
-                  changedMonthKeys: [monthKey],
-                  employeesChanged: false,
-                })
-              })
-          }) as () => void
-      ),
+      ...normalized.map((monthKey) => {
+        const descriptor = createAttendanceMonthDescriptor(monthKey)
+        return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
+          const revision = toRevisionValue(snapshot.val())
+          const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
+          ctx.revisionCache.set(descriptor.revision.path, revision)
+          if (previousRevision === revision) {
+            return
+          }
+          void refreshAttendanceMonth(monthKey).then(() => {
+            rebuildAttendanceState()
+            onInvalidate({
+              kind: 'attendance-window',
+              changedMonthKeys: [monthKey],
+              employeesChanged: false,
+            })
+          })
+        }) as () => void
+      }),
     ]
     return () => {
       stops.forEach((stop) => {
@@ -111,13 +147,16 @@ export function createRtdbV3RepositoryAttendanceModule(
     const monthUpdates = new Map<V3MonthKey, AttendanceMonthMap>()
     const touchedMonths = new Set<V3MonthKey>()
     let touchedEmployees = false
+    const employeesDescriptor = getStaticDescriptorOrThrow<Record<string, AttendanceEmployee>>(
+      RTDB_V3_RESOURCE_KEYS.attendanceEmployees
+    )
 
     for (const [path, value] of Object.entries(updates)) {
       const [root, key] = path.split('/')
       if (!key) continue
 
       if (root === 'attendanceEmployees') {
-        payload[`${RTDB_V3_ROOT}/attendance/employees/${key}`] = value
+        payload[`${RTDB_V3_ROOT}/${employeesDescriptor.remotePath}/${key}`] = value
         employeeUpdates.set(key, value === null ? null : (value as AttendanceEmployee))
         touchedEmployees = true
         continue
@@ -129,7 +168,7 @@ export function createRtdbV3RepositoryAttendanceModule(
 
       if (value === null) {
         if (!oldMonthKey) continue
-        payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${oldMonthKey}/${key}`] = null
+        payload[`${RTDB_V3_ROOT}/${createAttendanceMonthDescriptor(oldMonthKey).remotePath}/${key}`] = null
         const monthRecords = { ...(monthUpdates.get(oldMonthKey) || ctx.attendanceMonthCache.get(oldMonthKey) || {}) }
         delete monthRecords[key]
         monthUpdates.set(oldMonthKey, monthRecords)
@@ -140,7 +179,7 @@ export function createRtdbV3RepositoryAttendanceModule(
       const record = value as AttendanceRecord
       const newMonthKey = getMonthKey(record.ts)
       if (oldMonthKey && oldMonthKey !== newMonthKey) {
-        payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${oldMonthKey}/${key}`] = null
+        payload[`${RTDB_V3_ROOT}/${createAttendanceMonthDescriptor(oldMonthKey).remotePath}/${key}`] = null
         const oldMonthRecords = {
           ...(monthUpdates.get(oldMonthKey) || ctx.attendanceMonthCache.get(oldMonthKey) || {}),
         }
@@ -149,7 +188,7 @@ export function createRtdbV3RepositoryAttendanceModule(
         touchedMonths.add(oldMonthKey)
       }
 
-      payload[`${RTDB_V3_ROOT}/attendance/recordsByMonth/${newMonthKey}/${key}`] = record
+      payload[`${RTDB_V3_ROOT}/${createAttendanceMonthDescriptor(newMonthKey).remotePath}/${key}`] = record
       const newMonthRecords = { ...(monthUpdates.get(newMonthKey) || ctx.attendanceMonthCache.get(newMonthKey) || {}) }
       newMonthRecords[key] = record
       monthUpdates.set(newMonthKey, newMonthRecords)
@@ -171,6 +210,22 @@ export function createRtdbV3RepositoryAttendanceModule(
     monthUpdates.forEach((records, monthKey) => {
       replaceAttendanceMonth(monthKey, records)
     })
+    if (touchedEmployees) {
+      await ctx.saveCachedResource(
+        employeesDescriptor,
+        ctx.revisionCache.get('attendance/employees') || 0,
+        ctx.state.attendanceEmployees
+      )
+    }
+    await Promise.all(
+      [...monthUpdates.entries()].map(async ([monthKey, records]) => {
+        await ctx.saveCachedResource(
+          createAttendanceMonthDescriptor(monthKey),
+          ctx.revisionCache.get(`attendance/recordsByMonth/${monthKey}`) || 0,
+          records
+        )
+      })
+    )
     rebuildAttendanceState()
   }
 

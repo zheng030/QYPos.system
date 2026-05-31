@@ -428,7 +428,6 @@ export type CorePosState = {
   activeDraftEntries: PosOrderEntry[]
   activePendingBatches: PosOrderBatch[]
   activeSubmittedBatches: PosOrderBatch[]
-  tableBatchCounts: Record<string, number | undefined>
   tableSplitCounters: Record<string, number | undefined>
   seatTimerInterval: ReturnType<typeof setInterval> | null
   currentBuilder: PosBuilderState | null

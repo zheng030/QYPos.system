@@ -372,4 +372,59 @@ describe('history-reporting', () => {
     expect(listClosedOrdersForBusinessDay).toHaveBeenCalledTimes(1)
     expect(seenAnchors[0]?.getTime()).toBe(new Date('2026-05-31T02:30:00+08:00').getTime())
   })
+
+  it('uses business-date keys for custom item stats ranges without midnight drift', async () => {
+    const itemStatsColumns = createElementStub('itemStatsColumns')
+    const customRange = createElementStub('customStatsDateRange')
+    const statsStartDate = createElementStub('statsStartDate') as ElementStub & { value: string }
+    const statsEndDate = createElementStub('statsEndDate') as ElementStub & { value: string }
+    statsStartDate.value = '2026-05-31'
+    statsEndDate.value = '2026-05-31'
+
+    dom.add(itemStatsColumns)
+    dom.add(customRange)
+    dom.add(statsStartDate)
+    dom.add(statsEndDate)
+
+    const seenRanges: Array<{ start: number; end: number }> = []
+    const reporting = createHistoryReportingModule({
+      getIsHistorySimpleMode: () => false,
+      getItemCategoryType: () => 'drink',
+      listClosedOrdersForBusinessDay: async () => [],
+      listClosedOrdersByRange: async () => [],
+      loadDailySummariesRange: async () => ({}),
+      loadItemStatsRange: async (start, endExclusive) => {
+        seenRanges.push({ start: start.getTime(), end: endExclusive.getTime() })
+        return {
+          '2026-05-31': {
+            drink: createItemStat('紅茶', 1, 'drink', 80),
+          },
+        }
+      },
+      watchClosedOrdersForBusinessDay: () => () => {},
+      watchDailySummariesRange: () => () => {},
+      watchItemStatsRange: () => () => {},
+      readDailySummariesRange: () => ({}),
+      readItemStatsRange: () => ({
+        '2026-05-31': {
+          drink: createItemStat('紅茶', 1, 'drink', 80),
+        },
+      }),
+      moveSegmentHighlighter: () => {},
+      openPage: () => {},
+      printReceipt: async () => {},
+      deleteClosedOrder: async () => {},
+      setIsHistorySimpleMode: () => {},
+    })
+
+    await reporting.renderItemStats('custom')
+
+    expect(seenRanges).toEqual([
+      {
+        start: new Date('2026-05-31T05:00:00+08:00').getTime(),
+        end: new Date('2026-06-01T05:00:00+08:00').getTime(),
+      },
+    ])
+    expect(itemStatsColumns.innerHTML).toContain('紅茶')
+  })
 })

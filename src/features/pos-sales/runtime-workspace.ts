@@ -3,14 +3,16 @@ import type { PosKernelService } from '@/features/pos-kernel/service'
 import type { PosMenuCategoryKey, PosOrderEntry } from '@/features/pos-kernel/types'
 import type { PosUiService } from '@/features/pos-shell/service'
 import {
-  calculateStaffOrderTotal,
+  getEntryAdjustedAmountDisplay,
   getFloatingBarViewModel,
   getStaffWorkspaceRowActions,
+  getStaffWorkspaceTotalDisplay,
+  renderAdjustedAmountHtml,
   type StaffWorkspaceGroup,
   type StaffWorkspaceRow,
   summarizeStaffWorkspace,
 } from './runtime-support'
-import { escapeHtml, flattenBatchLines, formatCurrency, getStaffCategoryLabel } from './runtime-utils'
+import { escapeHtml, flattenBatchLines, getStaffCategoryLabel } from './runtime-utils'
 
 type WorkspaceDeps = {
   kernel: PosKernelService
@@ -102,6 +104,7 @@ export function createPosSalesWorkspaceModule({
     const compactSummary = buildStaffRowSummary(entry)
     const categoryLabel = getStaffCategoryLabel(entry.categoryKey)
     const summary = getDisplaySummary(entry)
+    const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
     if (!kernel.state.staffWorkspace.expanded) {
       return `
         <div class="staff-stream-entry-line is-collapsed">
@@ -111,7 +114,7 @@ export function createPosSalesWorkspaceModule({
               <span class="staff-stream-inline-summary">${escapeHtml(compactSummary)}</span>
             </span>
             <span class="staff-stream-row-inline-side">
-              <span class="entry-card-total">${formatCurrency(entry.subtotal)}</span>
+              <span class="entry-card-total">${totalHtml}</span>
               <span class="staff-stream-row-actions-inline">${renderStaffWorkspaceActions(row)}</span>
             </span>
           </div>
@@ -130,7 +133,7 @@ export function createPosSalesWorkspaceModule({
             </div>
             ${summary.expandedSummary ? `<div class="entry-card-subtitle">${escapeHtml(summary.expandedSummary)}</div>` : ''}
           </div>
-          <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+          <div class="entry-card-total">${totalHtml}</div>
         </div>
         <div class="staff-stream-row-actions">${renderStaffWorkspaceActions(row)}</div>
       </div>
@@ -196,13 +199,13 @@ export function createPosSalesWorkspaceModule({
     const entries = currentDraftEntries()
     const batches = kernel.state.activeSubmittedBatches
     const totals = summarizeStaffWorkspace(entries, batches)
-    const estimatedCheckout = calculateStaffOrderTotal(
-      totals.submittedSubtotal,
+    const workspaceTotalDisplay = getStaffWorkspaceTotalDisplay(
+      batches.flatMap((batch) => batch.entries),
       currentStaffDiscountPercent(),
       kernel.state.staffWorkspace.serviceFeeEnabled
     )
     metaEl.innerText = `${totals.draftEntryCount} 項未送出 · ${totals.acceptedEntryCount} 項已接單 · ${totals.acceptedBatchCount} 張已接單${currentStaffDiscountPercent() > 0 || kernel.state.staffWorkspace.serviceFeeEnabled ? ' · 已套用整單設定' : ''}`
-    totalEl.innerText = formatCurrency(estimatedCheckout)
+    totalEl.innerHTML = renderAdjustedAmountHtml(workspaceTotalDisplay, { stacked: true })
 
     streamList.innerHTML =
       totals.groups.length === 0

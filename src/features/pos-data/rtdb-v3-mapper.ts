@@ -12,10 +12,11 @@ import type {
 } from '@/features/pos-kernel/types'
 import type { AttendanceRecord } from '@/shared/attendance-service'
 import { getBusinessDateKey, getBusinessDayRange } from '@/shared/business-day'
-import { decodeRtdbKeySegment, encodeRtdbKeySegment } from './rtdb-v3-key-codec'
+import { encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import type {
   V3BizDateKey,
   V3ClosedOrder,
+  V3ClosedOrderEntry,
   V3ClosedOrderLine,
   V3DailyItemStat,
   V3DailySummary,
@@ -104,10 +105,32 @@ export function mapStoredLine(line: V3OrderLine): PosOrderLine {
   }
 }
 
+export function mapClosedOrderLineToStored(line: PosOrderLine, unitCost: number): V3ClosedOrderLine {
+  return {
+    ...line,
+    unitCost,
+  }
+}
+
 export function mapEntryToStored(entry: PosOrderEntry): V3OrderEntry {
   return {
     ...entry,
     lines: Object.fromEntries(entry.lines.map((line) => [encodeRtdbKeySegment(line.lineId), mapLineToStored(line)])),
+  }
+}
+
+export function mapClosedEntryToStored(
+  entry: PosOrderEntry,
+  itemCosts: Record<string, number | undefined>
+): V3ClosedOrderEntry {
+  return {
+    ...entry,
+    lines: Object.fromEntries(
+      entry.lines.map((line) => [
+        encodeRtdbKeySegment(line.lineId),
+        mapClosedOrderLineToStored(line, Number(itemCosts[line.inventoryKey] ?? 0)),
+      ])
+    ),
   }
 }
 
@@ -118,11 +141,27 @@ export function mapStoredEntry(
   const mapped = {
     ...entry,
     categoryKey: entry.categoryKey as PosCategoryKey,
-    lines: Object.entries(entry.lines || {})
-      .sort(([left], [right]) => decodeRtdbKeySegment(left).localeCompare(decodeRtdbKeySegment(right)))
-      .map(([, line]) => mapStoredLine(line)),
+    lines: Object.values(entry.lines || {})
+      .sort((left, right) => {
+        if (!left.parentLineId && right.parentLineId) return -1
+        if (left.parentLineId && !right.parentLineId) return 1
+        if (left.groupId !== right.groupId) return left.groupId.localeCompare(right.groupId)
+        return left.lineId.localeCompare(right.lineId)
+      })
+      .map((line) => mapStoredLine(line)),
   }
   return normalizeEntryForDisplay ? normalizeEntryForDisplay(mapped) : mapped
+}
+
+export function mapStoredClosedEntry(
+  entry: V3ClosedOrderEntry,
+  normalizeEntryForDisplay?: PosCatalogHelpers['normalizeEntryForDisplay']
+): PosOrderEntry {
+  return mapStoredEntry(entry, normalizeEntryForDisplay)
+}
+
+export function getStoredClosedOrderLines(order: V3ClosedOrder): V3ClosedOrderLine[] {
+  return Object.values(order.entries || {}).flatMap((entry) => Object.values(entry.lines || {}))
 }
 
 export function mapBatchToStored(batch: PosOrderBatch): V3OrderBatch {
@@ -183,9 +222,10 @@ export function buildLiveTable(params: {
   draft?: PosOrderEntry[]
   pendingBatches?: PosOrderBatch[]
   submittedBatches?: PosOrderBatch[]
-  status?: string
   timerStartedAt?: number
-  batchCount?: number
+  draftEntryCount?: number
+  pendingBatchCount?: number
+  submittedBatchCount?: number
   nextRequestSeq?: number
   nextSplitCounter?: number
   customer?: PosTableCustomer
@@ -195,9 +235,10 @@ export function buildLiveTable(params: {
     draft = [],
     pendingBatches = [],
     submittedBatches = [],
-    status,
     timerStartedAt,
-    batchCount = submittedBatches.length,
+    draftEntryCount = draft.length,
+    pendingBatchCount = pendingBatches.length,
+    submittedBatchCount = submittedBatches.length,
     nextRequestSeq,
     nextSplitCounter,
     customer,
@@ -205,11 +246,18 @@ export function buildLiveTable(params: {
   } = params
 
   const summary =
-    draft.length > 0 || pendingBatches.length > 0 || submittedBatches.length > 0 || status || timerStartedAt || customer
+    draft.length > 0 ||
+    pendingBatches.length > 0 ||
+    submittedBatches.length > 0 ||
+    timerStartedAt ||
+    customer ||
+    nextRequestSeq ||
+    nextSplitCounter
       ? buildTableSummary({
-          status,
           timerStartedAt,
-          batchCount,
+          draftEntryCount,
+          pendingBatchCount,
+          submittedBatchCount,
           nextRequestSeq,
           nextSplitCounter,
           customer,
@@ -230,18 +278,20 @@ export function buildLiveTable(params: {
 }
 
 export function buildTableSummary(params: {
-  status?: string
   timerStartedAt?: number
-  batchCount?: number
+  draftEntryCount?: number
+  pendingBatchCount?: number
+  submittedBatchCount?: number
   nextRequestSeq?: number
   nextSplitCounter?: number
   customer?: PosTableCustomer
   updatedAt?: number
 }) {
   const {
-    status,
     timerStartedAt,
-    batchCount = 0,
+    draftEntryCount = 0,
+    pendingBatchCount = 0,
+    submittedBatchCount = 0,
     nextRequestSeq,
     nextSplitCounter,
     customer,
@@ -252,10 +302,11 @@ export function buildTableSummary(params: {
     typeof orderId === 'number' ? orderId : typeof orderId === 'string' ? parseInt(orderId, 10) || null : null
 
   return {
-    status: status || null,
     timerStartedAt: timerStartedAt ?? null,
     displaySeqBase,
-    batchCount,
+    draftEntryCount,
+    pendingBatchCount,
+    submittedBatchCount,
     nextRequestSeq: nextRequestSeq && nextRequestSeq > 1 ? nextRequestSeq : null,
     nextSplitCounter: nextSplitCounter && nextSplitCounter > 1 ? nextSplitCounter : null,
     customer: normalizeCustomer(customer),
@@ -290,20 +341,18 @@ export function orderRecordToPosOrder(
   order: V3ClosedOrder,
   normalizeEntryForDisplay?: PosCatalogHelpers['normalizeEntryForDisplay']
 ): PosOrder {
-  const lines = Object.values(order.lines || {})
+  const entries = Object.values(order.entries || {})
+    .sort((left, right) => left.createdAt - right.createdAt)
+    .map((entry) => mapStoredClosedEntry(entry, normalizeEntryForDisplay))
+
+  const lines = entries
+    .flatMap((entry) => entry.lines)
     .sort((left, right) => {
       if (!left.parentLineId && right.parentLineId) return -1
       if (left.parentLineId && !right.parentLineId) return 1
       if (left.groupId !== right.groupId) return left.groupId.localeCompare(right.groupId)
       return left.lineId.localeCompare(right.lineId)
     })
-    .map((line) => mapStoredLine(line))
-
-  const entries = Object.values(order.entries || {})
-    .sort((left, right) => left.createdAt - right.createdAt)
-    .map((entry) => mapStoredEntry(entry, normalizeEntryForDisplay))
-
-  const normalizedLineMap = new Map(entries.flatMap((entry) => entry.lines.map((line) => [line.lineId, line] as const)))
 
   return {
     orderId: order.orderId,
@@ -323,7 +372,7 @@ export function orderRecordToPosOrder(
     originalTotal: order.totals?.original || order.totals?.paid || 0,
     batchIds: order.batchIds || [],
     entries,
-    lines: lines.map((line) => normalizedLineMap.get(line.lineId) || line),
+    lines,
     isClosed: true,
   }
 }
@@ -347,7 +396,7 @@ export function applyClosedOrderToSummary(
   nextSummary.originalTotal += direction * (order.totals?.original || order.totals?.paid || 0)
   let categorizedRevenue = 0
 
-  Object.values(order.lines || {}).forEach((line) => {
+  getStoredClosedOrderLines(order).forEach((line) => {
     const typed = line as V3ClosedOrderLine
     const statKey = typed.catalogKey
     const current = nextItemStats[statKey] || cloneItemStat(typed.shortName || typed.displayName, typed.categoryKey)
@@ -413,21 +462,11 @@ export function toClosedOrderRecord(params: {
   itemCosts: Record<string, number | undefined>
   paidTotal?: number
   originalTotal?: number
-}) {
+}): V3ClosedOrder {
   const bizDate = getBizDateKey(params.closedAt)
   const monthKey = getMonthKeyFromBizDate(bizDate)
   const splitCounter = params.splitCounter && params.splitCounter > 0 ? params.splitCounter : null
   const displaySeqLabel = splitCounter ? `${params.displaySeqBase}-${splitCounter}` : String(params.displaySeqBase)
-
-  const lines: Record<string, V3ClosedOrderLine> = {}
-  params.entries.forEach((entry) => {
-    entry.lines.forEach((line) => {
-      lines[encodeRtdbKeySegment(line.lineId)] = {
-        ...line,
-        unitCost: Number(params.itemCosts[line.inventoryKey] ?? 0),
-      }
-    })
-  })
 
   return {
     orderId: params.orderId,
@@ -447,10 +486,12 @@ export function toClosedOrderRecord(params: {
     status: 'closed',
     batchIds: params.batchIds,
     entries: Object.fromEntries(
-      params.entries.map((entry) => [encodeRtdbKeySegment(entry.entryId), mapEntryToStored(entry)])
+      params.entries.map((entry) => [
+        encodeRtdbKeySegment(entry.entryId),
+        mapClosedEntryToStored(entry, params.itemCosts),
+      ])
     ),
-    lines,
-  } satisfies V3ClosedOrder
+  }
 }
 
 export function buildAttendanceRecordsByMonth(records: Record<string, AttendanceRecord>) {

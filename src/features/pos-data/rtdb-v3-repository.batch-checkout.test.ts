@@ -2,15 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import { createRtdbV3Repository } from './rtdb-v3-repository'
-import {
-  createDbStub,
-  createEntry,
-  createSnapshot,
-  createState,
-  normalizePath,
-  readAtPath,
-  setAtPath,
-} from './rtdb-v3-repository.test-support'
+import { createDbStub, createEntry, createState, readAtPath, setAtPath } from './rtdb-v3-repository.test-support'
 
 describe('rtdb-v3-repository', () => {
   it('uses a shared per-table request sequence across customer and staff batches', async () => {
@@ -25,10 +17,11 @@ describe('rtdb-v3-repository', () => {
           tables: {
             A1: {
               summary: {
-                status: 'yellow',
                 timerStartedAt: 1,
                 displaySeqBase: 5,
-                batchCount: 0,
+                draftEntryCount: 0,
+                pendingBatchCount: 0,
+                submittedBatchCount: 0,
                 customer: { name: 'A', phone: '' },
                 updatedAt: 1,
               },
@@ -52,7 +45,7 @@ describe('rtdb-v3-repository', () => {
     expect(readAtPath(db.data, 'v3/live/tables/A1/summary/nextRequestSeq')).toBe(3)
   })
 
-  it('keeps concurrently added pending batches when customer shared draft saves last-write-wins', async () => {
+  it('saves customer draft without touching sibling pending batch shards', async () => {
     const entry = createEntry()
     const db = createDbStub({
       v3: {
@@ -81,53 +74,26 @@ describe('rtdb-v3-repository', () => {
     const state = createState()
     state.tableCustomers.A1 = { name: 'A', phone: '', orderId: 5 }
 
-    const originalRef = db.ref.bind(db)
-    let injected = false
-    db.ref = ((path = '/') => {
-      const ref = originalRef(path)
-      if (normalizePath(path) === 'v3/live/tables/A1') {
-        return {
-          ...ref,
-          async transaction<T>(updater: (currentValue: T | null) => T) {
-            let current = readAtPath(db.data, 'v3/live/tables/A1') as T | null
-            let next = updater(current)
-            if (!injected) {
-              injected = true
-              setAtPath(db.data, 'v3/live/tables/A1/pendingBatches/pending_race', {
-                batchId: 'pending_race',
-                source: 'customer',
-                status: 'pending',
-                table: 'A1',
-                customer: { name: 'A', phone: '' },
-                createdAt: 2,
-                updatedAt: 2,
-                requestLabel: '#5-1',
-                entries: {},
-                subtotal: 0,
-              })
-              current = readAtPath(db.data, 'v3/live/tables/A1') as T | null
-              next = updater(current)
-            }
-            setAtPath(db.data, 'v3/live/tables/A1', next)
-            return {
-              committed: true,
-              snapshot: createSnapshot('v3/live/tables/A1', next),
-            }
-          },
-        }
-      }
-      return ref
-    }) as typeof db.ref
-
     const repository = createRtdbV3Repository({ db: db as never, state })
 
     await repository.saveCustomerDraft('A1', [entry], state.tableCustomers.A1)
 
-    expect(readAtPath(db.data, 'v3/live/tables/A1/draft/entry_1')).toBeTruthy()
-    expect(readAtPath(db.data, 'v3/live/tables/A1/pendingBatches/pending_race')).toBeTruthy()
-    expect(readAtPath(db.data, 'v3/live/pendingSummaries/A1/pendingCount')).toBe(1)
-    expect(state.pendingBatches.A1?.[0]?.batchId).toBe('pending_race')
-    db.ref = originalRef as typeof db.ref
+    expect(readAtPath(db.data, `v3/live/tables/A1/draft/${entry.entryId}`)).toBeTruthy()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/pendingBatches')).toEqual({})
+    expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches')).toEqual({})
+    expect(readAtPath(db.data, 'v3/live/pendingSummaries/A1')).toBeUndefined()
+    expect([...db.onceCalls].sort()).toEqual(
+      [
+        'v3/meta/revisions/live/tables/A1/summary',
+        'v3/meta/revisions/live/tables/A1/draft',
+        'v3/meta/revisions/live/tables/A1/pendingBatches',
+        'v3/meta/revisions/live/tables/A1/submittedBatches',
+        'v3/live/tables/A1/draft',
+        'v3/live/tables/A1/summary',
+        'v3/live/tables/A1/pendingBatches',
+        'v3/live/tables/A1/submittedBatches',
+      ].sort()
+    )
   })
 
   it('writes day-level revisions and clears live state when checkout closes submitted batches', async () => {
@@ -217,6 +183,14 @@ describe('rtdb-v3-repository', () => {
     expect(readAtPath(db.data, 'v3/meta/revisions/history/ordersByDay')).toBeTruthy()
     expect(readAtPath(db.data, 'v3/meta/revisions/reports/dailyByDay')).toBeTruthy()
     expect(readAtPath(db.data, 'v3/meta/revisions/reports/itemStatsByDay')).toBeTruthy()
+    const historyMonth = String(order.monthKey)
+    const historyDay = String(order.bizDateKey)
+    const storedOrder = readAtPath(
+      db.data,
+      `v3/history/ordersByMonth/${historyMonth}/${historyDay}/${order.orderId}`
+    ) as { r?: unknown; e?: Record<string, { l?: Record<string, { w?: number }> }> } | undefined
+    expect(storedOrder?.r).toBeUndefined()
+    expect(Object.values(storedOrder?.e || {})[0]?.l?.[entry.lines[0]?.lineId || 'm']?.w).toBe(40)
     expect(readAtPath(db.data, 'v3/live/tables/A1')).toBeUndefined()
     expect(readAtPath(db.data, 'v3/live/tableSummaries/A1')).toBeUndefined()
     expect(state.submittedBatches.A1).toBeUndefined()
@@ -504,17 +478,15 @@ describe('rtdb-v3-repository', () => {
     expect(order.formattedSeq).toBe('12-1')
     expect(order.total).toBe(300)
     expect(order.lines?.map((line) => line.catalogKey)).toEqual(['pasta_risotto.chicken-breast', 'drink.latte'])
-    expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toEqual({})
-    expect(readAtPath(db.data, 'v3/live/tables/A1/pendingBatches')).toEqual({})
-    expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1/entries/entry_food')).toBeUndefined()
-    expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1/entries/entry_drink')).toBeTruthy()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toBeUndefined()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/pendingBatches')).toBeUndefined()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1/e/entry_food')).toBeUndefined()
+    expect(readAtPath(db.data, 'v3/live/tables/A1/submittedBatches/submitted_1/e/entry_drink')).toBeTruthy()
     expect(readAtPath(db.data, 'v3/live/tables/A1/summary/nextSplitCounter')).toBe(2)
-    expect(
-      readAtPath(db.data, `v3/reports/dailyByMonth/${order.monthKey}/${order.bizDateKey}/categoryRevenue/pasta_risotto`)
-    ).toBe(250)
-    expect(
-      readAtPath(db.data, `v3/reports/dailyByMonth/${order.monthKey}/${order.bizDateKey}/categoryRevenue/drink`)
-    ).toBe(60)
+    expect(readAtPath(db.data, `v3/reports/dailyByMonth/${order.monthKey}/${order.bizDateKey}/cr/pasta_risotto`)).toBe(
+      250
+    )
+    expect(readAtPath(db.data, `v3/reports/dailyByMonth/${order.monthKey}/${order.bizDateKey}/cr/drink`)).toBe(60)
     expect(state.submittedBatches.A1?.[0]?.entries.map((entry) => entry.entryId)).toEqual(['entry_drink'])
     expect(state.tableSplitCounters.A1).toBe(2)
   })
@@ -534,27 +506,42 @@ describe('rtdb-v3-repository', () => {
       totals: { paid: 100, original: 100 },
       status: 'closed',
       batchIds: [],
-      entries: {},
-      lines: {
-        item_1: {
-          lineId: 'item_1',
-          groupId: 'group_1',
-          role: 'main',
-          catalogKey: 'drink.black-tea',
-          inventoryKey: 'drink.black-tea',
-          displayName: '可樂',
-          shortName: '可樂',
-          categoryKey: 'drink',
-          station: 'kitchen',
-          courseKind: 'drink',
-          quantity: 1,
-          unitPrice: 100,
-          unitCost: 10,
-          priceDelta: 0,
-          lineTotal: 100,
-          selectionSummary: '',
-          isTreat: false,
-          sourceEntryId: 'entry_1',
+      entries: {
+        entry_1: {
+          ...createEntry({
+            entryId: 'entry_1',
+            itemId: 'drink.black-tea',
+            catalogKey: 'drink.black-tea',
+            inventoryKey: 'drink.black-tea',
+            itemName: '可樂',
+            shortName: '可樂',
+            categoryKey: 'drink',
+            subtotal: 100,
+          }),
+          status: 'accepted',
+          source: 'staff',
+          lines: {
+            item_1: {
+              lineId: 'item_1',
+              groupId: 'group_1',
+              role: 'main',
+              catalogKey: 'drink.black-tea',
+              inventoryKey: 'drink.black-tea',
+              displayName: '可樂',
+              shortName: '可樂',
+              categoryKey: 'drink',
+              station: 'kitchen',
+              courseKind: 'drink',
+              quantity: 1,
+              unitPrice: 100,
+              unitCost: 10,
+              priceDelta: 0,
+              lineTotal: 100,
+              selectionSummary: '',
+              isTreat: false,
+              sourceEntryId: 'entry_1',
+            },
+          },
         },
       },
     }
@@ -572,27 +559,43 @@ describe('rtdb-v3-repository', () => {
       totals: { paid: 200, original: 200 },
       status: 'closed',
       batchIds: [],
-      entries: {},
-      lines: {
-        item_1: {
-          lineId: 'item_1',
-          groupId: 'group_1',
-          role: 'main',
-          catalogKey: 'drink.green-tea',
-          inventoryKey: 'drink.green-tea',
-          displayName: '雪碧',
-          shortName: '雪碧',
-          categoryKey: 'drink',
-          station: 'kitchen',
-          courseKind: 'drink',
-          quantity: 2,
-          unitPrice: 100,
-          unitCost: 20,
-          priceDelta: 0,
-          lineTotal: 200,
-          selectionSummary: '',
-          isTreat: false,
-          sourceEntryId: 'entry_1',
+      entries: {
+        entry_1: {
+          ...createEntry({
+            entryId: 'entry_1',
+            itemId: 'drink.green-tea',
+            catalogKey: 'drink.green-tea',
+            inventoryKey: 'drink.green-tea',
+            itemName: '雪碧',
+            shortName: '雪碧',
+            categoryKey: 'drink',
+            quantity: 2,
+            subtotal: 200,
+          }),
+          status: 'accepted',
+          source: 'staff',
+          lines: {
+            item_1: {
+              lineId: 'item_1',
+              groupId: 'group_1',
+              role: 'main',
+              catalogKey: 'drink.green-tea',
+              inventoryKey: 'drink.green-tea',
+              displayName: '雪碧',
+              shortName: '雪碧',
+              categoryKey: 'drink',
+              station: 'kitchen',
+              courseKind: 'drink',
+              quantity: 2,
+              unitPrice: 100,
+              unitCost: 20,
+              priceDelta: 0,
+              lineTotal: 200,
+              selectionSummary: '',
+              isTreat: false,
+              sourceEntryId: 'entry_1',
+            },
+          },
         },
       },
     }
@@ -627,16 +630,9 @@ describe('rtdb-v3-repository', () => {
       total: 100,
     })
 
-    expect(db.onceCalls.filter((path) => path === 'v3/history/ordersByMonth/2026-05/2026-05-30')).toHaveLength(1)
-    expect(readAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-30/paidTotal')).toBe(200)
-    expect(
-      readAtPath(
-        db.data,
-        `v3/reports/itemStatsByMonth/2026-05/2026-05-30/${encodeRtdbKeySegment('drink.green-tea')}/qty`
-      )
-    ).toBe(2)
-    expect(
-      readAtPath(db.data, `v3/reports/itemStatsByMonth/2026-05/2026-05-30/${encodeRtdbKeySegment('drink.black-tea')}`)
-    ).toBeUndefined()
+    expect(db.onceCalls.filter((path) => path === 'v3/history/ordersByMonth/2026-05/2026-05-30')).toHaveLength(2)
+    expect(readAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-30/pt')).toBe(200)
+    expect(readAtPath(db.data, 'v3/reports/itemStatsByMonth/2026-05/2026-05-30/drink%2Egreen-tea/q')).toBe(2)
+    expect(readAtPath(db.data, 'v3/reports/itemStatsByMonth/2026-05/2026-05-30/drink%2Eblack-tea')).toBeUndefined()
   })
 })

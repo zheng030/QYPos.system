@@ -8,6 +8,7 @@ import type {
   PosOrderLine,
   PosSelectionRule,
 } from '@/features/pos-kernel/types'
+import { createChildLineId, createEntryId, createMainLineId } from '@/shared/rtdb-entity-id'
 
 type BuilderHelpers = Pick<
   PosCatalogHelpers,
@@ -132,16 +133,6 @@ function cloneIncludeSelections(input: Record<string, PosBuilderSelectionMap> | 
 
 function buildIssue(kind: BuilderIssue['kind'], groupId: string, label: string): BuilderIssue {
   return { kind, groupId, label }
-}
-
-function buildLineId(groupId: string, suffix: string) {
-  return `${groupId}_${suffix}`
-}
-
-function buildEntryId(now: number) {
-  const random =
-    globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
-  return `entry_${now}_${random}`
 }
 
 function resolveSingleOptionLabel(rule: PosSelectionRule | undefined, value: string) {
@@ -561,10 +552,10 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
   }
 
   const now = updatedAt || Date.now()
-  const resolvedEntryId = entryId || state.editingEntryId || buildEntryId(now)
+  const resolvedEntryId = entryId || state.editingEntryId || createEntryId()
   const groupId = resolvedEntryId
   const quantity = Math.max(1, state.quantity || 1)
-  const mainLineId = buildLineId(groupId, 'main')
+  const mainLineId = createMainLineId()
   const lines: PosOrderLine[] = []
   const summary = buildSummary(item, state)
   const includeResolution = resolveIncludes(item, state, helpers)
@@ -605,7 +596,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
       return
     }
     lines.push({
-      lineId: buildLineId(groupId, `child_${index}`),
+      lineId: createChildLineId(index),
       groupId,
       parentLineId: mainLineId,
       role: resolution.priceDelta > 0 ? 'upgrade' : 'included',

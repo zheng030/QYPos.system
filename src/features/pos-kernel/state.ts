@@ -21,7 +21,6 @@ export const state: CorePosState = {
   activeDraftEntries: [],
   activePendingBatches: [],
   activeSubmittedBatches: [],
-  tableBatchCounts: {},
   tableSplitCounters: {},
   seatTimerInterval: null,
   currentBuilder: null,

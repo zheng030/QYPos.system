@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createRtdbV3Repository } from './rtdb-v3-repository'
 import { createDbStub, createEntry, createState, readAtPath, setAtPath } from './rtdb-v3-repository.test-support'
+import { dailySummaryStorageCodec } from './rtdb-v3-storage-codecs'
 
 describe('rtdb-v3-repository', () => {
   it('refreshes only changed daily summary day on revision invalidation', async () => {
@@ -20,7 +21,7 @@ describe('rtdb-v3-repository', () => {
         reports: {
           dailyByMonth: {
             '2026-05': {
-              '2026-05-30': {
+              '2026-05-30': dailySummaryStorageCodec.encode({
                 orderCount: 1,
                 paidTotal: 100,
                 originalTotal: 100,
@@ -28,8 +29,8 @@ describe('rtdb-v3-repository', () => {
                 categoryRevenue: { drink: 100 },
                 categoryCost: { drink: 10 },
                 updatedAt: 1,
-              },
-              '2026-05-31': {
+              }),
+              '2026-05-31': dailySummaryStorageCodec.encode({
                 orderCount: 2,
                 paidTotal: 200,
                 originalTotal: 200,
@@ -37,7 +38,7 @@ describe('rtdb-v3-repository', () => {
                 categoryRevenue: { drink: 200 },
                 categoryCost: { drink: 20 },
                 updatedAt: 1,
-              },
+              }),
             },
           },
         },
@@ -51,7 +52,7 @@ describe('rtdb-v3-repository', () => {
     const stop = repository.watchDailySummariesRange(start, end, () => {})
     db.onceCalls.length = 0
 
-    setAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-31/paidTotal', 250)
+    setAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-31/pt', 250)
     db.emit('v3/meta/revisions/reports/dailyByDay/2026-05-31', 'value', 2)
     await Promise.resolve()
 
@@ -95,6 +96,18 @@ describe('rtdb-v3-repository', () => {
 
     expect(state.activeDraftEntries).toHaveLength(1)
     expect(state.staffDrafts.A1).toBeUndefined()
+    expect(db.onCalls.some(({ path, eventName }) => path === 'v3/live/tables/A1' && eventName === 'value')).toBe(false)
+    expect(
+      db.onCalls
+        .filter(({ eventName }) => eventName === 'value')
+        .map(({ path }) => path)
+        .sort()
+    ).toEqual([
+      'v3/meta/revisions/live/tables/A1/draft',
+      'v3/meta/revisions/live/tables/A1/pendingBatches',
+      'v3/meta/revisions/live/tables/A1/submittedBatches',
+      'v3/meta/revisions/live/tables/A1/summary',
+    ])
   })
 
   it('returns rejected pending batches back into the shared draft list', async () => {
@@ -270,14 +283,8 @@ describe('rtdb-v3-repository', () => {
 
     await repository.rejectPendingBatch('A1', 'pending_1')
 
-    const draft = readAtPath(db.data, 'v3/live/tables/A1/draft') as Record<
-      string,
-      { quantity: number; subtotal: number }
-    >
+    const draft = readAtPath(db.data, 'v3/live/tables/A1/draft') as Record<string, { q: number; t: number }>
     expect(Object.keys(draft)).toHaveLength(1)
-    expect(draft.entry_1).toMatchObject({
-      quantity: 2,
-      subtotal: 300,
-    })
+    expect(draft.entry_1).toMatchObject({ q: 2, t: 300 })
   })
 })

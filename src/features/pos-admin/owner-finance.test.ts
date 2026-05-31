@@ -108,12 +108,9 @@ describe('owner-finance', () => {
         verifyEmployeeLogin: async () => true,
         verifyEmployeePasswordChange: async () => true,
       },
-      getBusinessDate: (date) => new Date(date).getTime(),
-      getDateFromOrder: (order) => new Date(order.timestamp || Date.now()),
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [
         {
           formattedSeq: '12',
@@ -189,12 +186,9 @@ describe('owner-finance', () => {
         verifyEmployeeLogin: async () => true,
         verifyEmployeePasswordChange: async () => true,
       },
-      getBusinessDate: (date) => new Date(date).getTime(),
-      getDateFromOrder: (order) => new Date(order.timestamp || Date.now()),
       getItemCategoryType: () => 'a_la_carte',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [
         {
           formattedSeq: '12-1',
@@ -292,12 +286,9 @@ describe('owner-finance', () => {
         verifyEmployeeLogin: async () => true,
         verifyEmployeePasswordChange: async () => true,
       },
-      getBusinessDate: (date) => new Date(date).getTime(),
-      getDateFromOrder: (order) => new Date(order.timestamp || Date.now()),
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [
         {
           formattedSeq: '12-1',
@@ -385,12 +376,9 @@ describe('owner-finance', () => {
         verifyEmployeeLogin: async () => true,
         verifyEmployeePasswordChange: async () => true,
       },
-      getBusinessDate: (date) => new Date(date).getTime(),
-      getDateFromOrder: (order) => new Date(order.timestamp || Date.now()),
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       watchDailySummariesRange: () => () => {},
@@ -462,12 +450,9 @@ describe('owner-finance', () => {
         verifyEmployeeLogin: async () => true,
         verifyEmployeePasswordChange: async () => true,
       },
-      getBusinessDate: (date) => new Date(date).getTime(),
-      getDateFromOrder: (order) => new Date(order.timestamp || Date.now()),
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({}),
       getItemPrices: () => ({}),
-      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       watchDailySummariesRange: () => () => {},
@@ -522,8 +507,6 @@ describe('owner-finance', () => {
         verifyEmployeeLogin: async () => true,
         verifyEmployeePasswordChange: async () => true,
       },
-      getBusinessDate: (date) => new Date(date).getTime(),
-      getDateFromOrder: (order) => new Date(order.timestamp || Date.now()),
       getItemCategoryType: () => 'drink',
       getItemCosts: () => ({
         'drink.black-tea': 12,
@@ -531,7 +514,6 @@ describe('owner-finance', () => {
       getItemPrices: () => ({
         'drink.black-tea': 80,
       }),
-      listClosedOrdersForBusinessDay: async () => [],
       listClosedOrdersByRange: async () => [],
       loadDailySummariesRange: async () => ({}),
       watchDailySummariesRange: () => () => {},
@@ -579,5 +561,117 @@ describe('owner-finance', () => {
     expect(html).toContain('data-name="drink.black-tea"')
     expect(html).toContain('value="80"')
     expect(html).toContain('value="12"')
+  })
+
+  it('uses business-date keys for early-morning detailed orders and specific finance summary', async () => {
+    const finBtnSpecific = createElementStub('finBtnSpecific')
+    finBtnSpecific.dataset = { bizDateKey: '2026-05-31' }
+    const ownerOrderBox = createElementStub('ownerOrderBox')
+    const ownerSelectedDateTitle = createElementStub('ownerSelectedDateTitle')
+    const ownerOrderListSection = createElementStub('ownerOrderListSection')
+    const financeTitle = createElementStub('financeTitle')
+
+    dom.add(finBtnSpecific)
+    dom.add(ownerOrderBox)
+    dom.add(ownerSelectedDateTitle)
+    dom.add(ownerOrderListSection)
+    dom.add(financeTitle)
+    dom.add(createElementStub('monthTotalRev'))
+    dom.add(createElementStub('monthTotalCost'))
+    dom.add(createElementStub('monthNetProfit'))
+    dom.add(createElementStub('financeCategoryCards'))
+
+    const listClosedOrdersByRange = async (start: Date, endExclusive: Date) => {
+      if (
+        start.getTime() === new Date('2026-05-31T05:00:00+08:00').getTime() &&
+        endExclusive.getTime() === new Date('2026-06-01T05:00:00+08:00').getTime()
+      ) {
+        return [
+          {
+            formattedSeq: '19',
+            seq: 19,
+            seat: 'A1',
+            table: 'A1',
+            time: '2026/06/01 00:30:00',
+            timestamp: new Date('2026-06-01T00:30:00+08:00').getTime(),
+            total: 260,
+            lines: [
+              {
+                lineId: 'line_1',
+                groupId: 'group_1',
+                role: 'main' as const,
+                catalogKey: 'drink.black-tea',
+                inventoryKey: 'drink.black-tea',
+                displayName: '紅茶',
+                shortName: '紅茶',
+                categoryKey: 'drink' as const,
+                station: 'kitchen' as const,
+                courseKind: 'drink' as const,
+                quantity: 1,
+                unitPrice: 260,
+                priceDelta: 0,
+                lineTotal: 260,
+                selectionSummary: '',
+                isTreat: false,
+                sourceEntryId: 'entry_1',
+              },
+            ],
+          },
+        ]
+      }
+      return []
+    }
+
+    const finance = createOwnerFinanceModule({
+      ensureSubscriptions: async () => {},
+      authGate: {
+        getDevBypassNotice: () => '',
+        verifyPosLogin: async () => true,
+        verifyOwnerLogin: async () => true,
+        verifyOwnerPasswordChange: async () => true,
+        verifyEmployeeLogin: async () => true,
+        verifyEmployeePasswordChange: async () => true,
+      },
+      getItemCategoryType: () => 'drink',
+      getItemCosts: () => ({}),
+      getItemPrices: () => ({}),
+      listClosedOrdersByRange,
+      loadDailySummariesRange: async () => ({
+        '2026-05-31': {
+          paidTotal: 260,
+          originalTotal: 260,
+          orderCount: 1,
+          itemQtyTotal: 1,
+          categoryRevenue: { drink: 260 },
+          categoryCost: { drink: 0 },
+          updatedAt: 1,
+        },
+      }),
+      watchDailySummariesRange: () => () => {},
+      readDailySummariesRange: () => ({
+        '2026-05-31': {
+          paidTotal: 260,
+          originalTotal: 260,
+          orderCount: 1,
+          itemQtyTotal: 1,
+          categoryRevenue: { drink: 260 },
+          categoryCost: { drink: 0 },
+          updatedAt: 1,
+        },
+      }),
+      getOwnerPasswords: () => ({}),
+      hideAll: () => {},
+      menuData: {},
+      saveOwnerPassword: async () => {},
+      updateItemData: async () => {},
+    })
+
+    await finance.showOwnerDetailedOrders('2026-05-31')
+    await finance.updateFinanceStats('specific', '2026-05-31')
+
+    expect(ownerSelectedDateTitle.innerText).toBe('📅 2026/5/31 詳細訂單')
+    expect(ownerOrderListSection.style.display).toBe('block')
+    expect(ownerOrderBox.innerHTML).toContain('00:30:00')
+    expect(financeTitle.innerText).toBe('🏠 全店總計 (2026-05-31)')
   })
 })

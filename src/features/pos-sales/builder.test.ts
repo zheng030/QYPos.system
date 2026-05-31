@@ -119,7 +119,7 @@ describe('pos-sales builder', () => {
     expect(result.entry.summary.subtitle).toBe('主食：義大利麵 / 口味：青醬')
     expect(result.entry.lines).toHaveLength(2)
     expect(result.entry.lines[0]).toMatchObject({
-      lineId: 'entry_test_main',
+      lineId: 'm',
       role: 'main',
       catalogKey: 'pasta_risotto.chicken-breast',
       inventoryKey: 'pasta_risotto.chicken-breast',
@@ -128,7 +128,8 @@ describe('pos-sales builder', () => {
       selectionSummary: '主食：義大利麵 / 口味：青醬',
     })
     expect(result.entry.lines[1]).toMatchObject({
-      parentLineId: 'entry_test_main',
+      lineId: 'c00',
+      parentLineId: 'm',
       role: 'upgrade',
       catalogKey: 'drink.latte',
       categoryKey: 'drink',
@@ -161,8 +162,9 @@ describe('pos-sales builder', () => {
     }
 
     expect(result.entry.entryId).not.toContain('.')
+    expect(result.entry.entryId).toMatch(/^e_[a-z0-9]{8}$/)
     expect(result.entry.groupId).toBe(result.entry.entryId)
-    expect(result.entry.lines.every((line) => !line.lineId.includes('.'))).toBe(true)
+    expect(result.entry.lines.map((line) => line.lineId)).toEqual(['m', 'c00'])
   })
 
   it('shows child temperature only after selecting a drink item with that spec', () => {

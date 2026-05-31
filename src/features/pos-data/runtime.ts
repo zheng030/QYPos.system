@@ -69,6 +69,7 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
       const repository = createRtdbV3Repository({
         db: kernel.db,
         state: kernel.state,
+        tables: kernel.tables,
         helpers: {
           getCanonicalDraftEntries: kernel.helpers.getCanonicalDraftEntries,
           normalizeEntryForDisplay: kernel.helpers.normalizeEntryForDisplay,

@@ -18,7 +18,16 @@ import type {
 } from '@/features/pos-kernel/types'
 import { MENU_CATEGORY_KEYS, POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
 import type { AuthGate } from '@/shared/auth-gate'
-import { getBusinessDayRange, getBusinessMonthRange, getBusinessWeekRange, toBusinessDate } from '@/shared/business-day'
+import {
+  getBusinessDateKey,
+  getBusinessDateKeyFromParts,
+  getBusinessDayRange,
+  getBusinessDayRangeFromKey,
+  getBusinessMonthRange,
+  getBusinessWeekRange,
+  parseBusinessDateKey,
+  toBusinessDate,
+} from '@/shared/business-day'
 import { findElement, requireElement, requireInput } from '@/shared/dom-helpers'
 import { toNumberValue } from '@/shared/errors'
 import { getGroupedOrderLines } from '@/shared/grouped-order-lines'
@@ -28,12 +37,9 @@ import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
 type OwnerFinanceDeps = {
   ensureSubscriptions: () => Promise<void>
   authGate: AuthGate
-  getBusinessDate: (date: Date | string | number) => number
-  getDateFromOrder: (order: PosOrder) => Date
   getItemCategoryType: (name: string) => PosCategoryKey
   getItemCosts: () => PosItemCostsMap
   getItemPrices: () => PosItemPricesMap
-  listClosedOrdersForBusinessDay: (anchor: Date) => Promise<PosOrder[]>
   listClosedOrdersByRange: (start: Date, endExclusive: Date) => Promise<PosOrder[]>
   loadDailySummariesRange: (start: Date, endExclusive: Date) => Promise<Record<string, V3DailySummary>>
   watchDailySummariesRange: (
@@ -87,6 +93,11 @@ function formatCurrency(value: number) {
 function toLocalIsoDate(date: Date) {
   const offset = date.getTimezoneOffset() * 60000
   return new Date(date.getTime() - offset).toISOString().split('T')[0]
+}
+
+function formatBusinessDateLabel(bizDateKey: string) {
+  const [year, month, day] = parseBusinessDateKey(bizDateKey).split('-').map(Number)
+  return `${year}/${month}/${day}`
 }
 
 function normalizeItemName(name: string) {
@@ -180,12 +191,16 @@ function buildDailyFinanceEntry(summary: V3DailySummary): DailyFinanceEntry {
   }
 }
 
-function parseLocalDateInput(value: string) {
-  const [year, month, day] = value.split('-').map(Number)
-  if (![year, month, day].every(Number.isFinite)) {
+function parseBusinessDateInput(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
     return null
   }
-  return new Date(year, month - 1, day)
+  try {
+    return parseBusinessDateKey(trimmed)
+  } catch {
+    return null
+  }
 }
 
 async function createOwnerPasswordRecord(password: string): Promise<PosOwnerAuthRecord> {
@@ -358,14 +373,14 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     for (let day = 1; day <= daysInMonth; day += 1) {
       const cell = document.createElement('div')
       cell.className = 'calendar-day'
-      const dateStr = `${year}/${month + 1}/${day}`
-      if (selectedDateKey && selectedDateKey === dateStr) {
+      const bizDateKey = getBusinessDateKeyFromParts(year, month, day)
+      if (selectedDateKey && selectedDateKey === bizDateKey) {
         cell.classList.add('active')
       } else if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
         cell.classList.add('active')
       }
 
-      const stats = dailyFinancialData[dateStr]
+      const stats = dailyFinancialData[bizDateKey]
       const showRev = stats ? stats.totalRevenue : 0
 
       let htmlContent = `<div class="day-num">${day}</div>`
@@ -378,10 +393,8 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       }
 
       cell.dataset.action = 'select-owner-finance-day'
-      cell.dataset.year = String(year)
-      cell.dataset.month = String(month)
-      cell.dataset.day = String(day)
-      cell.dataset.dateKey = dateStr
+      cell.dataset.bizDateKey = bizDateKey
+      cell.dataset.dateKey = bizDateKey
       cell.innerHTML = htmlContent
       grid.appendChild(cell)
     }
@@ -398,7 +411,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     const specificBtn = findElement('finBtnSpecific')
     if (specificBtn) {
       specificBtn.style.display = 'none'
-      specificBtn.dataset.date = ''
+      specificBtn.dataset.bizDateKey = ''
     }
   }
 
@@ -421,10 +434,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     const render = () => {
       const range = deps.readDailySummariesRange(start, end)
       dailyFinancialData = Object.fromEntries(
-        Object.entries(range).map(([bizDateKey, summary]) => {
-          const [yearStr, monthStr, dayStr] = bizDateKey.split('-')
-          return [`${Number(yearStr)}/${Number(monthStr)}/${Number(dayStr)}`, buildDailyFinanceEntry(summary)]
-        })
+        Object.entries(range).map(([bizDateKey, summary]) => [bizDateKey, buildDailyFinanceEntry(summary)])
       )
       setFinanceSummary(buildSummaryFromDailyRange(range), '🏠 全店總計 (本月)')
       renderConfidentialCalendarGrid(ownerName, year, month)
@@ -436,8 +446,8 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     })
   }
 
-  function resolveFinanceRange(range: PosReportRange | string, targetDate?: Date | null) {
-    const anchor = targetDate ? new Date(targetDate) : new Date()
+  function resolveFinanceRange(range: PosReportRange | string, targetBizDateKey?: string | null) {
+    const anchor = targetBizDateKey?.trim() ? getBusinessDayRangeFromKey(targetBizDateKey).start : new Date()
     const businessNow = toBusinessDate(anchor)
     let start = new Date(businessNow)
     let end = new Date(businessNow)
@@ -467,18 +477,21 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
       if (endInput && !endInput.value) {
         endInput.value = toLocalIsoDate(new Date(businessNow.getFullYear(), businessNow.getMonth() + 1, 0))
       }
-      const [sy, sm, sd] = (startInput?.value || toLocalIsoDate(businessNow)).split('-').map(Number)
-      const [ey, em, ed] = (endInput?.value || toLocalIsoDate(businessNow)).split('-').map(Number)
-      start = getBusinessDayRange(new Date(sy, sm - 1, sd)).start
-      end = getBusinessDayRange(new Date(ey, em - 1, ed)).endExclusive
+      const startBizDateKey = parseBusinessDateInput(startInput?.value || '') || getBusinessDateKey(businessNow)
+      const endBizDateKey = parseBusinessDateInput(endInput?.value || '') || getBusinessDateKey(businessNow)
+      start = getBusinessDayRangeFromKey(startBizDateKey).start
+      end = getBusinessDayRangeFromKey(endBizDateKey).endExclusive
       titleText = `🏠 全店總計 (${startInput?.value || ''} ~ ${endInput?.value || ''})`
     } else if (range === 'specific') {
-      const specificValue = findElement<HTMLElement>('finBtnSpecific')?.dataset.date || ''
-      const specificDate = targetDate || (specificValue ? parseLocalDateInput(specificValue) : null) || businessNow
-      const rangeBounds = getBusinessDayRange(specificDate)
+      const specificValue = findElement<HTMLElement>('finBtnSpecific')?.dataset.bizDateKey || ''
+      const targetKey =
+        parseBusinessDateInput(targetBizDateKey || '') ||
+        parseBusinessDateInput(specificValue) ||
+        getBusinessDateKey(anchor)
+      const rangeBounds = getBusinessDayRangeFromKey(targetKey)
       start = rangeBounds.start
       end = rangeBounds.endExclusive
-      titleText = `🏠 全店總計 (${toLocalIsoDate(start)})`
+      titleText = `🏠 全店總計 (${targetKey})`
     }
 
     return { start, end, titleText }
@@ -531,9 +544,9 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     revenueDetails = nextDetails
   }
 
-  async function updateFinanceStats(range: PosReportRange | string, targetDate: Date | null = null) {
+  async function updateFinanceStats(range: PosReportRange | string, targetBizDateKey: string | null = null) {
     setFinanceRangeControls(range)
-    const nextRange = resolveFinanceRange(range, targetDate)
+    const nextRange = resolveFinanceRange(range, targetBizDateKey)
     activeFinanceRange = nextRange
     resetFinanceWatch()
     await deps.loadDailySummariesRange(nextRange.start, nextRange.end)
@@ -594,11 +607,12 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     getLegacyElement('revenueDetailModal').style.display = 'none'
   }
 
-  async function showOwnerDetailedOrders(year: number, month: number, day: number) {
-    const targetDate = new Date(year, month, day)
-    const targetOrders = [...(await deps.listClosedOrdersForBusinessDay(targetDate))].reverse()
+  async function showOwnerDetailedOrders(bizDateKey: string) {
+    const normalizedBizDateKey = parseBusinessDateKey(bizDateKey)
+    const { start, endExclusive } = getBusinessDayRangeFromKey(normalizedBizDateKey)
+    const targetOrders = [...(await deps.listClosedOrdersByRange(start, endExclusive))].reverse()
     setDisplay('ownerOrderListSection', 'block')
-    setText('ownerSelectedDateTitle', `📅 ${year}/${month + 1}/${day} 詳細訂單`)
+    setText('ownerSelectedDateTitle', `📅 ${formatBusinessDateLabel(normalizedBizDateKey)} 詳細訂單`)
     if (targetOrders.length === 0) {
       setHtml('ownerOrderBox', "<div style='padding:20px; text-align:center;'>無資料</div>")
       return

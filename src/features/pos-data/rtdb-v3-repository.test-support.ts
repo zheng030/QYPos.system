@@ -1,7 +1,15 @@
 import type { CorePosState, PosOrderEntry } from '@/features/pos-kernel/types'
+import { assertNoUndefinedFirebaseValue, sanitizeFirebaseUpdatePayload } from '@/shared/firebase-payload'
 
 export type EventName = 'value' | 'child_added' | 'child_changed' | 'child_removed'
 export type Listener = (snapshot: { val(): unknown; key(): string | null }) => void
+
+export type ReadEvent = {
+  phase: 'once' | 'on-init' | 'emit'
+  path: string
+  eventName: EventName
+  payloadSize: number
+}
 
 export function createState(): CorePosState {
   return {
@@ -24,7 +32,6 @@ export function createState(): CorePosState {
     activeDraftEntries: [],
     activePendingBatches: [],
     activeSubmittedBatches: [],
-    tableBatchCounts: {},
     tableSplitCounters: {},
     seatTimerInterval: null,
     currentBuilder: null,
@@ -72,6 +79,10 @@ export function createChildSnapshot(childKey: string, value: unknown) {
   }
 }
 
+export function measurePayloadSize(value: unknown) {
+  return JSON.stringify(value ?? null).length
+}
+
 export function readAtPath(tree: Record<string, unknown>, path: string) {
   const normalized = normalizePath(path)
   if (!normalized) return tree
@@ -96,17 +107,33 @@ export function setAtPath(tree: Record<string, unknown>, path: string, value: un
     throw new Error('Root writes are not supported in test stub')
   }
   const segments = normalized.split('/')
+  const parents: Array<{ node: Record<string, unknown>; key: string }> = []
   let current: Record<string, unknown> = tree
   for (const segment of segments.slice(0, -1)) {
     const next = current[segment]
     if (!next || typeof next !== 'object') {
       current[segment] = {}
     }
+    parents.push({ node: current, key: segment })
     current = current[segment] as Record<string, unknown>
   }
   const leaf = segments.at(-1) || ''
   if (value === null) {
     delete current[leaf]
+    for (let index = parents.length - 1; index >= 0; index -= 1) {
+      const parent = parents[index]
+      const child = parent.node[parent.key]
+      if (
+        child &&
+        typeof child === 'object' &&
+        !Array.isArray(child) &&
+        Object.keys(child as Record<string, unknown>).length === 0
+      ) {
+        delete parent.node[parent.key]
+      } else {
+        break
+      }
+    }
     return
   }
   if (isServerIncrement(value)) {
@@ -117,6 +144,10 @@ export function setAtPath(tree: Record<string, unknown>, path: string, value: un
 }
 
 export function assertFirebaseSafeKeys(value: unknown, path = '') {
+  if (value === undefined) {
+    throw new Error(`Undefined Firebase value at ${path || '<root>'}`)
+  }
+
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return
   }
@@ -133,10 +164,24 @@ export function createDbStub(initialData: Record<string, unknown>) {
   const data = structuredClone(initialData)
   const onceCalls: string[] = []
   const onCalls: Array<{ path: string; eventName: EventName }> = []
+  const transactionCalls: string[] = []
+  const updateCalls: Array<{
+    path: string
+    payloadKeys: string[]
+    payload: Record<string, unknown>
+    payloadSize: number
+  }> = []
+  const readEvents: ReadEvent[] = []
   const listeners = new Map<string, Map<EventName, Set<Listener>>>()
 
   function emit(path: string, eventName: EventName, value: unknown, childKey?: string) {
     const normalized = normalizePath(path)
+    readEvents.push({
+      phase: 'emit',
+      path: normalized,
+      eventName,
+      payloadSize: measurePayloadSize(value),
+    })
     listeners
       .get(normalized)
       ?.get(eventName)
@@ -148,6 +193,9 @@ export function createDbStub(initialData: Record<string, unknown>) {
   return {
     onceCalls,
     onCalls,
+    transactionCalls,
+    updateCalls,
+    readEvents,
     emit,
     data,
     ref(path = '/') {
@@ -156,7 +204,14 @@ export function createDbStub(initialData: Record<string, unknown>) {
         async once(eventName: 'value') {
           if (eventName !== 'value') throw new Error(`Unsupported event: ${eventName}`)
           onceCalls.push(normalized)
-          return createSnapshot(normalized, readAtPath(data, normalized))
+          const value = readAtPath(data, normalized)
+          readEvents.push({
+            phase: 'once',
+            path: normalized,
+            eventName,
+            payloadSize: measurePayloadSize(value),
+          })
+          return createSnapshot(normalized, value)
         },
         on(eventName: EventName, listener: Listener) {
           onCalls.push({ path: normalized, eventName })
@@ -167,12 +222,25 @@ export function createDbStub(initialData: Record<string, unknown>) {
           listeners.set(normalized, byEvent)
 
           if (eventName === 'value') {
-            listener(createSnapshot(normalized, readAtPath(data, normalized)))
+            const value = readAtPath(data, normalized)
+            readEvents.push({
+              phase: 'on-init',
+              path: normalized,
+              eventName,
+              payloadSize: measurePayloadSize(value),
+            })
+            listener(createSnapshot(normalized, value))
           }
           if (eventName === 'child_added') {
             const current = readAtPath(data, normalized)
             if (current && typeof current === 'object') {
               Object.entries(current as Record<string, unknown>).forEach(([childKey, value]) => {
+                readEvents.push({
+                  phase: 'on-init',
+                  path: normalized,
+                  eventName,
+                  payloadSize: measurePayloadSize(value),
+                })
                 listener(createChildSnapshot(childKey, value))
               })
             }
@@ -183,11 +251,21 @@ export function createDbStub(initialData: Record<string, unknown>) {
           }
         },
         async update(payload: Record<string, unknown>) {
-          for (const [key, value] of Object.entries(payload)) {
+          assertNoUndefinedFirebaseValue(payload)
+          const sanitizedPayload = sanitizeFirebaseUpdatePayload(payload)
+          const payloadClone = structuredClone(sanitizedPayload)
+          updateCalls.push({
+            path: normalized,
+            payloadKeys: Object.keys(sanitizedPayload).sort(),
+            payload: payloadClone,
+            payloadSize: JSON.stringify(payloadClone).length,
+          })
+          for (const [key, value] of Object.entries(sanitizedPayload)) {
             setAtPath(data, key, value)
           }
         },
         async transaction<T>(updater: (currentValue: T | null) => T) {
+          transactionCalls.push(normalized)
           const current = readAtPath(data, normalized) as T | null
           const next = updater(current ?? null)
           assertFirebaseSafeKeys(next, normalized)
@@ -203,14 +281,36 @@ export function createDbStub(initialData: Record<string, unknown>) {
 }
 
 export function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
-  const entryId = overrides.entryId || 'entry_1'
+  const entryId = overrides.entryId || 'e_1'
   const itemId = overrides.itemId || 'drink.latte'
   const itemName = overrides.itemName || '拿鐵咖啡'
   const shortName = overrides.shortName || '拿鐵'
   const categoryKey = overrides.categoryKey || 'drink'
+  const groupId = overrides.groupId || entryId
+  const lines = overrides.lines || [
+    {
+      lineId: 'm',
+      groupId,
+      role: 'main',
+      catalogKey: overrides.catalogKey || itemId,
+      inventoryKey: overrides.inventoryKey || itemId,
+      displayName: itemName,
+      shortName,
+      categoryKey,
+      station: 'kitchen',
+      courseKind: 'drink',
+      quantity: overrides.quantity || 1,
+      unitPrice: overrides.subtotal || 150,
+      priceDelta: 0,
+      lineTotal: overrides.subtotal || 150,
+      selectionSummary: '',
+      isTreat: false,
+      sourceEntryId: entryId,
+    },
+  ]
   return {
     entryId,
-    groupId: overrides.groupId || entryId,
+    groupId,
     itemId,
     catalogKey: overrides.catalogKey || itemId,
     inventoryKey: overrides.inventoryKey || itemId,
@@ -225,27 +325,7 @@ export function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEnt
     selections: overrides.selections || {},
     includeSelections: overrides.includeSelections || {},
     upgradeSelections: overrides.upgradeSelections || {},
-    lines: overrides.lines || [
-      {
-        lineId: `${entryId}_main`,
-        groupId: overrides.groupId || entryId,
-        role: 'main',
-        catalogKey: overrides.catalogKey || itemId,
-        inventoryKey: overrides.inventoryKey || itemId,
-        displayName: itemName,
-        shortName,
-        categoryKey,
-        station: 'kitchen',
-        courseKind: 'drink',
-        quantity: overrides.quantity || 1,
-        unitPrice: overrides.subtotal || 150,
-        priceDelta: 0,
-        lineTotal: overrides.subtotal || 150,
-        selectionSummary: '',
-        isTreat: false,
-        sourceEntryId: entryId,
-      },
-    ],
+    lines,
     subtotal: overrides.subtotal || 150,
     summary: overrides.summary || {
       title: itemName,

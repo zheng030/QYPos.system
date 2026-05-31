@@ -43,6 +43,15 @@
 	white-space: nowrap;
 }
 
+.staff-workspace-total .price-adjusted {
+	align-items: flex-end;
+}
+
+.staff-workspace-total .price-adjusted-note {
+	max-width: 180px;
+	text-align: right;
+}
+
 .staff-workspace-stream {
 	display: flex;
 	flex-direction: column;
@@ -410,6 +419,57 @@
 	font-weight: 800;
 	color: var(--primary-color);
 	white-space: nowrap;
+}
+
+.price-adjusted {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	max-width: 100%;
+	white-space: normal;
+}
+
+.price-adjusted--stack .price-adjusted-main {
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 1px;
+}
+
+.price-adjusted-main {
+	display: inline-flex;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: 6px;
+	min-width: 0;
+}
+
+.price-adjusted-original {
+	color: #94a3b8;
+	font-size: 0.9em;
+	font-weight: 700;
+	text-decoration: line-through;
+	text-decoration-thickness: 1.5px;
+}
+
+.price-adjusted-final {
+	color: inherit;
+	font-weight: 800;
+}
+
+.price-adjusted-final--danger {
+	color: #dc2626;
+}
+
+.price-adjusted-final--success {
+	color: #059669;
+}
+
+.price-adjusted-note {
+	color: #64748b;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1.25;
 }
 
 .entry-child-list,

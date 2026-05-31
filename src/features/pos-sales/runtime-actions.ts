@@ -8,6 +8,8 @@ import {
   buildReceiptMarkup,
   calculateSplitCheckoutTotal,
   calculateStaffOrderTotal,
+  getEntryAdjustedAmountDisplay,
+  renderAdjustedAmountHtml,
   submitDraftBatch,
   updateSubmittedBatchAndPrint,
 } from './runtime-support'
@@ -410,6 +412,7 @@ export function createPosSalesActionsModule({
       .map((entry) => {
         const summary = getDisplaySummary(entry)
         const children = entry.lines.filter((line) => line.parentLineId && line.courseKind !== 'drink')
+        const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
         return `
           <article class="entry-card">
             <div class="entry-card-head">
@@ -421,7 +424,7 @@ export function createPosSalesActionsModule({
                   { text: summary.drinkSummary },
                 ])}
               </div>
-              <div class="entry-card-total">${formatCurrency(entry.subtotal)}</div>
+              <div class="entry-card-total">${totalHtml}</div>
             </div>
             ${
               children.length > 0

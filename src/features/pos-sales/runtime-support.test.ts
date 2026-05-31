@@ -5,16 +5,20 @@ import { buildEntryDisplaySummary as buildKernelEntryDisplaySummary } from '@/fe
 import type { PosOrderBatch, PosOrderEntry, PosReceiptData } from '@/features/pos-kernel/types'
 import {
   acceptPendingBatchAndPrint,
+  buildAdjustedAmountDisplay,
   buildReceiptMarkup,
   calculateSplitCheckoutTotal,
   calculateStaffOrderTotal,
   getBuilderGroupSelector,
+  getEntryAdjustedAmountDisplay,
   getEntryDisplaySummary,
   getFloatingBarViewModel,
   getStaffWorkspaceRowActions,
+  getStaffWorkspaceTotalDisplay,
   getVisibleOrderBatches,
   guideBuilderIssue,
   persistCustomerInfoSilently,
+  renderAdjustedAmountHtml,
   selectPendingOverlayBatch,
   submitDraftBatch,
   summarizeStaffWorkspace,
@@ -123,19 +127,31 @@ describe('pos-sales runtime-support', () => {
     ])
   })
 
-  it('selects the first pending overlay batch only for staff mode', () => {
-    const match = selectPendingOverlayBatch('staff', {
-      A1: [],
-      A2: [
-        {
-          batchId: 'pending_2',
-          requestSeq: 1,
-          requestLabel: '#2-1',
-          createdAt: 2,
-          entries: [{ entryId: 'preview_1', title: '雞胸', quantityLabel: '2 份' }],
-        },
-      ],
-    })
+  it('selects the first pending overlay batch by table order only for staff mode', () => {
+    const match = selectPendingOverlayBatch(
+      'staff',
+      {
+        A1: [
+          {
+            batchId: 'pending_1',
+            requestSeq: 1,
+            requestLabel: '#1-1',
+            createdAt: 1,
+            entries: [{ entryId: 'preview_0', title: '紅茶', quantityLabel: '1 份' }],
+          },
+        ],
+        A2: [
+          {
+            batchId: 'pending_2',
+            requestSeq: 1,
+            requestLabel: '#2-1',
+            createdAt: 2,
+            entries: [{ entryId: 'preview_1', title: '雞胸', quantityLabel: '2 份' }],
+          },
+        ],
+      },
+      ['A2', 'A1']
+    )
     expect(match).toMatchObject({
       table: 'A2',
       batch: { batchId: 'pending_2' },
@@ -163,6 +179,98 @@ describe('pos-sales runtime-support', () => {
   it('calculates staff order totals using the same折數/service fee semantics', () => {
     expect(calculateStaffOrderTotal(1000, 90, true, 0)).toBe(990)
     expect(calculateStaffOrderTotal(1000, 0, false, 150)).toBe(850)
+  })
+
+  it('builds a plain adjusted amount display when the amount did not change', () => {
+    expect(buildAdjustedAmountDisplay(310, 310)).toEqual({
+      originalLabel: '$310',
+      finalLabel: '$310',
+      hasAdjustment: false,
+      noteLabel: undefined,
+      finalTone: undefined,
+    })
+    expect(renderAdjustedAmountHtml(buildAdjustedAmountDisplay(310, 310))).toBe('$310')
+  })
+
+  it('builds a treat entry adjusted display from original line prices', () => {
+    const treatEntry = createEntry({
+      lines: createEntry().lines.map((line) => ({
+        ...line,
+        isTreat: true,
+        lineTotal: 0,
+      })),
+      subtotal: 0,
+      summary: {
+        ...createEntry().summary,
+        title: '雞胸 (招待)',
+        totalLabel: '$0',
+      },
+    })
+
+    expect(getEntryAdjustedAmountDisplay(treatEntry)).toEqual({
+      originalLabel: '$310',
+      finalLabel: '$0',
+      hasAdjustment: true,
+      noteLabel: undefined,
+      finalTone: 'success',
+    })
+
+    expect(renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(treatEntry))).toContain(
+      'price-adjusted-final--success'
+    )
+    expect(renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(treatEntry))).toContain('$310')
+    expect(renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(treatEntry))).toContain('$0')
+  })
+
+  it('builds a workspace total display for discount only', () => {
+    const display = getStaffWorkspaceTotalDisplay([createEntry()], 80, false)
+
+    expect(display).toEqual({
+      originalLabel: '$310',
+      finalLabel: '$248',
+      hasAdjustment: true,
+      noteLabel: '折數 80%',
+      finalTone: 'danger',
+    })
+  })
+
+  it('builds a workspace total display for service fee only', () => {
+    const display = getStaffWorkspaceTotalDisplay([createEntry()], 0, true)
+
+    expect(display).toEqual({
+      originalLabel: '$310',
+      finalLabel: '$341',
+      hasAdjustment: true,
+      noteLabel: '含服務費 +$31',
+      finalTone: 'danger',
+    })
+  })
+
+  it('builds a workspace total display that includes treat and order-level adjustments', () => {
+    const treatEntry = createEntry({
+      lines: createEntry().lines.map((line) => ({
+        ...line,
+        isTreat: true,
+        lineTotal: 0,
+      })),
+      subtotal: 0,
+      summary: {
+        ...createEntry().summary,
+        title: '雞胸 (招待)',
+        totalLabel: '$0',
+      },
+    })
+
+    const display = getStaffWorkspaceTotalDisplay([createEntry(), treatEntry], 80, true)
+
+    expect(display).toEqual({
+      originalLabel: '$620',
+      finalLabel: '$273',
+      hasAdjustment: true,
+      noteLabel: '折數 80% · 含服務費 +$25',
+      finalTone: 'danger',
+    })
+    expect(renderAdjustedAmountHtml(display, { stacked: true })).toContain('price-adjusted--stack')
   })
 
   it('summarizes draft and submitted totals for the staff floating workspace', () => {
