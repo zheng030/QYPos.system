@@ -58,6 +58,11 @@ describe('pos-sales builder', () => {
     const presentation = buildBuilderPresentation({ state, helpers })
     expect(presentation?.canConfirm).toBe(false)
     expect(presentation?.missingIssues.map((issue) => issue.groupId)).toEqual(['base', 'sauce', 'bundle-drink-upgrade'])
+    expect(presentation?.subtitle).toBe('')
+    expect(presentation?.mainBlocks[0]?.id).toBe('main-base')
+    expect(presentation?.mainBlocks[0]?.rows).toHaveLength(1)
+    expect(presentation?.mainBlocks[0]?.rows[0]?.[0]?.id).toBe('base')
+    expect(presentation?.mainBlocks[0]?.rows.flat().map((rule) => rule.id)).not.toContain('texture')
 
     const result = finalizeBuilderEntry({
       state,
@@ -70,6 +75,23 @@ describe('pos-sales builder', () => {
       throw new Error('expected missing validation result')
     }
     expect(result.issues[0]?.groupId).toBe('base')
+  })
+
+  it('shows texture only after selecting the pasta base and keeps default normal', () => {
+    const helpers = createHelpers()
+    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
+
+    let presentation = buildBuilderPresentation({ state, helpers })
+    expect(presentation?.mainBlocks[0]?.rows.flat().map((rule) => rule.id)).not.toContain('texture')
+    expect(presentation?.subtitle).toBe('')
+
+    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
+    presentation = buildBuilderPresentation({ state, helpers })
+
+    expect(presentation?.mainBlocks[0]?.rows).toHaveLength(2)
+    expect(presentation?.mainBlocks[0]?.rows[1]?.[0]?.id).toBe('texture')
+    expect(presentation?.mainBlocks[0]?.rows[1]?.[0]?.value).toBe('normal')
+    expect(presentation?.subtitle).toBe('主食：義大利麵 / 口感：正常')
   })
 
   it('makes the free-drink group optional when all free drinks are sold out', () => {
@@ -116,7 +138,7 @@ describe('pos-sales builder', () => {
       throw new Error('expected finalized entry')
     }
 
-    expect(result.entry.summary.subtitle).toBe('主食：義大利麵 / 口味：青醬')
+    expect(result.entry.summary.subtitle).toBe('主食：義大利麵 / 口感：正常 / 口味：青醬')
     expect(result.entry.lines).toHaveLength(2)
     expect(result.entry.lines[0]).toMatchObject({
       lineId: 'm',
@@ -125,7 +147,12 @@ describe('pos-sales builder', () => {
       inventoryKey: 'pasta_risotto.chicken-breast',
       displayName: '雞胸',
       lineTotal: 250,
-      selectionSummary: '主食：義大利麵 / 口味：青醬',
+      selectionSummary: '主食：義大利麵 / 口感：正常 / 口味：青醬',
+    })
+    expect(result.entry.selections).toMatchObject({
+      base: 'pasta',
+      texture: 'normal',
+      sauce: 'pesto',
     })
     expect(result.entry.lines[1]).toMatchObject({
       lineId: 'c00',
@@ -229,8 +256,24 @@ describe('pos-sales builder', () => {
     })
     const state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
     const presentation = buildBuilderPresentation({ state, helpers })
-    const sauceRule = presentation?.mainRules.find((rule) => rule.id === 'sauce')
+    const sauceRule = presentation?.mainBlocks.flatMap((block) => block.rows.flat()).find((rule) => rule.id === 'sauce')
     expect(sauceRule?.options?.find((option) => option.value === 'pesto')?.disabled).toBe(true)
+  })
+
+  it('does not apply inventory sold-out state to non-tracked texture options', () => {
+    const helpers = createHelpers({
+      'selection.pasta_risotto.chicken-breast.texture.normal': false,
+      'selection.pasta_risotto.chicken-breast.texture.soft': false,
+    })
+    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
+    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
+    const presentation = buildBuilderPresentation({ state, helpers })
+    const textureRule = presentation?.mainBlocks
+      .flatMap((block) => block.rows.flat())
+      .find((rule) => rule.id === 'texture')
+
+    expect(textureRule?.value).toBe('normal')
+    expect(textureRule?.options?.every((option) => option.disabled === false)).toBe(true)
   })
 
   it('hydrates legacy entries by moving main temperature into include selections', () => {

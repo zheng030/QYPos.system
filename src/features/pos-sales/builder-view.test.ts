@@ -41,11 +41,34 @@ describe('pos-sales builder-view', () => {
     expect(html).not.toContain('builder-rule-hint')
     expect(html).not.toContain('builder-alert')
     expect(html).toContain('附飲 / 換購')
+    expect(html).toContain('data-builder-block="main-base"')
+    expect(html).toContain('data-builder-group="base"')
+    expect(html).toContain('data-builder-group="texture"')
     expect(html).toContain('data-builder-group="included-drink"')
     expect(html).toContain('data-builder-group="included-drink.temperature"')
     expect(html).toContain('data-action="builder-cancel"')
     expect(html).toContain('加入購物車')
     expect(html).not.toContain('data-action="builder-confirm" disabled')
+  })
+
+  it('does not render texture before base is selected', () => {
+    const helpers = createHelpers()
+    const state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
+    const presentation = buildBuilderPresentation({ state, helpers })
+    if (!presentation) {
+      throw new Error('expected builder presentation')
+    }
+
+    const html = renderBuilderMarkup({
+      presentation,
+      editing: false,
+      issueMessage: '',
+    })
+
+    expect(html).toContain('data-builder-block="main-base"')
+    expect(html).toContain('data-builder-group="base"')
+    expect(html).not.toContain('data-builder-group="texture"')
+    expect(html).not.toContain('>口感<')
   })
 
   it('disables the confirm button while required selections are incomplete', () => {

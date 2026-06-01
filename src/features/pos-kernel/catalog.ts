@@ -13,6 +13,7 @@ import type {
   PosOrderLine,
   PosRevenueDetails,
   PosSelectionRule,
+  PosSingleSelectionRule,
 } from './types'
 
 type CatalogHelpersDeps = {
@@ -31,8 +32,29 @@ function stableStringify(value: unknown): string {
     .join(',')}}`
 }
 
-function getSelectionRuleMap(rules: PosSelectionRule[] | undefined) {
-  return Object.fromEntries((rules || []).map((rule) => [rule.id, rule]))
+function isTrackedInventoryRule(rule: PosSelectionRule): rule is PosSingleSelectionRule {
+  return rule.kind === 'single' && rule.tracksInventory
+}
+
+function isRuleVisible(rule: PosSelectionRule, selections: PosBuilderSelectionMap | undefined) {
+  if (rule.kind !== 'single' || !rule.visibleWhenRuleId) {
+    return true
+  }
+  return Boolean(selections?.[rule.visibleWhenRuleId]?.trim())
+}
+
+function resolveRuleValue(rule: PosSelectionRule, selections: PosBuilderSelectionMap | undefined) {
+  if (!isRuleVisible(rule, selections)) {
+    return ''
+  }
+  const explicitValue = selections?.[rule.id] || ''
+  if (explicitValue) {
+    return explicitValue
+  }
+  if (rule.kind === 'single') {
+    return rule.defaultValue || ''
+  }
+  return ''
 }
 
 export function getBusinessDate(dateObj: Date | string | number) {
@@ -131,13 +153,12 @@ export function buildSelectionSummary(
   includeSelections: Record<string, PosBuilderSelectionMap>,
   upgradeSelections: Record<string, string>
 ) {
-  const ruleMap = getSelectionRuleMap(selectionRules)
   const parts: string[] = []
 
-  Object.entries(selections || {}).forEach(([ruleId, value]) => {
+  ;(selectionRules || []).forEach((rule) => {
+    if (!isRuleVisible(rule, selections)) return
+    const value = resolveRuleValue(rule, selections)
     if (!value) return
-    const rule = ruleMap[ruleId]
-    if (!rule) return
     const summaryLabel = rule.summaryLabel || rule.label
     if (rule.kind === 'single') {
       const option = rule.options.find((candidate) => candidate.value === value)
@@ -217,7 +238,7 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
     return [
       ...new Set(
         (item.selections || [])
-          .filter((rule) => rule.kind === 'single')
+          .filter(isTrackedInventoryRule)
           .flatMap((rule) => rule.options)
           .filter((option) => !option.targetItemId)
           .map((option) => option.inventoryKey)
@@ -248,7 +269,10 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
     if (!item) return ['找不到商品']
     const errors: string[] = []
     ;(item.selections || []).forEach((rule) => {
-      const value = selections[rule.id]
+      if (!isRuleVisible(rule, selections)) {
+        return
+      }
+      const value = resolveRuleValue(rule, selections)
       if (rule.required && !value) {
         errors.push(rule.id)
         return

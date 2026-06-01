@@ -42,6 +42,9 @@ function buildSummaryPartsFromSelections(
 ) {
   return (rules || [])
     .map((rule) => {
+      if (rule.kind === 'single' && rule.visibleWhenRuleId && !values?.[rule.visibleWhenRuleId]?.trim()) {
+        return ''
+      }
       const raw = values?.[rule.id] || ''
       if (!raw.trim()) return ''
       const label = rule.summaryLabel || rule.label

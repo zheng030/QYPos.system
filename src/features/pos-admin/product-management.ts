@@ -55,7 +55,7 @@ function buildGroupStatusText(inventory: Record<string, boolean | undefined>, ke
 function getBundleSelectionRules(item: PosMenuItem) {
   return (item.kind === 'bundle' ? item.selections || [] : []).filter(
     (rule): rule is Extract<PosSelectionRule, { kind: 'single' }> =>
-      rule.kind === 'single' && !rule.options.some((option) => option.targetItemId)
+      rule.kind === 'single' && rule.tracksInventory && !rule.options.some((option) => option.targetItemId)
   )
 }
 

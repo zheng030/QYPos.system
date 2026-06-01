@@ -76,6 +76,8 @@ describe('product-management', () => {
     expect(container.innerHTML).toContain('>義大利麵 / 燉飯<')
     expect(container.innerHTML).toContain('主食 / 義大利麵')
     expect(container.innerHTML).toContain('口味 / 青醬')
+    expect(container.innerHTML).not.toContain('口感 / 正常')
+    expect(container.innerHTML).not.toContain('口感 / 偏軟')
     expect(container.innerHTML).toContain('data-option="selection.pasta_risotto.chicken-breast.sauce.pesto"')
     expect(container.innerHTML).not.toContain('>品類<')
     expect(container.innerHTML).not.toContain('>附加品類<')

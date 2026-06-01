@@ -1,4 +1,10 @@
-import type { BuilderChildBlockView, BuilderPresentation, BuilderRuleView, BuilderUpgradeGroupView } from './builder'
+import type {
+  BuilderChildBlockView,
+  BuilderMainBlockView,
+  BuilderPresentation,
+  BuilderRuleView,
+  BuilderUpgradeGroupView,
+} from './builder'
 
 function formatCurrency(value: number) {
   return `$${Math.round(value || 0)}`
@@ -84,6 +90,24 @@ function renderRuleControl(rule: BuilderRuleView, scope: 'main' | 'include', inc
   `
 }
 
+function renderMainBlock(block: BuilderMainBlockView) {
+  return `
+    <div class="builder-rule-card" data-builder-block="${escapeHtml(block.id)}">
+      <div class="builder-rule-list">
+        ${block.rows
+          .map(
+            (row) => `
+              <div class="builder-block-row">
+                ${row.map((rule) => renderRuleControl(rule, 'main')).join('')}
+              </div>
+            `
+          )
+          .join('')}
+      </div>
+    </div>
+  `
+}
+
 function renderChildBlock(block: BuilderChildBlockView) {
   return `
     <div class="builder-include-card${block.rules.some((rule) => rule.required && !rule.value) ? ' missing' : ''}" data-builder-group="${escapeHtml(block.includeId)}">
@@ -124,7 +148,7 @@ export function renderBuilderMarkup({
         <div class="builder-section">
           <h4>主商品設定</h4>
           <div class="builder-rule-list">
-            ${presentation.mainRules.map((rule) => renderRuleControl(rule, 'main')).join('')}
+            ${presentation.mainBlocks.map((block) => renderMainBlock(block)).join('')}
           </div>
         </div>
 

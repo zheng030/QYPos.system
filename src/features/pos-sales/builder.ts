@@ -7,6 +7,7 @@ import type {
   PosOrderEntry,
   PosOrderLine,
   PosSelectionRule,
+  PosSingleSelectionRule,
 } from '@/features/pos-kernel/types'
 import { createChildLineId, createEntryId, createMainLineId } from '@/shared/rtdb-entity-id'
 
@@ -43,8 +44,16 @@ export type BuilderRuleView = {
   kind: 'single' | 'text'
   required: boolean
   value: string
+  builderBlockId?: string
+  builderRow?: number
   placeholder?: string
   options?: BuilderOptionView[]
+}
+
+export type BuilderMainBlockView = {
+  id: string
+  label: string
+  rows: BuilderRuleView[][]
 }
 
 export type BuilderIncludeView = {
@@ -90,7 +99,7 @@ export type BuilderPresentation = {
   subtitle: string
   missingIssues: BuilderIssue[]
   soldOutIssues: BuilderIssue[]
-  mainRules: BuilderRuleView[]
+  mainBlocks: BuilderMainBlockView[]
   childBlocks: BuilderChildBlockView[]
   upgradeGroups: BuilderUpgradeGroupView[]
 }
@@ -141,8 +150,40 @@ function resolveSingleOptionLabel(rule: PosSelectionRule | undefined, value: str
   return rule.options.find((option) => option.value === value)?.label || value
 }
 
-function resolveMainSelectionValue(_item: PosMenuItem, state: PosBuilderState, ruleId: string, fallback?: string) {
-  return state.selections[ruleId] || fallback || ''
+function ruleHasInventoryTracking(rule: PosSelectionRule): rule is PosSingleSelectionRule {
+  return rule.kind === 'single' && rule.tracksInventory
+}
+
+function isRuleVisible(rule: PosSelectionRule, values: PosBuilderSelectionMap | undefined) {
+  if (rule.kind !== 'single' || !rule.visibleWhenRuleId) {
+    return true
+  }
+  return Boolean(values?.[rule.visibleWhenRuleId]?.trim())
+}
+
+function resolveRuleValue(rule: PosSelectionRule, values: PosBuilderSelectionMap | undefined, fallback?: string) {
+  if (!isRuleVisible(rule, values)) {
+    return ''
+  }
+  const explicitValue = values?.[rule.id] || ''
+  if (explicitValue) {
+    return explicitValue
+  }
+  if (rule.kind === 'single') {
+    return fallback || rule.defaultValue || ''
+  }
+  return fallback || ''
+}
+
+function getPersistedSelectionMap(rules: PosSelectionRule[] | undefined, values: PosBuilderSelectionMap | undefined) {
+  const persisted: PosBuilderSelectionMap = {}
+  for (const rule of rules || []) {
+    const resolvedValue = resolveRuleValue(rule, values)
+    if (resolvedValue) {
+      persisted[rule.id] = resolvedValue
+    }
+  }
+  return persisted
 }
 
 function getSelectedUpgradeOption(item: PosMenuItem, groupId: string, value: string) {
@@ -150,8 +191,12 @@ function getSelectedUpgradeOption(item: PosMenuItem, groupId: string, value: str
   return group?.options.find((option) => option.value === value) || null
 }
 
-function isOptionDisabled(option: { inventoryKey: string; targetItemId?: string }, helpers: BuilderHelpers) {
-  if (helpers.isInventoryKeySoldOut(option.inventoryKey)) {
+function isOptionDisabled(
+  option: { inventoryKey: string; targetItemId?: string },
+  rule: PosSelectionRule | PosBundleUpgradeGroup,
+  helpers: BuilderHelpers
+) {
+  if ('kind' in rule && ruleHasInventoryTracking(rule) && helpers.isInventoryKeySoldOut(option.inventoryKey)) {
     return true
   }
   return option.targetItemId ? helpers.isItemSoldOut(option.targetItemId) : false
@@ -160,7 +205,7 @@ function isOptionDisabled(option: { inventoryKey: string; targetItemId?: string 
 function isAutoOptionalDrinkGroup(group: PosBundleUpgradeGroup, helpers: BuilderHelpers) {
   if (group.id !== 'bundle-drink-upgrade') return false
   const freeDrinkOptions = group.options.filter((option) => option.priceDelta === 0)
-  return freeDrinkOptions.length > 0 && freeDrinkOptions.every((option) => isOptionDisabled(option, helpers))
+  return freeDrinkOptions.length > 0 && freeDrinkOptions.every((option) => isOptionDisabled(option, group, helpers))
 }
 
 function getResolvedIncludeSelections(
@@ -184,11 +229,9 @@ function getResolvedIncludeSelections(
       continue
     }
 
-    if (rule.required && rule.kind === 'single') {
-      const matchingDefault = rule.options.find((option) => option.value === defaultSelections?.[rule.id])?.value
-      if (matchingDefault) {
-        resolved[rule.id] = matchingDefault
-      }
+    const resolvedValue = resolveRuleValue(rule, undefined, defaultSelections?.[rule.id])
+    if (resolvedValue) {
+      resolved[rule.id] = resolvedValue
     }
   }
   return resolved
@@ -203,6 +246,8 @@ function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHe
       kind: 'text',
       required: rule.required,
       value,
+      builderBlockId: undefined,
+      builderRow: undefined,
       placeholder: rule.placeholder,
     }
   }
@@ -214,11 +259,13 @@ function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHe
     kind: 'single',
     required: rule.required,
     value,
+    builderBlockId: rule.builderBlockId,
+    builderRow: rule.builderRow,
     options: rule.options.map((option) => ({
       value: option.value,
       label: option.label,
       priceDelta: option.priceDelta || 0,
-      disabled: isOptionDisabled(option, helpers),
+      disabled: isOptionDisabled(option, rule, helpers),
       selected: option.value === value,
     })),
   }
@@ -228,7 +275,8 @@ function buildSummary(item: PosMenuItem, state: PosBuilderState): string {
   const parts: string[] = []
 
   for (const rule of item.selections || []) {
-    const value = state.selections[rule.id] || ''
+    if (!isRuleVisible(rule, state.selections)) continue
+    const value = resolveRuleValue(rule, state.selections)
     if (!value.trim()) continue
     const label = rule.summaryLabel || rule.label
     const displayValue = resolveSingleOptionLabel(rule, value)
@@ -238,6 +286,40 @@ function buildSummary(item: PosMenuItem, state: PosBuilderState): string {
   }
 
   return parts.join(' / ')
+}
+
+function buildMainBlocks(ruleViews: BuilderRuleView[]) {
+  const blockOrder: string[] = []
+  const blockMap = new Map<string, { label: string; rows: Map<number, BuilderRuleView[]> }>()
+
+  ruleViews.forEach((rule) => {
+    const blockId = rule.builderBlockId || rule.id
+    const row = rule.builderRow || 1
+    let block = blockMap.get(blockId)
+    if (!block) {
+      block = {
+        label: rule.label,
+        rows: new Map(),
+      }
+      blockMap.set(blockId, block)
+      blockOrder.push(blockId)
+    }
+    const rowRules = block.rows.get(row)
+    if (rowRules) {
+      rowRules.push(rule)
+      return
+    }
+    block.rows.set(row, [rule])
+  })
+
+  return blockOrder.map((blockId) => {
+    const block = blockMap.get(blockId)
+    return {
+      id: blockId,
+      label: block?.label || blockId,
+      rows: block ? [...block.rows.entries()].sort(([left], [right]) => left - right).map(([, rules]) => rules) : [],
+    } satisfies BuilderMainBlockView
+  })
 }
 
 function resolveIncludes(item: PosMenuItem, state: PosBuilderState, helpers: BuilderHelpers) {
@@ -420,8 +502,11 @@ export function buildBuilderPresentation(args: {
   const missingIssues: BuilderIssue[] = []
   const soldOutIssues: BuilderIssue[] = []
   const quantity = Math.max(1, state.quantity || 1)
-  const mainRules = (item.selections || []).map((rule) => {
-    const value = resolveMainSelectionValue(item, state, rule.id)
+  const mainRuleViews = (item.selections || []).map((rule) => {
+    if (!isRuleVisible(rule, state.selections)) {
+      return null
+    }
+    const value = resolveRuleValue(rule, state.selections)
     if (rule.required && !value.trim()) {
       missingIssues.push(buildIssue('missing', rule.id, rule.label))
     }
@@ -433,6 +518,8 @@ export function buildBuilderPresentation(args: {
     }
     return buildRuleView(rule, value, helpers)
   })
+  const visibleMainRuleViews = mainRuleViews.filter((rule): rule is BuilderRuleView => Boolean(rule))
+  const mainBlocks = buildMainBlocks(visibleMainRuleViews)
 
   if (helpers.isItemSoldOut(item.id)) {
     soldOutIssues.push(buildIssue('sold-out', item.id, item.name))
@@ -445,7 +532,7 @@ export function buildBuilderPresentation(args: {
       value: option.value,
       label: option.label,
       priceDelta: option.priceDelta || 0,
-      disabled: isOptionDisabled(option, helpers),
+      disabled: isOptionDisabled(option, group, helpers),
       selected: selectedValue === option.value,
     }))
     const availableCount = options.filter((option) => !option.disabled).length
@@ -495,7 +582,7 @@ export function buildBuilderPresentation(args: {
               value: option.value,
               label: option.label,
               priceDelta: option.priceDelta || 0,
-              disabled: isOptionDisabled(option, helpers),
+              disabled: isOptionDisabled(option, optionGroup, helpers),
               selected: selectedValue === option.value,
             })),
           }
@@ -522,7 +609,7 @@ export function buildBuilderPresentation(args: {
     subtitle: buildSummary(item, state),
     missingIssues,
     soldOutIssues,
-    mainRules,
+    mainBlocks,
     childBlocks,
     upgradeGroups: standaloneUpgradeGroups,
   }
@@ -557,6 +644,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
   const quantity = Math.max(1, state.quantity || 1)
   const mainLineId = createMainLineId()
   const lines: PosOrderLine[] = []
+  const resolvedMainSelections = getPersistedSelectionMap(item.selections, state.selections)
   const summary = buildSummary(item, state)
   const includeResolution = resolveIncludes(item, state, helpers)
   const resolvedIncludeSelections = Object.fromEntries(
@@ -580,7 +668,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
     unitPrice: helpers.getItemDisplayPrice(item.id),
     priceDelta: 0,
     lineTotal: helpers.getItemDisplayPrice(item.id) * quantity,
-    selections: cloneSelections(state.selections),
+    selections: resolvedMainSelections,
     selectionSummary: summary
       .split('/')
       .map((part) => part.trim())
@@ -642,7 +730,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
     source,
     createdAt: createdAt ?? now,
     updatedAt: now,
-    selections: cloneSelections(state.selections),
+    selections: resolvedMainSelections,
     includeSelections: resolvedIncludeSelections,
     upgradeSelections: { ...(state.upgradeSelections || {}) },
     lines,

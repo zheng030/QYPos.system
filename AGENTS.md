@@ -15,4 +15,4 @@ repo使用firebase RTDB，只算流量、儲存
 - 執行任務前，先參考既有module的實作、library，例如rotues、controller、service、repository等，確保code style一致
 - 測試的核心是 debug by test，而不是 make test pass
 - 如果有更新程式碼，則執行對應的 lint/check/test; 確認無 error、無 warning
-- 除非user明確要求，否則禁止任何遞迴刪除(rd /s,Remove-Item -Recurse,rm -rf,find -delete)，允許單檔刪除
+- 除非user明確要求，否則禁止任何遞迴刪除(rd /s,Remove-Item -Recurse,rm -rf,find -delete)，只允許單檔刪除

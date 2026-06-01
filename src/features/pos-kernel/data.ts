@@ -6,6 +6,7 @@ import type {
   PosOwnerAuthMap,
   PosSelectionOption,
   PosSelectionRule,
+  PosSingleSelectionRule,
 } from './types'
 
 export const firebaseConfig = {
@@ -98,9 +99,27 @@ function singleRule(
   label: string,
   options: PosSelectionOption[],
   required = true,
-  summaryLabel?: string
+  summaryLabel?: string,
+  config: Partial<
+    Pick<
+      PosSingleSelectionRule,
+      'defaultValue' | 'tracksInventory' | 'visibleWhenRuleId' | 'builderBlockId' | 'builderRow'
+    >
+  > = {}
 ): PosSelectionRule {
-  return { id, kind: 'single', label, options, required, summaryLabel }
+  return {
+    id,
+    kind: 'single',
+    label,
+    options,
+    required,
+    summaryLabel,
+    defaultValue: config.defaultValue,
+    tracksInventory: config.tracksInventory ?? false,
+    visibleWhenRuleId: config.visibleWhenRuleId,
+    builderBlockId: config.builderBlockId,
+    builderRow: config.builderRow,
+  }
 }
 
 function textRule(id: string, label: string, required = false, summaryLabel?: string): PosSelectionRule {
@@ -136,10 +155,39 @@ const drinkTemperatureRule = singleRule(
   '冰 / 熱',
   [option('ice', '冰'), option('hot', '熱')],
   true,
-  '溫度'
+  '溫度',
+  {
+    tracksInventory: false,
+  }
 )
 
-const pastaBaseRule = singleRule('base', '主食', [option('pasta', '義大利麵'), option('risotto', '燉飯')], true, '主食')
+const pastaBaseRule = singleRule(
+  'base',
+  '主食',
+  [option('pasta', '義大利麵'), option('risotto', '燉飯')],
+  true,
+  '主食',
+  {
+    tracksInventory: true,
+    builderBlockId: 'main-base',
+    builderRow: 1,
+  }
+)
+
+const pastaTextureRule = singleRule(
+  'texture',
+  '口感',
+  [option('normal', '正常'), option('soft', '偏軟')],
+  true,
+  '口感',
+  {
+    defaultValue: 'normal',
+    tracksInventory: false,
+    visibleWhenRuleId: 'base',
+    builderBlockId: 'main-base',
+    builderRow: 2,
+  }
+)
 
 const upgradeDrinkOptions = [
   option('black-tea', '紅茶', 0, 'drink.black-tea'),
@@ -181,6 +229,16 @@ function buildBundleSelections(extraRules: PosSelectionRule[] = []) {
   return [...extraRules, textRule('note', '備註')]
 }
 
+function buildPastaSelections(extraRules: PosSelectionRule[] = []) {
+  return buildBundleSelections([pastaBaseRule, pastaTextureRule, ...extraRules])
+}
+
+function pastaSauceRule(options: PosSelectionOption[]) {
+  return singleRule('sauce', '口味', options, true, '口味', {
+    tracksInventory: true,
+  })
+}
+
 const categories: PosMenuCategory[] = [
   {
     key: 'pasta_risotto',
@@ -199,7 +257,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 300,
-            selections: buildBundleSelections([pastaBaseRule]),
+            selections: buildPastaSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -209,10 +267,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 250,
-            selections: buildBundleSelections([
-              pastaBaseRule,
-              singleRule('sauce', '口味', [option('cheese', '香濃起司'), option('pesto', '青醬')], true, '口味'),
-            ]),
+            selections: buildPastaSelections([pastaSauceRule([option('cheese', '香濃起司'), option('pesto', '青醬')])]),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -222,10 +277,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 300,
-            selections: buildBundleSelections([
-              pastaBaseRule,
-              singleRule('sauce', '口味', [option('cheese', '香濃起司'), option('pesto', '青醬')], true, '口味'),
-            ]),
+            selections: buildPastaSelections([pastaSauceRule([option('cheese', '香濃起司'), option('pesto', '青醬')])]),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -235,9 +287,8 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 330,
-            selections: buildBundleSelections([
-              pastaBaseRule,
-              singleRule('sauce', '口味', [option('basil-oil', '清炒塔香'), option('cream', '奶香')], true, '口味'),
+            selections: buildPastaSelections([
+              pastaSauceRule([option('basil-oil', '清炒塔香'), option('cream', '奶香')]),
             ]),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
@@ -248,15 +299,8 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 280,
-            selections: buildBundleSelections([
-              pastaBaseRule,
-              singleRule(
-                'sauce',
-                '口味',
-                [option('basil-oil', '清炒塔香'), option('cream', '奶香'), option('pesto', '青醬')],
-                true,
-                '口味'
-              ),
+            selections: buildPastaSelections([
+              pastaSauceRule([option('basil-oil', '清炒塔香'), option('cream', '奶香'), option('pesto', '青醬')]),
             ]),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
@@ -267,10 +311,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildBundleSelections([
-              pastaBaseRule,
-              singleRule('sauce', '口味', [option('cream', '奶香'), option('pesto', '青醬')], true, '口味'),
-            ]),
+            selections: buildPastaSelections([pastaSauceRule([option('cream', '奶香'), option('pesto', '青醬')])]),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -281,7 +322,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildBundleSelections([pastaBaseRule]),
+            selections: buildPastaSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -292,7 +333,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildBundleSelections([pastaBaseRule]),
+            selections: buildPastaSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -302,7 +343,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 320,
-            selections: buildBundleSelections([pastaBaseRule]),
+            selections: buildPastaSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -652,6 +693,11 @@ function normalizeMenuItem(item: PosMenuItem): PosMenuItem {
       rule.kind === 'single'
         ? {
             ...rule,
+            defaultValue: rule.defaultValue,
+            tracksInventory: rule.tracksInventory ?? false,
+            visibleWhenRuleId: rule.visibleWhenRuleId,
+            builderBlockId: rule.builderBlockId,
+            builderRow: rule.builderRow,
             options: rule.options.map((selectionOption) => ({
               ...selectionOption,
               optionKey: selectionOption.optionKey || selectionOption.value,

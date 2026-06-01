@@ -82,15 +82,22 @@ export type PosSelectionOption = {
   soldOutKey?: string
 }
 
+export type PosSingleSelectionRule = {
+  id: string
+  kind: 'single'
+  label: string
+  required: boolean
+  summaryLabel?: string
+  defaultValue?: PosSelectionValue
+  tracksInventory: boolean
+  visibleWhenRuleId?: string
+  builderBlockId?: string
+  builderRow?: number
+  options: PosSelectionOption[]
+}
+
 export type PosSelectionRule =
-  | {
-      id: string
-      kind: 'single'
-      label: string
-      required: boolean
-      summaryLabel?: string
-      options: PosSelectionOption[]
-    }
+  | PosSingleSelectionRule
   | {
       id: string
       kind: 'text'
