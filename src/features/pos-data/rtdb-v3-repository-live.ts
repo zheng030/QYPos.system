@@ -300,28 +300,7 @@ export function createRtdbV3RepositoryLiveModule(
   ) {
     await Promise.all(
       [...patch.changedShards].map((shard) => {
-        if (shard === 'summary') {
-          return ctx.saveLiveTableShardCache(
-            table,
-            'summary',
-            (patch.normalizedNext.summary || null) as V3LiveTable['summary']
-          )
-        }
-        if (shard === 'draft') {
-          return ctx.saveLiveTableShardCache(table, 'draft', (patch.normalizedNext.draft || {}) as V3LiveTable['draft'])
-        }
-        if (shard === 'pendingBatches') {
-          return ctx.saveLiveTableShardCache(
-            table,
-            'pendingBatches',
-            (patch.normalizedNext.pendingBatches || {}) as V3LiveTable['pendingBatches']
-          )
-        }
-        return ctx.saveLiveTableShardCache(
-          table,
-          'submittedBatches',
-          (patch.normalizedNext.submittedBatches || {}) as V3LiveTable['submittedBatches']
-        )
+        return ctx.invalidateLiveTableShardCache(table, shard)
       })
     )
     mergeCachedShards(table, patch.normalizedNext)
@@ -869,9 +848,9 @@ export function createRtdbV3RepositoryLiveModule(
     ctx.touchRevision(`history/ordersByDay/${bizDate}`, payloadUpdate)
     await ctx.updateRoot(payloadUpdate)
     await persistLocalLivePatch(payload.table, livePatch)
-    const byDay = { ...(ctx.historyDayCache.get(bizDate) || {}) }
-    byDay[orderId] = orderRecord
-    ctx.historyDayCache.set(bizDate, byDay)
+    await ctx.invalidateManagedResource(historyDescriptor)
+    ctx.historyDayCache.delete(bizDate)
+    ctx.clearResourceFresh(historyDescriptor.resourceKey)
     await deps.rebuildDayReports(bizDate)
 
     if (isFullCheckout) {

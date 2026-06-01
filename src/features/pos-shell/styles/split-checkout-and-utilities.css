@@ -72,13 +72,6 @@
 .reprint-modal {
 	max-width: 520px;
 }
-.reprint-body {
-	max-height: 420px;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-}
 .reprint-select-all {
 	display: flex;
 	align-items: center;
@@ -95,24 +88,31 @@
 	flex-direction: column;
 	gap: 8px;
 }
-.reprint-list label.checkout-item {
+.reprint-list label.cart-item-row {
 	border: 1px solid #e5e7eb;
 	border-radius: 12px;
 	padding: 12px;
 	margin: 0;
 	display: flex;
+	justify-content: space-between;
 	align-items: center;
 	gap: 10px;
 	background: #fff;
 	box-shadow: 0 6px 15px rgba(0, 0, 0, 0.04);
 }
-.reprint-list label.checkout-item input {
+.reprint-list label.cart-item-row > span:first-child {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-weight: 600;
+	color: #1f2937;
+}
+.reprint-list label.cart-item-row input {
 	width: 18px;
 	height: 18px;
 }
-.reprint-list .checkout-item span {
-	font-weight: 600;
-	color: #1f2937;
+.reprint-list .cart-item-price {
+	flex-shrink: 0;
 }
 
 /* ========== 系統設定頁樣式 ========== */
@@ -504,6 +504,9 @@ body.staff-mode .floating-bar-staff {
 		border-bottom-right-radius: 18px;
 		max-height: 92svh;
 		overflow-y: auto;
+	}
+	.modal-sheet.modal-scroll-frame {
+		overflow: hidden;
 	}
 	.split-checkout-container {
 		grid-template-columns: 1fr;

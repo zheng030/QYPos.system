@@ -391,6 +391,24 @@
 .modal-sheet-wide {
 	max-width: 1040px;
 }
+.modal-scroll-frame {
+	display: flex;
+	flex-direction: column;
+	max-height: min(88vh, 820px);
+	overflow: hidden;
+}
+.modal-scroll-frame .modal-header,
+.modal-scroll-frame .modal-actions {
+	flex: 0 0 auto;
+}
+.modal-scroll-frame .modal-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+.modal-list-body {
+	padding-top: 0;
+}
 .cost-input,
 .modal-input,
 .inline-input {

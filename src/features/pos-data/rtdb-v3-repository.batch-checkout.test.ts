@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { encodeRtdbKeySegment } from './rtdb-v3-key-codec'
 import { createRtdbV3Repository } from './rtdb-v3-repository'
 import { createDbStub, createEntry, createState, readAtPath, setAtPath } from './rtdb-v3-repository.test-support'
+import { createRtdbV3RepositoryContext } from './rtdb-v3-repository-context'
+import { createRtdbV3RepositoryHistoryModule } from './rtdb-v3-repository-history'
+import { createRtdbV3RepositoryLiveModule } from './rtdb-v3-repository-live'
+import type { V3ClosedOrder } from './rtdb-v3-types'
 
 describe('rtdb-v3-repository', () => {
   it('uses a shared per-table request sequence across customer and staff batches', async () => {
@@ -634,5 +638,217 @@ describe('rtdb-v3-repository', () => {
     expect(readAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-30/pt')).toBe(200)
     expect(readAtPath(db.data, 'v3/reports/itemStatsByMonth/2026-05/2026-05-30/drink%2Egreen-tea/q')).toBe(2)
     expect(readAtPath(db.data, 'v3/reports/itemStatsByMonth/2026-05/2026-05-30/drink%2Eblack-tea')).toBeUndefined()
+  })
+
+  it('rebuilds reports from authoritative day history instead of stale partial cache during checkout', async () => {
+    const bizDate = '2026-06-01'
+    const monthKey = '2026-06'
+    const orderTs = new Date('2026-06-01T12:00:00+08:00').getTime()
+    const existingA: V3ClosedOrder = {
+      orderId: 'ord_a',
+      bizDate,
+      monthKey,
+      createdAt: orderTs - 3000,
+      closedAt: orderTs - 3000,
+      tableLabel: 'A1',
+      displaySeqBase: 1,
+      splitCounter: null,
+      displaySeqLabel: '1',
+      customer: { name: '', phone: '' },
+      totals: { paid: 2000, original: 2000 },
+      status: 'closed' as const,
+      batchIds: [],
+      entries: {},
+    }
+    const existingB: V3ClosedOrder = {
+      ...existingA,
+      orderId: 'ord_b',
+      displaySeqBase: 2,
+      displaySeqLabel: '2',
+      closedAt: orderTs - 2000,
+      createdAt: orderTs - 2000,
+      totals: { paid: 1500, original: 1500 },
+    }
+    const existingMissingFromCache: V3ClosedOrder = {
+      ...existingA,
+      orderId: 'ord_c',
+      displaySeqBase: 3,
+      displaySeqLabel: '3',
+      closedAt: orderTs - 1000,
+      createdAt: orderTs - 1000,
+      totals: { paid: 750, original: 750 },
+    }
+    const checkoutEntry = createEntry({
+      entryId: 'entry_checkout',
+      itemId: 'drink.black-tea',
+      catalogKey: 'drink.black-tea',
+      inventoryKey: 'drink.black-tea',
+      itemName: '紅茶',
+      shortName: '紅茶',
+      categoryKey: 'drink',
+      subtotal: 750,
+      createdAt: orderTs,
+      updatedAt: orderTs,
+      lines: [
+        {
+          lineId: 'entry_checkout_main',
+          groupId: 'entry_checkout',
+          role: 'main',
+          catalogKey: 'drink.black-tea',
+          inventoryKey: 'drink.black-tea',
+          displayName: '紅茶',
+          shortName: '紅茶',
+          categoryKey: 'drink',
+          station: 'kitchen',
+          courseKind: 'drink',
+          quantity: 1,
+          unitPrice: 750,
+          priceDelta: 0,
+          lineTotal: 750,
+          selectionSummary: '',
+          isTreat: false,
+          sourceEntryId: 'entry_checkout',
+        },
+      ],
+    })
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            history: {
+              ordersByDay: {
+                [bizDate]: 1,
+              },
+            },
+            reports: {
+              dailyByDay: {
+                [bizDate]: 1,
+              },
+              itemStatsByDay: {
+                [bizDate]: 1,
+              },
+            },
+            live: {
+              tables: {
+                A1: {
+                  summary: 1,
+                  pendingBatches: 1,
+                  submittedBatches: 1,
+                },
+              },
+            },
+          },
+        },
+        history: {
+          sequenceByDate: {},
+          ordersByMonth: {
+            [monthKey]: {
+              [bizDate]: {
+                ord_a: existingA,
+                ord_b: existingB,
+                ord_c: existingMissingFromCache,
+              },
+            },
+          },
+        },
+        live: {
+          tables: {
+            A1: {
+              summary: {
+                status: 'yellow',
+                timerStartedAt: 1,
+                displaySeqBase: 9,
+                batchCount: 1,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
+              draft: {},
+              pendingBatches: {},
+              submittedBatches: {
+                submitted_1: {
+                  batchId: 'submitted_1',
+                  source: 'staff',
+                  status: 'accepted',
+                  table: 'A1',
+                  customer: { name: 'A', phone: '' },
+                  createdAt: orderTs,
+                  updatedAt: orderTs,
+                  acceptedAt: orderTs,
+                  requestSeq: 1,
+                  requestLabel: '#9-1',
+                  entries: {
+                    entry_checkout: {
+                      ...checkoutEntry,
+                      status: 'accepted',
+                      source: 'staff',
+                      lines: Object.fromEntries(checkoutEntry.lines.map((line) => [line.lineId, line])),
+                    },
+                  },
+                  subtotal: 750,
+                },
+              },
+            },
+          },
+        },
+        reports: {
+          dailyByMonth: {
+            [monthKey]: {
+              [bizDate]: {
+                oc: 2,
+                pt: 3500,
+                ot: 3500,
+                iq: 0,
+                cr: {},
+                cc: {},
+                ua: 1,
+              },
+            },
+          },
+          itemStatsByMonth: {
+            [monthKey]: {
+              [bizDate]: {},
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    state.itemCosts['drink.black-tea'] = 0
+    state.tableCustomers.A1 = { name: 'A', phone: '', orderId: 9 }
+    const ctx = createRtdbV3RepositoryContext({ db: db as never, state })
+    const history = createRtdbV3RepositoryHistoryModule(ctx)
+    const live = createRtdbV3RepositoryLiveModule(ctx, {
+      rebuildDayReports: history.rebuildDayReports,
+    })
+
+    await history.listClosedOrdersByRange({
+      start: new Date('2026-06-01T05:00:00+08:00'),
+      endExclusive: new Date('2026-06-02T05:00:00+08:00'),
+    })
+
+    ctx.historyDayCache.set(bizDate, {
+      ord_a: existingA,
+      ord_b: existingB,
+    })
+    ctx.markResourceFresh(`history:orders:${bizDate}`, 0)
+
+    vi.useFakeTimers()
+    vi.setSystemTime(orderTs)
+    try {
+      const order = await live.checkoutSubmittedBatches({
+        table: 'A1',
+        entries: [{ ...checkoutEntry, status: 'accepted', source: 'staff' }],
+        customer: state.tableCustomers.A1,
+        paidTotal: 750,
+        originalTotal: 750,
+      })
+
+      expect(order.total).toBe(750)
+      expect(readAtPath(db.data, `v3/reports/dailyByMonth/${monthKey}/${bizDate}/pt`)).toBe(5000)
+      expect(readAtPath(db.data, `v3/reports/dailyByMonth/${monthKey}/${bizDate}/oc`)).toBe(4)
+      expect(db.onceCalls).toContain(`v3/history/ordersByMonth/${monthKey}/${bizDate}`)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

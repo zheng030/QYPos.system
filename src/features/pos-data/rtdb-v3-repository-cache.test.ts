@@ -9,6 +9,8 @@ import {
 import { buildLiveTable } from './rtdb-v3-mapper'
 import { createDbStub, createEntry, createState } from './rtdb-v3-repository.test-support'
 import { createRtdbV3RepositoryContext } from './rtdb-v3-repository-context'
+import { createHistoryOrdersByDayDescriptor } from './rtdb-v3-resource-registry'
+import type { V3ClosedOrder } from './rtdb-v3-types'
 import { RTDB_V3_SCHEMA_VERSION } from './rtdb-v3-types'
 
 describe('rtdb-v3 repository cache helpers', () => {
@@ -400,5 +402,119 @@ describe('rtdb-v3 repository cache helpers', () => {
         'v3/live/tables/A1/pendingBatches',
       ].sort()
     )
+  })
+
+  it('does not trust stale in-memory managed resource when remote revision has advanced', async () => {
+    const cacheStore = createMemoryPersistentCacheStore()
+    const descriptor = createHistoryOrdersByDayDescriptor('2026-06-01')
+    const staleOrder: V3ClosedOrder = {
+      orderId: 'ord_stale',
+      bizDate: '2026-06-01',
+      monthKey: '2026-06',
+      createdAt: 1,
+      closedAt: 1,
+      tableLabel: 'A1',
+      displaySeqBase: 1,
+      splitCounter: null,
+      displaySeqLabel: '1',
+      customer: { name: '', phone: '' },
+      totals: { paid: 100, original: 100 },
+      status: 'closed' as const,
+      batchIds: [],
+      entries: {},
+    }
+    const freshOrder: V3ClosedOrder = {
+      ...staleOrder,
+      orderId: 'ord_fresh',
+      displaySeqBase: 2,
+      displaySeqLabel: '2',
+      totals: { paid: 200, original: 200 },
+    }
+
+    const initialCtx = createRtdbV3RepositoryContext({
+      db: createDbStub({
+        v3: {
+          meta: {
+            revisions: {
+              history: {
+                ordersByDay: {
+                  '2026-06-01': 1,
+                },
+              },
+            },
+          },
+          history: {
+            ordersByMonth: {
+              '2026-06': {
+                '2026-06-01': {
+                  ord_stale: staleOrder,
+                },
+              },
+            },
+          },
+        },
+      }) as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    await initialCtx.ensureManagedResource({
+      descriptor,
+      readMemory: () => initialCtx.historyDayCache.get('2026-06-01'),
+      writeMemory: (value) => {
+        initialCtx.historyDayCache.set('2026-06-01', value)
+      },
+      readRemote: async () => {
+        const snapshot = await initialCtx.db.ref('v3/history/ordersByMonth/2026-06/2026-06-01').once('value')
+        return descriptor.codec.decode((snapshot.val() || {}) as Record<string, never>)
+      },
+    })
+
+    const warmDb = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            history: {
+              ordersByDay: {
+                '2026-06-01': 2,
+              },
+            },
+          },
+        },
+        history: {
+          ordersByMonth: {
+            '2026-06': {
+              '2026-06-01': {
+                ord_stale: staleOrder,
+                ord_fresh: freshOrder,
+              },
+            },
+          },
+        },
+      },
+    })
+    const warmCtx = createRtdbV3RepositoryContext({
+      db: warmDb as never,
+      state: createState(),
+      cacheStore,
+    })
+
+    warmCtx.historyDayCache.set('2026-06-01', { ord_stale: staleOrder })
+    warmCtx.markResourceFresh(descriptor.resourceKey, 1)
+
+    const result = await warmCtx.ensureManagedResource({
+      descriptor,
+      readMemory: () => warmCtx.historyDayCache.get('2026-06-01'),
+      writeMemory: (value) => {
+        warmCtx.historyDayCache.set('2026-06-01', value)
+      },
+      readRemote: async () => {
+        const snapshot = await warmCtx.db.ref('v3/history/ordersByMonth/2026-06/2026-06-01').once('value')
+        return descriptor.codec.decode((snapshot.val() || {}) as Record<string, never>)
+      },
+    })
+
+    expect(Object.keys(result).sort()).toEqual(['ord_fresh', 'ord_stale'])
+    expect(warmDb.onceCalls).toContain('v3/history/ordersByMonth/2026-06/2026-06-01')
   })
 })

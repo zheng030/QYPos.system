@@ -71,6 +71,16 @@ describe('app-shell', () => {
     expect(appShellHtml).toContain('data-action="confirm-order-action"')
   })
 
+  it('uses the shared scroll-frame contract for list-heavy modals', () => {
+    expect(appShellHtml).toContain(
+      'class="modal-content modal-sheet modal-sheet-compact modal-scroll-frame reprint-modal"'
+    )
+    expect(appShellHtml).toContain('class="modal-body modal-list-body"')
+    expect(appShellHtml).toContain('id="reprintSelectionList" class="reprint-list"')
+    expect(appShellHtml).toContain('class="modal-content modal-sheet modal-sheet-compact modal-scroll-frame"')
+    expect(appShellHtml).toContain('class="modal-body modal-list-body detail-list" id="revenueDetailList"')
+  })
+
   it('renders the fullscreen pending-batch overlay with explicit accept and reject actions', () => {
     expect(appShellHtml).toContain('id="pendingBatchOverlay" class="pending-overlay"')
     expect(appShellHtml).toContain('id="pendingOverlayTitle"')

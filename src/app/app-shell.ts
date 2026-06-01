@@ -431,11 +431,11 @@ export const appShellHtml = `
   </div>
 
   <div id="reprintSelectionModal" class="modal">
-    <div class="modal-content modal-sheet modal-sheet-compact reprint-modal">
+    <div class="modal-content modal-sheet modal-sheet-compact modal-scroll-frame reprint-modal">
       <div class="modal-header"><h2>補印選擇</h2></div>
-      <div class="modal-body">
-        <label><input type="checkbox" id="toggleAllReprint" data-action="toggle-all-reprint"> 全選</label>
-        <div id="reprintSelectionList"></div>
+      <div class="modal-body modal-list-body">
+        <label class="reprint-select-all"><input type="checkbox" id="toggleAllReprint" data-action="toggle-all-reprint"> 全選</label>
+        <div id="reprintSelectionList" class="reprint-list"></div>
       </div>
       <div class="modal-actions">
         <button class="btn-effect cancel" data-action="close-reprint-modal">取消</button>
@@ -496,9 +496,9 @@ export const appShellHtml = `
   </div>
 
   <div id="revenueDetailModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content modal-sheet modal-sheet-compact modal-scroll-frame">
       <div class="modal-header"><h2 id="revenueDetailTitle">品項明細</h2></div>
-      <div class="modal-body" id="revenueDetailList"></div>
+      <div class="modal-body modal-list-body detail-list" id="revenueDetailList"></div>
       <div class="modal-actions">
         <button class="btn-effect cancel" data-action="close-revenue-modal">關閉</button>
       </div>

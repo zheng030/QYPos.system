@@ -697,7 +697,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(db.onceCalls).toContain('v3/live/tables/A1/submittedBatches')
   })
 
-  it('checkoutSubmittedBatches skips draft shard reads and only loads needed live shards plus history writes', async () => {
+  it('checkoutSubmittedBatches skips draft shard reads and rebuilds reports from authoritative day history', async () => {
     const entry = createEntry({ status: 'accepted', source: 'staff' })
     const db = createDbStub({
       v3: {
@@ -787,7 +787,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(db.onceCalls).toContain('v3/live/tables/A1/summary')
     expect(db.onceCalls).toContain('v3/live/tables/A1/pendingBatches')
     expect(db.onceCalls).toContain('v3/live/tables/A1/submittedBatches')
-    expect(db.onceCalls.some((path) => path.startsWith('v3/history/ordersByMonth/'))).toBe(false)
+    expect(db.onceCalls.filter((path) => path.startsWith('v3/history/ordersByMonth/'))).toHaveLength(1)
   })
 
   it('keeps request sequence unique across concurrent repository clients on same table', async () => {

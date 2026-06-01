@@ -59,6 +59,9 @@ type RepositoryDeps = {
 }
 
 type AttendanceMonthMap = Record<string, AttendanceRecord>
+type ResourceLoaders = Map<string, Promise<unknown>>
+type ResourceFreshness = Map<string, number>
+type CatalogSegmentLoads = Map<V3CatalogSegment, Promise<unknown>>
 
 function toRevValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -185,15 +188,15 @@ export function createRtdbV3RepositoryContext({
     onLiveStateChange,
     unsubs: new Map<string, () => void>(),
     revisionCache: new Map<string, V3RevisionValue>(),
+    resourceFreshness: new Map<string, number>() as ResourceFreshness,
+    resourceLoads: new Map<string, Promise<unknown>>() as ResourceLoaders,
+    catalogSegmentLoads: new Map<V3CatalogSegment, Promise<unknown>>() as CatalogSegmentLoads,
     liveTableCache: new Map<string, V3LiveTable>(),
     dailySummaryDayCache: new Map<V3BizDateKey, V3DailySummary>(),
     itemStatsDayCache: new Map<V3BizDateKey, Record<string, V3DailyItemStat>>(),
     historyDayCache: new Map<V3BizDateKey, Record<string, V3ClosedOrder>>(),
     attendanceMonthCache: new Map<V3MonthKey, AttendanceMonthMap>(),
     attendanceRecordLocationCache: new Map<string, V3MonthKey>(),
-    loadedCatalogSegments: new Set<V3CatalogSegment>(),
-    catalogSegmentLoads: new Map<V3CatalogSegment, Promise<void>>(),
-    attendanceEmployeesRev: -1,
     activeAttendanceMonths: new Set<V3MonthKey>(),
     ownerAuthLoaded: false,
     ownerAuthLoad: null as Promise<void> | null,
@@ -319,10 +322,93 @@ export function createRtdbV3RepositoryContext({
         payloadSize,
         payloadHash,
       })
+      ctx.resourceFreshness.set(descriptor.resourceKey, revision)
+    },
+    markResourceFresh(resourceKey: string, revision: number) {
+      ctx.resourceFreshness.set(resourceKey, revision)
+    },
+    clearResourceFresh(resourceKey: string) {
+      ctx.resourceFreshness.delete(resourceKey)
     },
     async invalidateCachedResource(resourceKey: string) {
       await ctx.cacheStore.deleteManifest(resourceKey)
       await ctx.cacheStore.deleteBody(resourceKey)
+    },
+    async ensureManagedResource<TDomain, TStored = TDomain>(params: {
+      descriptor: ResourceDescriptor<TDomain, TStored>
+      readMemory: () => TDomain | undefined
+      writeMemory: (value: TDomain) => void
+      clearMemory?: () => void
+      readRemote: () => Promise<TDomain>
+    }) {
+      const { descriptor, readMemory, writeMemory, clearMemory, readRemote } = params
+      ctx.assertDescriptorRegistered(descriptor)
+      const remoteRevision = await ctx.readRevision(descriptor.revision.path)
+      const memoryValue = readMemory()
+      const memoryRevision = ctx.resourceFreshness.get(descriptor.resourceKey)
+      if (memoryValue !== undefined && memoryRevision === remoteRevision) {
+        return memoryValue
+      }
+
+      const existingLoad = ctx.resourceLoads.get(descriptor.resourceKey) as Promise<TDomain> | undefined
+      if (existingLoad) {
+        return await existingLoad
+      }
+
+      const load = (async () => {
+        const cached = await ctx.loadCachedResource(descriptor)
+        if (cached && cached.revision === remoteRevision) {
+          writeMemory(cached.value)
+          ctx.markResourceFresh(descriptor.resourceKey, remoteRevision)
+          return cached.value
+        }
+        if (cached) {
+          await ctx.invalidateCachedResource(descriptor.resourceKey)
+        }
+        clearMemory?.()
+        ctx.clearResourceFresh(descriptor.resourceKey)
+        const remote = await readRemote()
+        writeMemory(remote)
+        await ctx.saveCachedResource(descriptor, remoteRevision, remote)
+        ctx.markResourceFresh(descriptor.resourceKey, remoteRevision)
+        return remote
+      })().finally(() => {
+        ctx.resourceLoads.delete(descriptor.resourceKey)
+      })
+
+      ctx.resourceLoads.set(descriptor.resourceKey, load)
+      return await load
+    },
+    async refreshManagedResource<TDomain, TStored = TDomain>(params: {
+      descriptor: ResourceDescriptor<TDomain, TStored>
+      readRemote: () => Promise<TDomain>
+      writeMemory: (value: TDomain) => void
+      clearMemory?: () => void
+    }) {
+      const { descriptor, readRemote, writeMemory, clearMemory } = params
+      ctx.assertDescriptorRegistered(descriptor)
+      const load = (async () => {
+        clearMemory?.()
+        ctx.clearResourceFresh(descriptor.resourceKey)
+        const remote = await readRemote()
+        writeMemory(remote)
+        const revision =
+          ctx.revisionCache.get(descriptor.revision.path) || (await ctx.readRevision(descriptor.revision.path))
+        await ctx.saveCachedResource(descriptor, revision, remote)
+        ctx.markResourceFresh(descriptor.resourceKey, revision)
+        return remote
+      })().finally(() => {
+        ctx.resourceLoads.delete(descriptor.resourceKey)
+      })
+
+      ctx.resourceLoads.set(descriptor.resourceKey, load)
+      return await load
+    },
+    async invalidateManagedResource<TDomain, TStored = TDomain>(descriptor: ResourceDescriptor<TDomain, TStored>) {
+      ctx.assertDescriptorRegistered(descriptor)
+      ctx.clearResourceFresh(descriptor.resourceKey)
+      ctx.resourceLoads.delete(descriptor.resourceKey)
+      await ctx.invalidateCachedResource(descriptor.resourceKey)
     },
     async loadCacheFirstResource<TDomain, TStored = TDomain>(params: {
       descriptor: ResourceDescriptor<TDomain, TStored>
@@ -382,8 +468,15 @@ export function createRtdbV3RepositoryContext({
     },
     async readLiveTableSummary(table: string) {
       const descriptor = ctx.liveTableShardDescriptor(table, 'summary')
-      return await ctx.loadCacheFirstResource({
+      return await ctx.ensureManagedResource({
         descriptor,
+        readMemory: () => ctx.liveTableCache.get(table)?.summary,
+        writeMemory: (value) => {
+          ctx.setCachedLiveTable(table, {
+            ...ctx.getCachedLiveTable(table),
+            summary: value,
+          })
+        },
         readRemote: async () => {
           const snapshot = await db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
           return tableSummaryStorageCodec.decode(snapshot.val() || null)
@@ -392,21 +485,27 @@ export function createRtdbV3RepositoryContext({
     },
     async readLiveTableShard<K extends keyof V3LiveTable>(table: string, shard: K) {
       const descriptor = ctx.liveTableShardDescriptor(table, shard)
-      return await ctx.loadCacheFirstResource({
+      return await ctx.ensureManagedResource({
         descriptor,
+        readMemory: () => {
+          const liveTable = ctx.liveTableCache.get(table)
+          return liveTable ? (toLiveTableShardValue(shard, liveTable[shard]) as V3LiveTable[K]) : undefined
+        },
+        writeMemory: (value) => {
+          ctx.setCachedLiveTable(table, {
+            ...ctx.getCachedLiveTable(table),
+            [shard]: value,
+          } as V3LiveTable)
+        },
         readRemote: async () => {
           const snapshot = await db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
           return toLiveTableShardValue(shard, decodeLiveTableShardValue(shard, snapshot.val()))
         },
       })
     },
-    async saveLiveTableShardCache<K extends keyof V3LiveTable>(table: string, shard: K, value: V3LiveTable[K]) {
+    async invalidateLiveTableShardCache<K extends keyof V3LiveTable>(table: string, shard: K) {
       const descriptor = ctx.liveTableShardDescriptor(table, shard)
-      await ctx.saveCachedResource(
-        descriptor,
-        ctx.revisionCache.get(descriptor.revision.path) || 0,
-        toLiveTableShardValue(shard, value)
-      )
+      await ctx.invalidateManagedResource(descriptor)
     },
     async readLiveTable(table: string) {
       const [summary, draft, pendingBatches, submittedBatches] = await Promise.all([
