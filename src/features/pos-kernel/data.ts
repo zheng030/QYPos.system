@@ -136,7 +136,7 @@ function singleItem(input: MenuItemSeed): PosMenuItem {
 
 const drinkTemperatureRule = singleRule(
   'temperature',
-  '冰 / 熱',
+  '飲品溫度',
   [option('ice', '冰'), option('hot', '熱')],
   true,
   '溫度',
@@ -145,18 +145,20 @@ const drinkTemperatureRule = singleRule(
   }
 )
 
-const pastaBaseRule = singleRule(
-  'base',
-  '主食',
-  [option('pasta', '義大利麵'), option('risotto', '燉飯')],
-  true,
-  '主食',
-  {
+const pastaBaseOptions = {
+  pastaAndRisotto: [option('pasta', '義大利麵'), option('risotto', '燉飯')],
+  pastaOnly: [option('pasta', '義大利麵')],
+  macaroniOnly: [option('macaroni', '通心粉')],
+} as const satisfies Record<string, PosSelectionOption[]>
+
+function pastaBaseRule(options: PosSelectionOption[], defaultValue?: string) {
+  return singleRule('base', '主食', options, true, '主食', {
+    defaultValue,
     tracksInventory: true,
     builderBlockId: 'main-base',
     builderRow: 1,
-  }
-)
+  })
+}
 
 const pastaTextureRule = singleRule(
   'texture',
@@ -213,8 +215,17 @@ function buildBundleSelections(extraRules: PosSelectionRule[] = []) {
   return [...extraRules, textRule('note', '備註')]
 }
 
-function buildPastaSelections(extraRules: PosSelectionRule[] = []) {
-  return buildBundleSelections([pastaBaseRule, pastaTextureRule, ...extraRules])
+function buildPastaSelections({
+  baseOptions = pastaBaseOptions.pastaAndRisotto,
+  defaultBase,
+  extraRules = [],
+}: {
+  baseOptions?: PosSelectionOption[]
+  defaultBase?: string
+  extraRules?: PosSelectionRule[]
+} = {}) {
+  const resolvedDefaultBase = defaultBase || (baseOptions.length === 1 ? baseOptions[0]?.value : undefined)
+  return buildBundleSelections([pastaBaseRule(baseOptions, resolvedDefaultBase), pastaTextureRule, ...extraRules])
 }
 
 function pastaSauceRule(options: PosSelectionOption[]) {
@@ -240,8 +251,21 @@ const categories: PosMenuCategory[] = [
             shortName: '辣番茄肉醬',
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
-            basePrice: 300,
+            basePrice: 250,
             selections: buildPastaSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.cheese-macaroni',
+            name: '起司通心粉',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 250,
+            selections: buildPastaSelections({
+              baseOptions: pastaBaseOptions.macaroniOnly,
+              defaultBase: 'macaroni',
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -250,8 +274,10 @@ const categories: PosMenuCategory[] = [
             name: '雞胸',
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
-            basePrice: 250,
-            selections: buildPastaSelections([pastaSauceRule([option('cheese', '香濃起司'), option('pesto', '青醬')])]),
+            basePrice: 300,
+            selections: buildPastaSelections({
+              extraRules: [pastaSauceRule([option('cheese', '香濃起司'), option('pesto', '青醬')])],
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -260,8 +286,10 @@ const categories: PosMenuCategory[] = [
             name: '雞腿',
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
-            basePrice: 300,
-            selections: buildPastaSelections([pastaSauceRule([option('cheese', '香濃起司'), option('pesto', '青醬')])]),
+            basePrice: 330,
+            selections: buildPastaSelections({
+              extraRules: [pastaSauceRule([option('cheese', '香濃起司'), option('pesto', '青醬')])],
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -270,10 +298,10 @@ const categories: PosMenuCategory[] = [
             name: '蛤蜊',
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
-            basePrice: 330,
-            selections: buildPastaSelections([
-              pastaSauceRule([option('basil-oil', '清炒塔香'), option('cream', '奶香')]),
-            ]),
+            basePrice: 280,
+            selections: buildPastaSelections({
+              extraRules: [pastaSauceRule([option('basil-oil', '清炒塔香'), option('cream', '奶香')])],
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -282,10 +310,12 @@ const categories: PosMenuCategory[] = [
             name: '鮮蝦',
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
-            basePrice: 280,
-            selections: buildPastaSelections([
-              pastaSauceRule([option('basil-oil', '清炒塔香'), option('cream', '奶香'), option('pesto', '青醬')]),
-            ]),
+            basePrice: 360,
+            selections: buildPastaSelections({
+              extraRules: [
+                pastaSauceRule([option('basil-oil', '清炒塔香'), option('cream', '奶香'), option('pesto', '青醬')]),
+              ],
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -295,7 +325,9 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'pasta_risotto',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildPastaSelections([pastaSauceRule([option('cream', '奶香'), option('pesto', '青醬')])]),
+            selections: buildPastaSelections({
+              extraRules: [pastaSauceRule([option('cream', '奶香'), option('pesto', '青醬')])],
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -328,6 +360,19 @@ const categories: PosMenuCategory[] = [
             courseKind: 'food',
             basePrice: 320,
             selections: buildPastaSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.garlic-olive-oil-pasta',
+            name: '香蒜橄欖油清炒義大利麵',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 300,
+            selections: buildPastaSelections({
+              baseOptions: pastaBaseOptions.pastaOnly,
+              defaultBase: 'pasta',
+            }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -565,6 +610,14 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 180,
+            selections: [textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'a_la_carte.balsamic-mushroom',
+            name: '法式馬鈴薯泥',
+            categoryKey: 'a_la_carte',
+            courseKind: 'addon',
+            basePrice: 150,
             selections: [textRule('note', '備註')],
           }),
         ],

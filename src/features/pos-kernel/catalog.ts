@@ -1,6 +1,7 @@
 import { toBusinessDateStartTimestamp } from '@/shared/business-day'
 import { groupOrderLines } from '@/shared/grouped-order-lines'
 import { buildEntryDisplaySummary, normalizeEntryForDisplay } from './entry-display'
+import { getResolvedSelectionMap, isSelectionRuleVisible } from './selection-resolution'
 import type {
   PosBuilderSelectionMap,
   PosCategoryKey,
@@ -34,27 +35,6 @@ function stableStringify(value: unknown): string {
 
 function isTrackedInventoryRule(rule: PosSelectionRule): rule is PosSingleSelectionRule {
   return rule.kind === 'single' && rule.tracksInventory
-}
-
-function isRuleVisible(rule: PosSelectionRule, selections: PosBuilderSelectionMap | undefined) {
-  if (rule.kind !== 'single' || !rule.visibleWhenRuleId) {
-    return true
-  }
-  return Boolean(selections?.[rule.visibleWhenRuleId]?.trim())
-}
-
-function resolveRuleValue(rule: PosSelectionRule, selections: PosBuilderSelectionMap | undefined) {
-  if (!isRuleVisible(rule, selections)) {
-    return ''
-  }
-  const explicitValue = selections?.[rule.id] || ''
-  if (explicitValue) {
-    return explicitValue
-  }
-  if (rule.kind === 'single') {
-    return rule.defaultValue || ''
-  }
-  return ''
 }
 
 export function getBusinessDate(dateObj: Date | string | number) {
@@ -154,10 +134,11 @@ export function buildSelectionSummary(
   upgradeSelections: Record<string, string>
 ) {
   const parts: string[] = []
+  const resolvedSelections = getResolvedSelectionMap(selectionRules, selections)
 
   ;(selectionRules || []).forEach((rule) => {
-    if (!isRuleVisible(rule, selections)) return
-    const value = resolveRuleValue(rule, selections)
+    if (!isSelectionRuleVisible(rule, resolvedSelections)) return
+    const value = resolvedSelections[rule.id] || ''
     if (!value) return
     const summaryLabel = rule.summaryLabel || rule.label
     if (rule.kind === 'single') {
@@ -268,11 +249,12 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
     const item = getItemById(itemId)
     if (!item) return ['找不到商品']
     const errors: string[] = []
+    const resolvedSelections = getResolvedSelectionMap(item.selections, selections)
     ;(item.selections || []).forEach((rule) => {
-      if (!isRuleVisible(rule, selections)) {
+      if (!isSelectionRuleVisible(rule, resolvedSelections)) {
         return
       }
-      const value = resolveRuleValue(rule, selections)
+      const value = resolvedSelections[rule.id] || ''
       if (rule.required && !value) {
         errors.push(rule.id)
         return

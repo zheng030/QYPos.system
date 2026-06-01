@@ -1,3 +1,4 @@
+import { getResolvedSelectionMap, isSelectionRuleVisible } from '@/features/pos-kernel/selection-resolution'
 import type { PosCatalogHelpers } from '@/features/pos-kernel/service'
 import type {
   PosBuilderSelectionMap,
@@ -154,36 +155,8 @@ function ruleHasInventoryTracking(rule: PosSelectionRule): rule is PosSingleSele
   return rule.kind === 'single' && rule.tracksInventory
 }
 
-function isRuleVisible(rule: PosSelectionRule, values: PosBuilderSelectionMap | undefined) {
-  if (rule.kind !== 'single' || !rule.visibleWhenRuleId) {
-    return true
-  }
-  return Boolean(values?.[rule.visibleWhenRuleId]?.trim())
-}
-
-function resolveRuleValue(rule: PosSelectionRule, values: PosBuilderSelectionMap | undefined, fallback?: string) {
-  if (!isRuleVisible(rule, values)) {
-    return ''
-  }
-  const explicitValue = values?.[rule.id] || ''
-  if (explicitValue) {
-    return explicitValue
-  }
-  if (rule.kind === 'single') {
-    return fallback || rule.defaultValue || ''
-  }
-  return fallback || ''
-}
-
 function getPersistedSelectionMap(rules: PosSelectionRule[] | undefined, values: PosBuilderSelectionMap | undefined) {
-  const persisted: PosBuilderSelectionMap = {}
-  for (const rule of rules || []) {
-    const resolvedValue = resolveRuleValue(rule, values)
-    if (resolvedValue) {
-      persisted[rule.id] = resolvedValue
-    }
-  }
-  return persisted
+  return getResolvedSelectionMap(rules, values)
 }
 
 function getSelectedUpgradeOption(item: PosMenuItem, groupId: string, value: string) {
@@ -215,26 +188,7 @@ function getResolvedIncludeSelections(
   defaultSelections: PosBuilderSelectionMap | undefined
 ) {
   const fromInclude = cloneSelections(state.includeSelections[includeId])
-  const resolved: PosBuilderSelectionMap = {}
-  for (const rule of childItem.selections || []) {
-    const explicitValue = fromInclude[rule.id]
-    if (explicitValue) {
-      resolved[rule.id] = explicitValue
-      continue
-    }
-
-    const defaultValue = defaultSelections?.[rule.id]
-    if (defaultValue) {
-      resolved[rule.id] = defaultValue
-      continue
-    }
-
-    const resolvedValue = resolveRuleValue(rule, undefined, defaultSelections?.[rule.id])
-    if (resolvedValue) {
-      resolved[rule.id] = resolvedValue
-    }
-  }
-  return resolved
+  return getResolvedSelectionMap(childItem.selections, fromInclude, defaultSelections)
 }
 
 function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHelpers): BuilderRuleView {
@@ -273,10 +227,11 @@ function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHe
 
 function buildSummary(item: PosMenuItem, state: PosBuilderState): string {
   const parts: string[] = []
+  const resolvedSelections = getResolvedSelectionMap(item.selections, state.selections)
 
   for (const rule of item.selections || []) {
-    if (!isRuleVisible(rule, state.selections)) continue
-    const value = resolveRuleValue(rule, state.selections)
+    if (!isSelectionRuleVisible(rule, resolvedSelections)) continue
+    const value = resolvedSelections[rule.id] || ''
     if (!value.trim()) continue
     const label = rule.summaryLabel || rule.label
     const displayValue = resolveSingleOptionLabel(rule, value)
@@ -502,11 +457,12 @@ export function buildBuilderPresentation(args: {
   const missingIssues: BuilderIssue[] = []
   const soldOutIssues: BuilderIssue[] = []
   const quantity = Math.max(1, state.quantity || 1)
+  const resolvedMainSelections = getResolvedSelectionMap(item.selections, state.selections)
   const mainRuleViews = (item.selections || []).map((rule) => {
-    if (!isRuleVisible(rule, state.selections)) {
+    if (!isSelectionRuleVisible(rule, resolvedMainSelections)) {
       return null
     }
-    const value = resolveRuleValue(rule, state.selections)
+    const value = resolvedMainSelections[rule.id] || ''
     if (rule.required && !value.trim()) {
       missingIssues.push(buildIssue('missing', rule.id, rule.label))
     }

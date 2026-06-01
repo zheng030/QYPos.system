@@ -94,6 +94,85 @@ describe('pos-sales builder', () => {
     expect(presentation?.subtitle).toBe('主食：義大利麵 / 口感：正常')
   })
 
+  it('resolves preset pasta bases through dependent defaults for new menu items', () => {
+    const helpers = createHelpers()
+    let state = createBuilderState('pasta_risotto.cheese-macaroni', 'customer-draft')
+
+    let presentation = buildBuilderPresentation({ state, helpers })
+    expect(presentation?.missingIssues.map((issue) => issue.groupId)).toEqual(['bundle-drink-upgrade'])
+    expect(presentation?.mainBlocks[0]?.rows).toHaveLength(2)
+    expect(presentation?.mainBlocks[0]?.rows[0]?.[0]).toMatchObject({
+      id: 'base',
+      value: 'macaroni',
+    })
+    expect(presentation?.mainBlocks[0]?.rows[0]?.[0]?.options?.map((option) => option.value)).toEqual(['macaroni'])
+    expect(presentation?.mainBlocks[0]?.rows[1]?.[0]).toMatchObject({
+      id: 'texture',
+      value: 'normal',
+    })
+    expect(presentation?.subtitle).toBe('主食：通心粉 / 口感：正常')
+
+    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
+    state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
+    presentation = buildBuilderPresentation({ state, helpers })
+    expect(presentation?.canConfirm).toBe(true)
+
+    const result = finalizeBuilderEntry({
+      state,
+      helpers,
+      source: 'customer',
+      status: 'draft',
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error('expected finalized entry for preset pasta item')
+    }
+
+    expect(result.entry.itemId).toBe('pasta_risotto.cheese-macaroni')
+    expect(result.entry.selections).toMatchObject({
+      base: 'macaroni',
+      texture: 'normal',
+    })
+    expect(result.entry.summary.subtitle).toBe('主食：通心粉 / 口感：正常')
+  })
+
+  it('scopes pasta base options per item while keeping item-specific defaults', () => {
+    const cheeseMacaroni = menuMeta.itemsById['pasta_risotto.cheese-macaroni']
+    const garlicOliveOilPasta = menuMeta.itemsById['pasta_risotto.garlic-olive-oil-pasta']
+    const chickenBreast = menuMeta.itemsById['pasta_risotto.chicken-breast']
+    const cheeseMacaroniBaseRule = cheeseMacaroni?.selections?.find((rule) => rule.id === 'base')
+    const garlicOliveOilPastaBaseRule = garlicOliveOilPasta?.selections?.find((rule) => rule.id === 'base')
+    const chickenBreastBaseRule = chickenBreast?.selections?.find((rule) => rule.id === 'base')
+
+    expect(cheeseMacaroni?.name).toBe('起司通心粉')
+    expect(cheeseMacaroni?.basePrice).toBe(250)
+    expect(cheeseMacaroniBaseRule).toMatchObject({
+      kind: 'single',
+      defaultValue: 'macaroni',
+    })
+    if (cheeseMacaroniBaseRule?.kind !== 'single') {
+      throw new Error('expected cheese macaroni base rule')
+    }
+    expect(cheeseMacaroniBaseRule.options.map((option) => option.value)).toEqual(['macaroni'])
+
+    expect(garlicOliveOilPasta?.name).toBe('香蒜橄欖油清炒義大利麵')
+    expect(garlicOliveOilPasta?.basePrice).toBe(300)
+    expect(garlicOliveOilPastaBaseRule).toMatchObject({
+      kind: 'single',
+      defaultValue: 'pasta',
+    })
+    if (garlicOliveOilPastaBaseRule?.kind !== 'single') {
+      throw new Error('expected garlic olive oil pasta base rule')
+    }
+    expect(garlicOliveOilPastaBaseRule.options.map((option) => option.value)).toEqual(['pasta'])
+
+    if (chickenBreastBaseRule?.kind !== 'single') {
+      throw new Error('expected chicken breast base rule')
+    }
+    expect(chickenBreastBaseRule.options.map((option) => option.value)).toEqual(['pasta', 'risotto'])
+  })
+
   it('makes the free-drink group optional when all free drinks are sold out', () => {
     const helpers = createHelpers({
       'drink.black-tea': false,
@@ -146,7 +225,7 @@ describe('pos-sales builder', () => {
       catalogKey: 'pasta_risotto.chicken-breast',
       inventoryKey: 'pasta_risotto.chicken-breast',
       displayName: '雞胸',
-      lineTotal: 250,
+      lineTotal: 300,
       selectionSummary: '主食：義大利麵 / 口感：正常 / 口味：青醬',
     })
     expect(result.entry.selections).toMatchObject({
@@ -164,7 +243,7 @@ describe('pos-sales builder', () => {
       lineTotal: 60,
       selectionSummary: '溫度：熱',
     })
-    expect(result.entry.subtotal).toBe(310)
+    expect(result.entry.subtotal).toBe(360)
   })
 
   it('generates firebase-safe entry and line ids for new entries', () => {
