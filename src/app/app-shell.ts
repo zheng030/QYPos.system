@@ -35,11 +35,11 @@ export const appShellHtml = `
         <span class="menu-icon">🕒</span>
         <span>打卡系統</span>
       </div>
-      <div class="menu-btn" data-action="open-owner-login" data-mode="cost">
+      <div class="menu-btn" data-action="open-finance-page" data-mode="cost">
         <span class="menu-icon">🤫</span>
         <span>成本輸入</span>
       </div>
-      <div class="menu-btn" data-action="open-owner-login" data-mode="finance">
+      <div class="menu-btn" data-action="open-finance-page" data-mode="finance">
         <span class="menu-icon">🔐</span>
         <span>財務/詳單</span>
       </div>
@@ -248,7 +248,7 @@ export const appShellHtml = `
 
     <div id="confidentialPage">
       <button class="back btn-effect" data-action="go-home">返回主畫面</button>
-      <div class="title"><span id="ownerWelcome"></span> <span id="confidentialTitle">財務 / 詳單</span></div>
+      <div class="title" id="confidentialTitle">財務 / 詳單</div>
       <div id="financeDashboard" class="finance-container"></div>
       <div id="financeCalendarSection">
         <div class="calendar-header d-flex justify-between items-center mb-15">
@@ -287,12 +287,12 @@ export const appShellHtml = `
             <div id="financeCategoryCards" class="finance-category-cards"></div>
           </div>
         </div>
-        <div id="ownerOrderListSection" style="margin-top:20px; display:none;">
-          <h3 id="ownerSelectedDateTitle"></h3>
+        <div id="financeOrderListSection" style="margin-top:20px; display:none;">
+          <h3 id="financeSelectedDateTitle"></h3>
           <div class="history-header-row owner-grid-header">
             <span>#</span><span>桌號</span><span>內容</span><span>時間</span><span>金額</span><span>操作</span>
           </div>
-          <div id="ownerOrderBox"></div>
+          <div id="financeOrderBox"></div>
         </div>
       </div>
       <div id="costInputSection" class="finance-detail-box">
@@ -309,14 +309,6 @@ export const appShellHtml = `
     <div id="settingsPage">
       <button class="back btn-effect" data-action="go-home">返回主畫面</button>
       <div class="title">系統設定</div>
-      <div class="settings-card">
-        <div class="settings-header"><h3>修改管理員密碼</h3></div>
-        <div class="owner-buttons">
-          <button class="btn-effect owner-btn btn-owner-blue" data-action="open-change-password-modal" data-owner="景偉">👨‍💼 修改 景偉 密碼</button>
-          <button class="btn-effect owner-btn btn-owner-pink" data-action="open-change-password-modal" data-owner="小飛">🍸 修改 小飛 密碼</button>
-          <button class="btn-effect owner-btn btn-owner-orange" data-action="open-change-password-modal" data-owner="威志">🍖 修改 威志 密碼</button>
-        </div>
-      </div>
       <div class="settings-card">
         <div class="settings-header"><h3>資料與維護</h3></div>
         <div class="p-20">
@@ -470,35 +462,6 @@ export const appShellHtml = `
         <button class="btn-effect cancel" data-action="close-staff-discount-modal">取消</button>
         <button class="btn-effect floating-clear-btn" data-action="reset-staff-discount">清除折扣</button>
         <button class="btn-effect confirm-primary" data-action="confirm-staff-discount">套用</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="ownerLoginModal" class="modal">
-    <div class="modal-content modal-content-owner">
-      <div class="modal-header"><h2>選擇管理員</h2></div>
-      <div class="modal-body pt-20">
-        <div class="owner-buttons">
-          <button class="btn-effect owner-btn owner-login-btn btn-owner-blue" data-action="check-owner" data-owner="景偉">👨‍💼 景偉</button>
-          <button class="btn-effect owner-btn owner-login-btn btn-owner-pink" data-action="check-owner" data-owner="小飛">🍸 小飛</button>
-          <button class="btn-effect owner-btn owner-login-btn btn-owner-orange" data-action="check-owner" data-owner="威志">🍖 威志</button>
-        </div>
-      </div>
-      <button class="btn-effect mt-20 wide btn-ghost-universal" data-action="close-owner-modal">取消</button>
-    </div>
-  </div>
-
-  <div id="changePasswordModal" class="modal">
-    <div class="modal-content">
-      <h2>修改密碼 - <span id="pwdOwnerName"></span></h2>
-      <div class="pwd-input-container">
-        <input type="password" id="oldPwd" class="pwd-input modal-input" placeholder="舊密碼">
-        <input type="password" id="newPwd" class="pwd-input modal-input" placeholder="新密碼">
-        <input type="password" id="confirmPwd" class="pwd-input modal-input" placeholder="確認新密碼">
-      </div>
-      <div class="modal-actions">
-        <button class="btn-effect cancel" data-action="close-change-password-modal">取消</button>
-        <button class="btn-effect confirm-primary" data-action="confirm-change-password">確認</button>
       </div>
     </div>
   </div>

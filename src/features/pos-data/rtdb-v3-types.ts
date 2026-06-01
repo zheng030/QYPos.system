@@ -5,12 +5,6 @@ export type V3CatalogKey = string
 export type V3MonthKey = `${number}-${string}`
 export type V3BizDateKey = `${number}-${string}-${string}`
 
-export type V3OwnerAuthRecord = {
-  passwordHash: string
-  passwordSalt: string
-  updatedAt?: number
-}
-
 export type V3TableCustomer = {
   name: string
   phone: string
@@ -168,9 +162,6 @@ export type V3RevisionTree = {
     prices: V3RevisionValue
     costs: V3RevisionValue
   }
-  auth: {
-    owners: V3RevisionValue
-  }
   history: {
     ordersByDay: Record<V3BizDateKey, V3RevisionValue>
   }
@@ -189,10 +180,6 @@ export type V3CatalogSegment = 'inventory' | 'prices' | 'costs'
 export type V3CatalogRevisionEvent = {
   kind: 'catalog'
   changedSegments: V3CatalogSegment[]
-}
-
-export type V3OwnerAuthRevisionEvent = {
-  kind: 'owner-auth'
 }
 
 export type V3HistoryRangeEvent = {

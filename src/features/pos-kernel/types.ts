@@ -33,8 +33,7 @@ export type PosEntryStatus = 'draft' | 'pending' | 'accepted'
 export type PosBatchSource = 'customer' | 'staff'
 export type PosLineRole = 'main' | 'included' | 'upgrade' | 'standalone'
 export type PosBatchStatus = 'pending' | 'accepted'
-export type PosOwnerName = '景偉' | '小飛' | '威志'
-export type PosOwnerMode = 'cost' | 'finance'
+export type PosFinanceMode = 'cost' | 'finance'
 export type PosReportRange = 'day' | 'week' | 'month' | 'custom' | 'specific'
 
 export type PosInventoryMap = Record<string, boolean | undefined>
@@ -53,16 +52,6 @@ export type PosRootName =
   | 'inventory'
   | 'attendanceEmployees'
   | 'attendanceRecords'
-  | 'ownerPasswords'
-
-export type PosOwnerAuthRecord = {
-  passwordHash: string
-  passwordSalt: string
-  updatedAt?: number
-}
-
-export type PosOwnerAuthMap = Record<string, PosOwnerAuthRecord | undefined>
-export type PosOwnerPasswordLegacyMap = Record<string, string>
 export type SyncLogRecord = Record<string, unknown>
 
 export type PosSystemPasswordConfig = {
@@ -379,7 +368,6 @@ export type PosRootValueMap = {
   inventory: PosInventoryMap
   attendanceEmployees: AttendanceEmployeesMap
   attendanceRecords: AttendanceRecordsMap
-  ownerPasswords: PosOwnerAuthMap
 }
 
 export type PosSyncRecord = {
@@ -424,7 +412,6 @@ export type CorePosState = {
   inventory: PosInventoryMap
   attendanceEmployees: AttendanceEmployeesMap
   attendanceRecords: AttendanceRecordsMap
-  ownerPasswords: PosOwnerAuthMap
   tableDrafts: PosLiveTableDraftMap
   pendingBatchPreviews: PosLivePendingBatchPreviewMap
   pendingBatches: PosLivePendingBatchMap

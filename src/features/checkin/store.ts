@@ -42,9 +42,14 @@ export const AttendanceType = {
 
 export const DEFAULT_ADMIN = {
   id: 'emp_admin',
-  name: '小飛',
+  name: '管理員',
   role: UserRole.ADMIN,
   status: EmployeeStatus.OFF_DUTY,
+}
+
+export const DEFAULT_ADMIN_PASSWORD_RECORD = {
+  passwordSalt: 'c2VlZC1kZWZhdWx0LWFkbWlu',
+  passwordHash: 'dt9Ugup4GDkiT6z6rb9WzteDtCDEWW6ZaGI9HvjwMdk=',
 }
 
 export const AVATAR_COLORS = [

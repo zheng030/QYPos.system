@@ -17,25 +17,11 @@ export const authGate: AuthGate = {
     }
     return verifyHashPassword(password, systemPassword.passwordSalt, systemPassword.passwordHash)
   },
-  async verifyOwnerLogin(ownerName, password, ownerPasswords) {
-    const record = ownerPasswords[ownerName]
-    if (!record?.passwordHash || !record.passwordSalt) {
-      return false
-    }
-    return verifyHashPassword(password, record.passwordSalt, record.passwordHash)
-  },
   async verifyEmployeeLogin(password, employee) {
     if (!employee?.passwordHash || !employee.passwordSalt) {
       return false
     }
     return verifyHashPassword(password, employee.passwordSalt, employee.passwordHash)
-  },
-  async verifyOwnerPasswordChange(ownerName, oldPassword, ownerPasswords) {
-    const record = ownerPasswords[ownerName]
-    if (!record?.passwordHash || !record.passwordSalt) {
-      return false
-    }
-    return verifyHashPassword(oldPassword, record.passwordSalt, record.passwordHash)
   },
   async verifyEmployeePasswordChange(currentPassword, employee) {
     if (!employee?.passwordHash || !employee.passwordSalt) {

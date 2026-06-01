@@ -3,7 +3,6 @@ import type {
   PosMenuCategory,
   PosMenuItem,
   PosMenuMeta,
-  PosOwnerAuthMap,
   PosSelectionOption,
   PosSelectionRule,
   PosSingleSelectionRule,
@@ -23,21 +22,6 @@ export const firebaseConfig = {
 export const SYSTEM_PASSWORD = {
   passwordSalt: 'JfQ2P/jVlbY9HZW2dyJJ8A==',
   passwordHash: 'B4xRSlbbNDSdB/944ssKtHHfi9ckFD6lBhjwPQDvWM8=',
-}
-
-export const defaultOwnerPasswords: PosOwnerAuthMap = {
-  景偉: {
-    passwordSalt: 'c2FsdC1vd25lci0x',
-    passwordHash: 'n06NSuWUI7n7xaka9XHmx4z16FRw76ycRb7XyRWIh7o=',
-  },
-  小飛: {
-    passwordSalt: 'c2FsdC1vd25lci0y',
-    passwordHash: '0jrdJonzUKPrWUH6gwJEtO6D4bmi2ApEePUFTCZ0m6o=',
-  },
-  威志: {
-    passwordSalt: 'c2FsdC1vd25lci0z',
-    passwordHash: 'd9Z8FgD9HmrbiNnNnKKKJ8l5AAs6AUbLnV1cDas2VYk=',
-  },
 }
 
 export const tables = [

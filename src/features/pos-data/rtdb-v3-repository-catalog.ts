@@ -1,9 +1,8 @@
-import type { PosOwnerAuthMap, PosOwnerAuthRecord } from '@/features/pos-kernel/types'
 import type { AttendanceEmployee } from '@/shared/attendance-service'
 import type { RtdbV3RepositoryContext } from './rtdb-v3-repository-context'
 import { decodeCatalogRecord, encodeCatalogKey } from './rtdb-v3-repository-context'
 import { getStaticDescriptorOrThrow, RTDB_V3_RESOURCE_KEYS } from './rtdb-v3-resource-registry'
-import type { V3CatalogRevisionEvent, V3CatalogSegment, V3OwnerAuthRevisionEvent } from './rtdb-v3-types'
+import type { V3CatalogRevisionEvent, V3CatalogSegment } from './rtdb-v3-types'
 import { RTDB_V3_ROOT } from './rtdb-v3-types'
 
 export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext) {
@@ -98,32 +97,6 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     ])
   }
 
-  async function fetchOwnerAuth() {
-    const descriptor = getStaticDescriptorOrThrow<PosOwnerAuthMap>(RTDB_V3_RESOURCE_KEYS.authOwners)
-    const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
-    const value = { ...((snapshot.val() || {}) as PosOwnerAuthMap) }
-    ctx.state.ownerPasswords = value
-    ctx.ownerAuthLoaded = true
-    return value
-  }
-
-  async function ensureOwnerAuth() {
-    if (ctx.ownerAuthLoaded) return
-    ctx.ownerAuthLoad ||= ctx
-      .loadCacheFirstResource({
-        descriptor: getStaticDescriptorOrThrow<PosOwnerAuthMap>(RTDB_V3_RESOURCE_KEYS.authOwners),
-        readRemote: fetchOwnerAuth,
-      })
-      .then((value) => {
-        ctx.state.ownerPasswords = { ...(value || {}) }
-        ctx.ownerAuthLoaded = true
-      })
-      .finally(() => {
-        ctx.ownerAuthLoad = null
-      })
-    await ctx.ownerAuthLoad
-  }
-
   async function fetchAttendanceEmployees() {
     const descriptor = getStaticDescriptorOrThrow<Record<string, AttendanceEmployee>>(
       RTDB_V3_RESOURCE_KEYS.attendanceEmployees
@@ -189,37 +162,6 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
         stop()
       })
     }
-  }
-
-  function watchOwnerAuthRevision(listener: (event: V3OwnerAuthRevisionEvent) => void) {
-    const descriptor = getStaticDescriptorOrThrow<PosOwnerAuthMap>(RTDB_V3_RESOURCE_KEYS.authOwners)
-    return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-      const revision = toRevisionValue(snapshot.val())
-      const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-      ctx.revisionCache.set(descriptor.revision.path, revision)
-      if (previousRevision === revision) {
-        return
-      }
-      ctx.ownerAuthLoaded = false
-      void fetchOwnerAuth()
-        .then(async (value) => {
-          await ctx.saveCachedResource(descriptor, ctx.revisionCache.get(descriptor.revision.path) || 0, value)
-        })
-        .then(() => {
-          listener({ kind: 'owner-auth' })
-        })
-    }) as () => void
-  }
-
-  async function setOwnerPassword(ownerName: string, record: PosOwnerAuthRecord) {
-    const descriptor = getStaticDescriptorOrThrow<PosOwnerAuthMap>(RTDB_V3_RESOURCE_KEYS.authOwners)
-    const payload: Record<string, unknown> = {
-      [`${RTDB_V3_ROOT}/${descriptor.remotePath}/${ownerName}`]: record,
-    }
-    ctx.touchRevision('auth/owners', payload)
-    await ctx.updateRoot(payload)
-    ctx.state.ownerPasswords[ownerName] = record
-    await ctx.saveCachedResource(descriptor, ctx.revisionCache.get('auth/owners') || 0, ctx.state.ownerPasswords)
   }
 
   async function updateInventory(itemId: string, checked: boolean) {
@@ -290,10 +232,7 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
   return {
     fetchAttendanceEmployees: ensureAttendanceEmployeesCatalogCache,
     ensureCatalog,
-    ensureOwnerAuth,
     watchCatalogRevision,
-    watchOwnerAuthRevision,
-    setOwnerPassword,
     updateInventory,
     updateInventoryBatch,
     updateItemPrice,

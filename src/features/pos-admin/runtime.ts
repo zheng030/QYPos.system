@@ -2,9 +2,9 @@ import type { AppContext, FeatureRuntime } from '@/app/app-context'
 
 import { POS_DATA_SERVICE_KEY, type PosDataService } from '@/features/pos-data/service'
 import { POS_KERNEL_SERVICE_KEY, type PosKernelService } from '@/features/pos-kernel/service'
+import type { PosFinanceMode } from '@/features/pos-kernel/types'
 import { toggleAccordion } from '@/features/pos-reporting/ui'
 import { POS_UI_SERVICE_KEY, type PosUiService } from '@/features/pos-shell/service'
-import { authGate } from '@/shared/auth-gate'
 import { createOwnerFinanceModule } from './owner-finance'
 import { closeSummaryModal, downloadSyncLog, renderProductManagement } from './product-management'
 import { POS_ADMIN_SERVICE_KEY, type PosAdminService } from './service'
@@ -33,9 +33,8 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       booted = true
 
       const ownerFinance = createOwnerFinanceModule({
-        authGate,
         ensureSubscriptions: async () => {
-          await Promise.all([data.ensureOwnerAuth(), data.ensureCatalog()])
+          await data.ensureCatalog()
         },
         getItemCategoryType: kernel.helpers.getItemCategoryType,
         getItemCosts: () => kernel.state.itemCosts,
@@ -44,10 +43,8 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         loadDailySummariesRange: data.loadDailySummariesRange,
         watchDailySummariesRange: data.watchDailySummariesRange,
         readDailySummariesRange: data.readDailySummariesRange,
-        getOwnerPasswords: () => kernel.state.ownerPasswords,
         hideAll: ui.hideAll,
         menuData: kernel.menuData,
-        saveOwnerPassword: data.setOwnerPassword,
         updateItemData: data.updateItemData,
       })
 
@@ -60,28 +57,17 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         })
       }
 
-      ui.on('click', 'open-owner-login', (_event, element) => {
+      ui.on('click', 'open-finance-page', (_event, element) => {
         const mode = element.dataset.mode
-        if (mode) ownerFinance.openOwnerLogin(mode)
+        if (mode === 'cost' || mode === 'finance') {
+          void ownerFinance.openFinancePage(mode as PosFinanceMode)
+        }
       })
       ui.on('click', 'open-settings-page', () => {
         void context.getService<{ openSettingsPage(): Promise<void> }>('pos-sales')?.openSettingsPage?.()
       })
       ui.on('click', 'open-product-page', async () => {
         await openProductPage()
-      })
-      ui.on('click', 'check-owner', (_event, element) => {
-        const owner = element.dataset.owner
-        if (owner) void ownerFinance.checkOwner(owner)
-      })
-      ui.on('click', 'close-owner-modal', () => {
-        ownerFinance.closeOwnerModal()
-      })
-      ui.on('click', 'close-change-password-modal', () => {
-        ownerFinance.closeChangePasswordModal()
-      })
-      ui.on('click', 'confirm-change-password', () => {
-        void ownerFinance.confirmChangePassword()
       })
       ui.on('click', 'change-owner-month', (_event, element) => {
         void ownerFinance.changeOwnerMonth(Number(element.dataset.offset || 0))
@@ -94,10 +80,6 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         const type = element.dataset.type
         if (type) void ownerFinance.openRevenueModal(type)
       })
-      ui.on('click', 'open-change-password-modal', (_event, element) => {
-        const owner = element.dataset.owner
-        if (owner) ownerFinance.openChangePasswordModal(owner)
-      })
       ui.on('click', 'close-revenue-modal', () => {
         ownerFinance.closeRevenueModal()
       })
@@ -108,7 +90,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
           item.classList.remove('active')
         })
         element.classList.add('active')
-        ownerFinance.showOwnerDetailedOrders(bizDateKey)
+        ownerFinance.showDetailedOrders(bizDateKey)
         const specificBtn = document.getElementById('finBtnSpecific')
         if (specificBtn) {
           specificBtn.innerText = bizDateKey.slice(2)

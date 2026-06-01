@@ -21,7 +21,6 @@ export function createState(): CorePosState {
     inventory: {},
     attendanceEmployees: {},
     attendanceRecords: {},
-    ownerPasswords: {},
     tableDrafts: {},
     pendingBatchPreviews: {},
     pendingBatches: {},

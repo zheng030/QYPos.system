@@ -180,7 +180,6 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
 
       async function openSettingsPage() {
         ui.hideAll()
-        await data.ensureOwnerAuth()
         ui.activatePage('settingsPage')
       }
 

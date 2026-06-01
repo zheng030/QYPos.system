@@ -437,7 +437,7 @@ describe('rtdb-v3-repository', () => {
     stop()
   })
 
-  it('uses revision preflight on initial catalog and owner auth loads, then reuses warm cache', async () => {
+  it('uses revision preflight on initial catalog loads, then reuses warm cache', async () => {
     const db = createDbStub({
       v3: {
         meta: {
@@ -447,20 +447,12 @@ describe('rtdb-v3-repository', () => {
               prices: 1,
               costs: 1,
             },
-            auth: {
-              owners: 1,
-            },
           },
         },
         catalog: {
           inventory: { cola: true },
           prices: { cola: 100 },
           costs: { cola: 10 },
-        },
-        auth: {
-          owners: {
-            景偉: { passwordHash: 'h', passwordSalt: 's' },
-          },
         },
       },
     })
@@ -472,18 +464,15 @@ describe('rtdb-v3-repository', () => {
     })
 
     await repository.ensureCatalog()
-    await repository.ensureOwnerAuth()
 
     expect([...db.onceCalls].sort()).toEqual(
       [
         'v3/meta/revisions/catalog/inventory',
         'v3/meta/revisions/catalog/costs',
         'v3/meta/revisions/catalog/prices',
-        'v3/meta/revisions/auth/owners',
         'v3/catalog/costs',
         'v3/catalog/inventory',
         'v3/catalog/prices',
-        'v3/auth/owners',
       ].sort()
     )
 
@@ -496,20 +485,12 @@ describe('rtdb-v3-repository', () => {
               prices: 1,
               costs: 1,
             },
-            auth: {
-              owners: 1,
-            },
           },
         },
         catalog: {
           inventory: { cola: false },
           prices: { cola: 999 },
           costs: { cola: 999 },
-        },
-        auth: {
-          owners: {
-            景偉: { passwordHash: 'changed', passwordSalt: 'changed' },
-          },
         },
       },
     })
@@ -520,14 +501,12 @@ describe('rtdb-v3-repository', () => {
     })
 
     await warmRepository.ensureCatalog()
-    await warmRepository.ensureOwnerAuth()
 
     expect([...warmDb.onceCalls].sort()).toEqual(
       [
         'v3/meta/revisions/catalog/inventory',
         'v3/meta/revisions/catalog/costs',
         'v3/meta/revisions/catalog/prices',
-        'v3/meta/revisions/auth/owners',
       ].sort()
     )
   })
@@ -591,45 +570,6 @@ describe('rtdb-v3-repository', () => {
     await Promise.resolve()
 
     expect(warmDb.onceCalls).toContain('v3/catalog/inventory')
-    stop()
-  })
-
-  it('refetches owner auth when auth revision changes', async () => {
-    const db = createDbStub({
-      v3: {
-        meta: {
-          revisions: {
-            auth: {
-              owners: 1,
-            },
-          },
-        },
-        auth: {
-          owners: {
-            景偉: { passwordHash: 'h', passwordSalt: 's' },
-          },
-        },
-      },
-    })
-    const state = createState()
-    const repository = createRtdbV3Repository({ db: db as never, state })
-
-    await repository.ensureOwnerAuth()
-    let resolveInvalidation: (() => void) | null = null
-    const invalidated = new Promise<void>((resolve) => {
-      resolveInvalidation = resolve
-    })
-    const stop = repository.watchOwnerAuthRevision(() => {
-      resolveInvalidation?.()
-    })
-    db.onceCalls.length = 0
-
-    setAtPath(db.data, 'v3/auth/owners/景偉/passwordHash', 'new-h')
-    db.emit('v3/meta/revisions/auth/owners', 'value', 2)
-    await invalidated
-
-    expect(db.onceCalls).toEqual(['v3/auth/owners'])
-    expect(state.ownerPasswords.景偉?.passwordHash).toBe('new-h')
     stop()
   })
 

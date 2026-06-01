@@ -14,13 +14,13 @@ import {
 describe('rtdb-v3 resource registry', () => {
   it('maps static resources to remote paths, revision paths, and resource keys', () => {
     const inventory = getStaticDescriptorOrThrow<Record<string, boolean>>(RTDB_V3_RESOURCE_KEYS.catalogInventory)
-    const owners = getStaticDescriptorOrThrow(RTDB_V3_RESOURCE_KEYS.authOwners)
+    const attendanceEmployees = getStaticDescriptorOrThrow(RTDB_V3_RESOURCE_KEYS.attendanceEmployees)
 
     expect(inventory.resourceKey).toBe('catalog:inventory')
     expect(inventory.remotePath).toBe('catalog/inventory')
     expect(inventory.revision.path).toBe('catalog/inventory')
-    expect(owners.resourceKey).toBe('auth:owners')
-    expect(owners.remotePath).toBe('auth/owners')
+    expect(attendanceEmployees.resourceKey).toBe('attendance:employees')
+    expect(attendanceEmployees.remotePath).toBe('attendance/employees')
     expect(rtdbV3StaticResourceRegistry.getByRemotePath('catalog/inventory')?.resourceKey).toBe('catalog:inventory')
   })
 

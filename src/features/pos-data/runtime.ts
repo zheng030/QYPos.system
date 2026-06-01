@@ -126,10 +126,6 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           await repository.ensureCatalog()
           await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
         },
-        async ensureOwnerAuth() {
-          await repository.ensureOwnerAuth()
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-        },
         async listClosedOrdersForBusinessDay(anchor) {
           const orders = await repository.listClosedOrdersForBusinessDay(anchor)
           emitDataChange(['historyOrders'])
@@ -148,9 +144,6 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         },
         watchCatalogRevision(listener) {
           return repository.watchCatalogRevision(listener)
-        },
-        watchOwnerAuthRevision(listener) {
-          return repository.watchOwnerAuthRevision(listener)
         },
         watchClosedOrdersRange(start, endExclusive, listener) {
           return repository.watchClosedOrdersRange(start, endExclusive, listener)
@@ -230,11 +223,6 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
         async deleteClosedOrder(order) {
           await repository.deleteClosedOrder(order)
           emitDataChange(['historyOrders'])
-          await uiBridge.refreshUiAfterDataChange()
-        },
-        async setOwnerPassword(ownerName, record) {
-          await repository.setOwnerPassword(ownerName, record)
-          emitDataChange(['ownerPasswords'])
           await uiBridge.refreshUiAfterDataChange()
         },
         subscribe(listener) {

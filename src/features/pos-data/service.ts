@@ -2,7 +2,6 @@ import type {
   PosOrder,
   PosOrderBatch,
   PosOrderEntry,
-  PosOwnerAuthRecord,
   PosTableCustomer,
   SyncLogRecord,
 } from '@/features/pos-kernel/types'
@@ -14,7 +13,6 @@ import type {
   V3DailySummaryRangeEvent,
   V3HistoryRangeEvent,
   V3ItemStatsRangeEvent,
-  V3OwnerAuthRevisionEvent,
 } from './rtdb-v3-types'
 
 export const POS_DATA_SERVICE_KEY = 'pos-data'
@@ -29,13 +27,11 @@ export type PosDataService = {
   startTableLiveSession(mode: 'staff' | 'customer', table: string): Promise<void>
   stopTableLiveSession(): void
   ensureCatalog(): Promise<void>
-  ensureOwnerAuth(): Promise<void>
   listClosedOrdersForBusinessDay(anchor: Date): Promise<PosOrder[]>
   listClosedOrdersByRange(start: Date, endExclusive: Date): Promise<PosOrder[]>
   loadDailySummariesRange(start: Date, endExclusive: Date): Promise<Record<string, V3DailySummary>>
   loadItemStatsRange(start: Date, endExclusive: Date): Promise<Record<string, Record<string, V3DailyItemStat>>>
   watchCatalogRevision(listener: (event: V3CatalogRevisionEvent) => void): () => void
-  watchOwnerAuthRevision(listener: (event: V3OwnerAuthRevisionEvent) => void): () => void
   watchClosedOrdersRange(start: Date, endExclusive: Date, listener: (event: V3HistoryRangeEvent) => void): () => void
   watchClosedOrdersForBusinessDay(anchor: Date, listener: (event: V3HistoryRangeEvent) => void): () => void
   watchDailySummariesRange(
@@ -68,7 +64,6 @@ export type PosDataService = {
     originalTotal: number
   }): Promise<PosOrder>
   deleteClosedOrder(order: PosOrder): Promise<void>
-  setOwnerPassword(ownerName: string, record: PosOwnerAuthRecord): Promise<void>
   subscribe(listener: (event: PosDataChangeEvent) => void): () => void
   emitChange(roots: string[]): void
   toggleStockStatus(itemId: string, checked: boolean): Promise<void>

@@ -1,4 +1,3 @@
-import { defaultOwnerPasswords } from './data'
 import type { CorePosState } from './types'
 
 export const state: CorePosState = {
@@ -10,7 +9,6 @@ export const state: CorePosState = {
   inventory: {},
   attendanceEmployees: {},
   attendanceRecords: {},
-  ownerPasswords: { ...defaultOwnerPasswords },
   tableDrafts: {},
   pendingBatchPreviews: {},
   pendingBatches: {},

@@ -514,58 +514,6 @@ body.staff-mode .floating-bar-staff {
 	}
 }
 
-/* Change Password Modal */
-#changePasswordModal .modal-content {
-	max-width: 520px;
-	border-radius: 18px;
-	padding: 28px;
-	box-shadow: 0 15px 40px rgba(0, 0, 0, 0.18);
-	border: 1px solid #e5e7eb;
-}
-#changePasswordModal h2 {
-	margin: 0;
-	color: #111827;
-	font-size: 24px;
-	text-align: center;
-}
-#changePasswordModal .modal-actions {
-	margin-top: 24px;
-	gap: 12px;
-}
-#changePasswordModal .modal-actions button {
-	border-radius: 10px;
-	font-weight: 700;
-}
-#changePasswordModal .modal-actions .confirm-primary {
-	background: linear-gradient(135deg, #22c55e, #16a34a);
-	color: #fff;
-}
-#changePasswordModal .modal-actions .cancel {
-	background: #f8fafc;
-	color: #475569;
-	border: 1px solid #e5e7eb;
-}
-#changePasswordModal .pwd-input-container {
-	display: flex;
-	flex-direction: column;
-	gap: 15px;
-	margin-top: 25px;
-}
-#changePasswordModal .pwd-input {
-	border: 1px solid #d1d5db;
-	border-radius: 10px;
-	padding: 15px;
-	width: 100%;
-	font-size: 16px;
-	box-sizing: border-box;
-	transition: all 0.2s;
-	background: #f9fafb;
-}
-#changePasswordModal .pwd-input:focus {
-	border-color: #4f46e5;
-	box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
-	outline: none;
-}
 .batch-blue {
 	background-color: #e0f2fe !important;
 	border-left: 5px solid #007bff !important;

@@ -9,13 +9,7 @@ export const authGate: AuthGate = {
   async verifyPosLogin() {
     return true
   },
-  async verifyOwnerLogin() {
-    return true
-  },
   async verifyEmployeeLogin() {
-    return true
-  },
-  async verifyOwnerPasswordChange() {
     return true
   },
   async verifyEmployeePasswordChange() {

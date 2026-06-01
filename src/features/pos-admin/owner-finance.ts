@@ -1,23 +1,19 @@
 import type { V3DailySummary, V3DailySummaryRangeEvent } from '@/features/pos-data/rtdb-v3-types'
 import type {
   PosCategoryKey,
+  PosFinanceMode,
   PosFinanceStats,
   PosItemCostsMap,
   PosItemPricesMap,
   PosMenuData,
   PosMenuItem,
   PosOrder,
-  PosOwnerAuthMap,
-  PosOwnerAuthRecord,
-  PosOwnerMode,
-  PosOwnerName,
   PosReportRange,
   PosRevenueBucket,
   PosRevenueDetailItem,
   PosRevenueDetails,
 } from '@/features/pos-kernel/types'
 import { MENU_CATEGORY_KEYS, POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
-import type { AuthGate } from '@/shared/auth-gate'
 import {
   getBusinessDateKey,
   getBusinessDateKeyFromParts,
@@ -28,15 +24,13 @@ import {
   parseBusinessDateKey,
   toBusinessDate,
 } from '@/shared/business-day'
-import { findElement, requireElement, requireInput } from '@/shared/dom-helpers'
+import { findElement, requireElement } from '@/shared/dom-helpers'
 import { toNumberValue } from '@/shared/errors'
 import { getGroupedOrderLines } from '@/shared/grouped-order-lines'
 import { getLegacyElement } from '@/shared/legacy-dom'
-import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
 
-type OwnerFinanceDeps = {
+type FinanceConsoleDeps = {
   ensureSubscriptions: () => Promise<void>
-  authGate: AuthGate
   getItemCategoryType: (name: string) => PosCategoryKey
   getItemCosts: () => PosItemCostsMap
   getItemPrices: () => PosItemPricesMap
@@ -48,10 +42,8 @@ type OwnerFinanceDeps = {
     listener: (event: V3DailySummaryRangeEvent) => void
   ) => () => void
   readDailySummariesRange: (start: Date, endExclusive: Date) => Record<string, V3DailySummary>
-  getOwnerPasswords: () => PosOwnerAuthMap
   hideAll: () => void
   menuData: PosMenuData
-  saveOwnerPassword: (ownerName: string, record: PosOwnerAuthRecord) => Promise<void>
   updateItemData: (name: string, type: string, value: string) => Promise<void>
 }
 
@@ -203,17 +195,7 @@ function parseBusinessDateInput(value: string) {
   }
 }
 
-async function createOwnerPasswordRecord(password: string): Promise<PosOwnerAuthRecord> {
-  const passwordSalt = randomSaltBase64(16)
-  const passwordHash = await pbkdf2Hash(password, passwordSalt)
-  return {
-    passwordHash,
-    passwordSalt,
-    updatedAt: Date.now(),
-  }
-}
-
-export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
+export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
   let dailyFinancialData: Record<string, DailyFinanceEntry> = {}
   let revenueDetails: PosRevenueDetails = buildRevenueDetails()
   let activeFinanceRange: { start: Date; end: Date; titleText: string } | null = null
@@ -257,40 +239,17 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     setDisplay('customFinanceDateRange', range === 'custom' ? 'flex' : 'none')
   }
 
-  function openOwnerLogin(mode: PosOwnerMode | string) {
-    sessionStorage.setItem('ownerMode', mode)
-    setDisplay('ownerLoginModal', 'flex')
-  }
-
-  function closeOwnerModal() {
-    getLegacyElement('ownerLoginModal').style.display = 'none'
-  }
-
-  async function checkOwner(name: string) {
-    const password = prompt(`請輸入 ${name} 的密碼：`)
-    const ownerName = name as PosOwnerName
-    const isValid = await deps.authGate.verifyOwnerLogin(ownerName, password ?? '', deps.getOwnerPasswords())
-    if (isValid) {
-      closeOwnerModal()
-      void openConfidentialPage(ownerName)
-      return
-    }
-    alert('❌ 密碼錯誤！')
-  }
-
-  async function openConfidentialPage(ownerName: PosOwnerName) {
+  async function openFinancePage(mode: PosFinanceMode) {
     deps.hideAll()
     setDisplay('confidentialPage', 'block')
-    setText('ownerWelcome', ownerName)
     await deps.ensureSubscriptions()
     setDisplay('financeDashboard', 'none')
 
-    const currentLoginMode = (sessionStorage.getItem('ownerMode') || 'finance') as PosOwnerMode
-    if (currentLoginMode === 'cost') {
+    if (mode === 'cost') {
       setDisplay('costInputSection', 'block')
       setDisplay('financeCalendarSection', 'none')
       setText('confidentialTitle', '成本輸入')
-      updateFinancialPage(ownerName)
+      updateFinancialPage()
       return
     }
 
@@ -298,7 +257,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     setDisplay('financeCalendarSection', 'block')
     setText('confidentialTitle', '財務與詳細訂單')
     historyViewDate = toBusinessDate(new Date())
-    await renderConfidentialCalendar(ownerName)
+    await renderConfidentialCalendar()
   }
 
   function buildCostRow(item: PosMenuItem, price: number, cost: number) {
@@ -315,7 +274,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     `
   }
 
-  function updateFinancialPage(_ownerName: PosOwnerName | string) {
+  function updateFinancialPage() {
     const listContainer = requireElement('costEditorList')
     const itemPrices = deps.getItemPrices()
     const itemCosts = deps.getItemCosts()
@@ -353,7 +312,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     })
   }
 
-  function renderConfidentialCalendarGrid(_ownerName: PosOwnerName | string, year: number, month: number) {
+  function renderConfidentialCalendarGrid(year: number, month: number) {
     const firstDay = new Date(year, month, 1).getDay()
     const daysInMonth = new Date(year, month + 1, 0).getDate()
     const grid = requireElement('finCalendarGrid')
@@ -404,10 +363,8 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     const nextDate = new Date(historyViewDate)
     nextDate.setMonth(nextDate.getMonth() + offset)
     historyViewDate = nextDate
-    const owner = findElement('ownerWelcome')?.innerText as PosOwnerName | undefined
-    if (!owner) return
-    await renderConfidentialCalendar(owner)
-    setDisplay('ownerOrderListSection', 'none')
+    await renderConfidentialCalendar()
+    setDisplay('financeOrderListSection', 'none')
     const specificBtn = findElement('finBtnSpecific')
     if (specificBtn) {
       specificBtn.style.display = 'none'
@@ -415,7 +372,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     }
   }
 
-  async function renderConfidentialCalendar(ownerName: PosOwnerName | string) {
+  async function renderConfidentialCalendar() {
     document.querySelectorAll('.finance-controls button').forEach((button) => {
       button.classList.remove('active')
     })
@@ -437,7 +394,7 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
         Object.entries(range).map(([bizDateKey, summary]) => [bizDateKey, buildDailyFinanceEntry(summary)])
       )
       setFinanceSummary(buildSummaryFromDailyRange(range), '🏠 全店總計 (本月)')
-      renderConfidentialCalendarGrid(ownerName, year, month)
+      renderConfidentialCalendarGrid(year, month)
     }
 
     render()
@@ -607,14 +564,14 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
     getLegacyElement('revenueDetailModal').style.display = 'none'
   }
 
-  async function showOwnerDetailedOrders(bizDateKey: string) {
+  async function showDetailedOrders(bizDateKey: string) {
     const normalizedBizDateKey = parseBusinessDateKey(bizDateKey)
     const { start, endExclusive } = getBusinessDayRangeFromKey(normalizedBizDateKey)
     const targetOrders = [...(await deps.listClosedOrdersByRange(start, endExclusive))].reverse()
-    setDisplay('ownerOrderListSection', 'block')
-    setText('ownerSelectedDateTitle', `📅 ${formatBusinessDateLabel(normalizedBizDateKey)} 詳細訂單`)
+    setDisplay('financeOrderListSection', 'block')
+    setText('financeSelectedDateTitle', `📅 ${formatBusinessDateLabel(normalizedBizDateKey)} 詳細訂單`)
     if (targetOrders.length === 0) {
-      setHtml('ownerOrderBox', "<div style='padding:20px; text-align:center;'>無資料</div>")
+      setHtml('financeOrderBox', "<div style='padding:20px; text-align:center;'>無資料</div>")
       return
     }
     const rows = targetOrders
@@ -634,66 +591,16 @@ export function createOwnerFinanceModule(deps: OwnerFinanceDeps) {
         `
       })
       .join('')
-    setHtml('ownerOrderBox', rows)
-  }
-
-  function openChangePasswordModal(ownerName: string) {
-    setText('pwdOwnerName', ownerName)
-    requireInput('oldPwd').value = ''
-    requireInput('newPwd').value = ''
-    requireInput('confirmPwd').value = ''
-    getLegacyElement('changePasswordModal').style.display = 'flex'
-  }
-
-  function closeChangePasswordModal() {
-    getLegacyElement('changePasswordModal').style.display = 'none'
-  }
-
-  async function confirmChangePassword() {
-    const ownerName = findElement('pwdOwnerName')?.innerText
-    const oldPwd = requireInput('oldPwd').value
-    const newPwd = requireInput('newPwd').value
-    const confirmPwd = requireInput('confirmPwd').value
-    const ownerPasswords = deps.getOwnerPasswords()
-
-    if (!ownerName || ownerPasswords[ownerName] === undefined) {
-      alert('找不到該帳號')
-      return
-    }
-    const isValid = await deps.authGate.verifyOwnerPasswordChange(ownerName as PosOwnerName, oldPwd, ownerPasswords)
-    if (!isValid) {
-      alert('舊密碼錯誤')
-      return
-    }
-    if (!newPwd) {
-      alert('請輸入新密碼')
-      return
-    }
-    if (newPwd !== confirmPwd) {
-      alert('兩次新密碼不一致')
-      return
-    }
-
-    const nextRecord = await createOwnerPasswordRecord(newPwd)
-    ownerPasswords[ownerName] = nextRecord
-    await deps.saveOwnerPassword(ownerName, nextRecord)
-    alert('✅ 密碼已更新')
-    closeChangePasswordModal()
+    setHtml('financeOrderBox', rows)
   }
 
   return {
     changeOwnerMonth,
-    checkOwner,
-    closeChangePasswordModal,
-    closeOwnerModal,
     closeRevenueModal,
-    confirmChangePassword,
-    openChangePasswordModal,
-    openConfidentialPage,
-    openOwnerLogin,
+    openFinancePage,
     openRevenueModal,
     renderConfidentialCalendar,
-    showOwnerDetailedOrders,
+    showDetailedOrders,
     stopAllWatches,
     updateFinancialPage,
     updateFinanceStats,

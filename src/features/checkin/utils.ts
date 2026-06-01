@@ -9,6 +9,7 @@ import {
   CHECKIN_PAGE_ID,
   CHECKIN_ROOT_ID,
   DEFAULT_ADMIN,
+  DEFAULT_ADMIN_PASSWORD_RECORD,
   EmployeeStatus,
   ICONS,
   runtime,
@@ -414,8 +415,7 @@ export async function ensureData() {
 
 export async function seedDefaultAdmin() {
   try {
-    const passwordRecord = await makePasswordRecord('123')
-    const employee = { ...DEFAULT_ADMIN, ...passwordRecord }
+    const employee = { ...DEFAULT_ADMIN, ...DEFAULT_ADMIN_PASSWORD_RECORD }
     await bridge.attendance?.save({ [`attendanceEmployees/${employee.id}`]: employee })
   } catch (error) {
     console.warn('CheckIn: failed to seed default admin', error)

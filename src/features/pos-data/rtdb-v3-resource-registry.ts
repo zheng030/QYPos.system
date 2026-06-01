@@ -1,4 +1,3 @@
-import type { PosOwnerAuthMap } from '@/features/pos-kernel/types'
 import type { AttendanceEmployee, AttendanceRecord } from '@/shared/attendance-service'
 import {
   createIdentityCodec,
@@ -55,7 +54,6 @@ export const RTDB_V3_RESOURCE_KEYS = {
   catalogInventory: 'catalog:inventory',
   catalogPrices: 'catalog:prices',
   catalogCosts: 'catalog:costs',
-  authOwners: 'auth:owners',
   attendanceEmployees: 'attendance:employees',
   liveTableSummary: (table: string) => liveTableResourceKey(table, 'summary'),
   liveTableDraft: (table: string) => liveTableResourceKey(table, 'draft'),
@@ -85,12 +83,6 @@ const staticDescriptors = [
     remotePath: 'catalog/costs',
     revision: { path: 'catalog/costs' },
     codec: createIdentityCodec<Record<string, number>>(),
-  }),
-  registerResourceDescriptor({
-    resourceKey: RTDB_V3_RESOURCE_KEYS.authOwners,
-    remotePath: 'auth/owners',
-    revision: { path: 'auth/owners' },
-    codec: createIdentityCodec<PosOwnerAuthMap>(),
   }),
   registerResourceDescriptor({
     resourceKey: RTDB_V3_RESOURCE_KEYS.attendanceEmployees,

@@ -7,16 +7,15 @@ describe('app-shell', () => {
     expect(appShellHtml).toContain('<span class="menu-icon">🕒</span>')
     expect(appShellHtml).toContain('data-action="open-settings-page"')
     expect(appShellHtml).toContain('class="settings-card danger-zone"')
-    expect(appShellHtml).toContain('class="btn-effect owner-btn btn-owner-blue"')
     expect(appShellHtml).toContain('class="btn-effect danger-btn-blue"')
   })
 
-  it('restores modal wrapper classes expected by legacy styles without removing new hooks', () => {
-    expect(appShellHtml).toContain('id="ownerLoginModal" class="modal"')
-    expect(appShellHtml).toContain('class="modal-content modal-content-owner"')
-    expect(appShellHtml).toContain('class="btn-effect owner-btn owner-login-btn btn-owner-pink"')
-    expect(appShellHtml).toContain('class="pwd-input-container"')
-    expect(appShellHtml).toContain('class="btn-effect confirm-primary" data-action="confirm-change-password"')
+  it('exposes direct finance entry points without owner auth modals', () => {
+    expect(appShellHtml).toContain('data-action="open-finance-page" data-mode="cost"')
+    expect(appShellHtml).toContain('data-action="open-finance-page" data-mode="finance"')
+    expect(appShellHtml).toContain('id="confidentialTitle">財務 / 詳單<')
+    expect(appShellHtml).not.toContain('id="ownerLoginModal" class="modal"')
+    expect(appShellHtml).not.toContain('id="changePasswordModal" class="modal"')
   })
 
   it('renders the customer long-page order structure with sticky-tab anchors and floating draft bar', () => {
