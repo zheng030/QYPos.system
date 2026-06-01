@@ -7,10 +7,18 @@ import { registerPosSalesBindings } from './runtime-bindings'
 
 function createDeps() {
   const handlers = new Map<string, (event: Event, element: HTMLElement) => void>()
+  const posData = {
+    stopTableLiveSession: vi.fn(),
+  }
   const context = {
     root: {} as HTMLElement,
     registerService: vi.fn(() => vi.fn()),
-    getService: vi.fn(),
+    getService<T>(key: string) {
+      if (key === 'pos-data') {
+        return posData as T
+      }
+      return null
+    },
   } satisfies AppContext
   const ui = {
     on: vi.fn((type: string, action: string, handler: (event: Event, element: HTMLElement) => void) => {
@@ -100,6 +108,7 @@ function createDeps() {
       stopInventoryRevisionWatch: vi.fn(),
       syncInventoryRevisionWatch: vi.fn(),
     },
+    posData,
   }
 }
 

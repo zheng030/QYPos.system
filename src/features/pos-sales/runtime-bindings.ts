@@ -173,9 +173,11 @@ export function registerPosSalesBindings({
     context.getService<CheckinPageService>(CHECKIN_PAGE_SERVICE_KEY)?.open()
   })
   ui.on('click', 'go-home', () => {
+    context.getService<PosDataService>(POS_DATA_SERVICE_KEY)?.stopTableLiveSession()
     goHome()
   })
   ui.on('click', 'save-and-exit', () => {
+    context.getService<PosDataService>(POS_DATA_SERVICE_KEY)?.stopTableLiveSession()
     void openTableSelect()
   })
   ui.on('click', 'open-menu-category', (_event, element) => {
@@ -450,10 +452,14 @@ export function registerPosSalesBindings({
   })
 
   ui.registerHideHook(() => {
+    context.getService<PosDataService>(POS_DATA_SERVICE_KEY)?.stopTableLiveSession()
     stopInventoryRevisionWatch()
   })
 
-  ui.subscribePage(() => {
+  ui.subscribePage((pageId) => {
+    if (pageId !== 'orderPage') {
+      context.getService<PosDataService>(POS_DATA_SERVICE_KEY)?.stopTableLiveSession()
+    }
     syncInventoryRevisionWatch()
   })
 }

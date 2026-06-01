@@ -6,10 +6,6 @@ import type { V3CatalogRevisionEvent, V3CatalogSegment } from './rtdb-v3-types'
 import { RTDB_V3_ROOT } from './rtdb-v3-types'
 
 export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext) {
-  function toRevisionValue(value: unknown) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : 0
-  }
-
   const inventoryDescriptor = getStaticDescriptorOrThrow<Record<string, boolean>>(
     RTDB_V3_RESOURCE_KEYS.catalogInventory
   )
@@ -120,42 +116,24 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
 
   function watchCatalogRevision(listener: (event: V3CatalogRevisionEvent) => void) {
     const stops = [
-      ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${inventoryDescriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(inventoryDescriptor.revision.path)
-        ctx.revisionCache.set(inventoryDescriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      ctx.watchRevision(inventoryDescriptor.revision.path, () => {
         ctx.loadedCatalogSegments.delete('inventory')
         void refreshCatalogSegment('inventory').then(() => {
           listener({ kind: 'catalog', changedSegments: ['inventory'] })
         })
-      }) as () => void,
-      ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${pricesDescriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(pricesDescriptor.revision.path)
-        ctx.revisionCache.set(pricesDescriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      }),
+      ctx.watchRevision(pricesDescriptor.revision.path, () => {
         ctx.loadedCatalogSegments.delete('prices')
         void refreshCatalogSegment('prices').then(() => {
           listener({ kind: 'catalog', changedSegments: ['prices'] })
         })
-      }) as () => void,
-      ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${costsDescriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(costsDescriptor.revision.path)
-        ctx.revisionCache.set(costsDescriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      }),
+      ctx.watchRevision(costsDescriptor.revision.path, () => {
         ctx.loadedCatalogSegments.delete('costs')
         void refreshCatalogSegment('costs').then(() => {
           listener({ kind: 'catalog', changedSegments: ['costs'] })
         })
-      }) as () => void,
+      }),
     ]
     return () => {
       stops.forEach((stop) => {

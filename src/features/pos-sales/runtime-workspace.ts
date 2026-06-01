@@ -228,7 +228,7 @@ export function createPosSalesWorkspaceModule({
 
   function syncInventoryRevisionWatch() {
     const activePage = ui.getActivePage()
-    const shouldWatch = activePage === 'orderPage' || activePage === 'productPage'
+    const shouldWatch = activePage === 'orderPage'
     if (!shouldWatch) {
       stopInventoryRevisionWatch()
       return
@@ -238,10 +238,10 @@ export function createPosSalesWorkspaceModule({
     }
     setStopCatalogRevisionWatch(
       data.watchCatalogRevision((event) => {
-        if (!event.changedSegments.includes('inventory')) {
+        if (!event.changedSegments.some((segment) => segment === 'inventory' || segment === 'prices')) {
+          refreshCatalogDrivenUi()
           return
         }
-        refreshCatalogDrivenUi()
       })
     )
   }

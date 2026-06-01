@@ -29,6 +29,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       const kernel = maybeKernel
       const data = maybeData
       const ui = maybeUi
+      let stopAdminCatalogWatch: (() => void) | null = null
 
       booted = true
 
@@ -41,6 +42,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         getItemPrices: () => kernel.state.itemPrices,
         listClosedOrdersByRange: data.listClosedOrdersByRange,
         loadDailySummariesRange: data.loadDailySummariesRange,
+        watchClosedOrdersRange: data.watchClosedOrdersRange,
         watchDailySummariesRange: data.watchDailySummariesRange,
         readDailySummariesRange: data.readDailySummariesRange,
         hideAll: ui.hideAll,
@@ -57,10 +59,54 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
         })
       }
 
+      function stopAdminWatch() {
+        stopAdminCatalogWatch?.()
+        stopAdminCatalogWatch = null
+      }
+
+      function syncAdminWatch(pageId = ui.getActivePage()) {
+        stopAdminWatch()
+        if (pageId === 'productPage') {
+          stopAdminCatalogWatch = data.watchCatalogRevision((event) => {
+            if (!event.changedSegments.includes('inventory')) {
+              return
+            }
+            renderProductManagement({
+              inventory: () => kernel.state.inventory,
+              menuData: kernel.menuData,
+            })
+          })
+          return
+        }
+
+        if (pageId !== 'confidentialPage') {
+          ownerFinance.stopAllWatches()
+          return
+        }
+
+        const title = document.getElementById('confidentialTitle')?.innerText || ''
+        stopAdminCatalogWatch = data.watchCatalogRevision((event) => {
+          if (title === '成本輸入') {
+            if (!event.changedSegments.some((segment) => segment === 'prices' || segment === 'costs')) {
+              return
+            }
+            ownerFinance.updateFinancialPage()
+            return
+          }
+
+          if (!event.changedSegments.some((segment) => segment === 'prices' || segment === 'costs')) {
+            return
+          }
+          ownerFinance.updateFinancialPage()
+        })
+      }
+
       ui.on('click', 'open-finance-page', (_event, element) => {
         const mode = element.dataset.mode
         if (mode === 'cost' || mode === 'finance') {
-          void ownerFinance.openFinancePage(mode as PosFinanceMode)
+          void ownerFinance.openFinancePage(mode as PosFinanceMode).then(() => {
+            syncAdminWatch('confidentialPage')
+          })
         }
       })
       ui.on('click', 'open-settings-page', () => {
@@ -68,6 +114,7 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       })
       ui.on('click', 'open-product-page', async () => {
         await openProductPage()
+        syncAdminWatch('productPage')
       })
       ui.on('click', 'change-owner-month', (_event, element) => {
         void ownerFinance.changeOwnerMonth(Number(element.dataset.offset || 0))
@@ -154,7 +201,12 @@ export function createPosAdminFeature(context: AppContext): FeatureRuntime {
       })
 
       ui.registerHideHook(() => {
+        stopAdminWatch()
         ownerFinance.stopAllWatches()
+      })
+
+      ui.subscribePage((pageId) => {
+        syncAdminWatch(pageId)
       })
 
       const service: PosAdminService = {

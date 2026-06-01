@@ -171,6 +171,7 @@ export type V3RevisionTree = {
   }
   attendance: {
     employees: V3RevisionValue
+    monthIndex: V3RevisionValue
     recordsByMonth: Record<V3MonthKey, V3RevisionValue>
   }
 }

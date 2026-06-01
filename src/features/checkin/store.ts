@@ -127,6 +127,7 @@ export const runtime = {
   pageEl: null as HTMLElement | null,
   rootEl: null as HTMLElement | null,
   clockTimer: null as ReturnType<typeof setInterval> | null,
+  stopAttendanceWatch: null as (() => void) | null,
   focusEmployeeSearch: false,
   isEmployeeSearchComposing: false,
   chartTooltipEl: null as HTMLElement | null,

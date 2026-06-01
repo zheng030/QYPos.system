@@ -401,7 +401,8 @@ export async function ensureData() {
     state.records = normalizeRecords(snapshot?.records || {})
   }
   applySnapshot()
-  bridge.attendance.watchWindow(monthKeys)
+  runtime.stopAttendanceWatch?.()
+  runtime.stopAttendanceWatch = bridge.attendance.watchWindow(monthKeys)
   bridge.attendance.subscribe(() => {
     applySnapshot()
     if (!state.loading) {
@@ -485,6 +486,22 @@ export function open() {
   const page = document.getElementById(CHECKIN_PAGE_ID)
   if (page) page.style.display = 'block'
   runtime.render()
+}
+
+export function watchAttendanceWindowScope(date = state.calendarDate) {
+  const monthKeys = getWindowMonthKeys(date)
+  runtime.stopAttendanceWatch?.()
+  runtime.stopAttendanceWatch = bridge.attendance?.watchWindow(monthKeys) || null
+}
+
+export function watchAttendanceFullHistoryScope() {
+  runtime.stopAttendanceWatch?.()
+  runtime.stopAttendanceWatch = bridge.attendance?.watchFullHistory() || null
+}
+
+export function stopAttendanceScopeWatch() {
+  runtime.stopAttendanceWatch?.()
+  runtime.stopAttendanceWatch = null
 }
 
 export function logout() {

@@ -24,10 +24,6 @@ import type {
 import { RTDB_V3_ROOT } from './rtdb-v3-types'
 
 export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext) {
-  function toRevisionValue(value: unknown) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : 0
-  }
-
   async function ensureHistoryBizDate(bizDate: V3BizDateKey) {
     if (ctx.historyDayCache.has(bizDate)) {
       return ctx.historyDayCache.get(bizDate) || {}
@@ -174,18 +170,12 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
     const stops = bizDateKeys.map((bizDate) => {
       const descriptor = createHistoryOrdersByDayDescriptor(bizDate)
-      return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-        ctx.revisionCache.set(descriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      return ctx.watchRevision(descriptor.revision.path, () => {
         ctx.historyDayCache.delete(bizDate)
         void refreshHistoryBizDate(bizDate).then(() => {
           onInvalidate({ kind: 'history-orders', changedBizDates: [bizDate] })
         })
-      }) as () => void
+      })
     })
     return () => {
       stops.forEach((stop) => {
@@ -207,18 +197,12 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
     const stops = bizDateKeys.map((bizDate) => {
       const descriptor = createDailySummaryDescriptor(bizDate)
-      return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-        ctx.revisionCache.set(descriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      return ctx.watchRevision(descriptor.revision.path, () => {
         ctx.dailySummaryDayCache.delete(bizDate)
         void refreshDailySummaryDay(bizDate).then(() => {
           onInvalidate({ kind: 'daily-summary', changedBizDates: [bizDate] })
         })
-      }) as () => void
+      })
     })
     return () => {
       stops.forEach((stop) => {
@@ -231,18 +215,12 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
     const stops = bizDateKeys.map((bizDate) => {
       const descriptor = createItemStatsDescriptor(bizDate)
-      return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-        ctx.revisionCache.set(descriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      return ctx.watchRevision(descriptor.revision.path, () => {
         ctx.itemStatsDayCache.delete(bizDate)
         void refreshItemStatsDay(bizDate).then(() => {
           onInvalidate({ kind: 'item-stats', changedBizDates: [bizDate] })
         })
-      }) as () => void
+      })
     })
     return () => {
       stops.forEach((stop) => {

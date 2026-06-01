@@ -9,9 +9,7 @@ import {
 } from './rtdb-v3-mapper'
 import {
   cloneCustomer,
-  decodeTableKey,
   encodeBatchMapKey,
-  encodeTableKey,
   type LiveMode,
   type RtdbV3RepositoryContext,
   readSplitCounter,
@@ -26,7 +24,6 @@ import {
   encodeLiveTableShardValue,
   encodeStoredTableSummaryField,
   getStoredTableSummaryFieldKey,
-  tableSummaryStorageCodec,
 } from './rtdb-v3-storage-codecs'
 import type { V3BizDateKey, V3LiveTable, V3TableSummary } from './rtdb-v3-types'
 import { RTDB_V3_ROOT } from './rtdb-v3-types'
@@ -196,7 +193,6 @@ export function createRtdbV3RepositoryLiveModule(
     const changedShards = new Set<LiveShard>()
     const forceShards = new Set(options?.forceShards || [])
     const normalizedNext: LiveShardPatch = {}
-    const encodedTable = encodeTableKey(table)
 
     function queueMapShard<K extends 'draft' | 'pendingBatches' | 'submittedBatches'>(shard: K) {
       const prevValue = normalizeShardValue(shard, previous[shard] as V3LiveTable[K] | null | undefined)
@@ -270,14 +266,8 @@ export function createRtdbV3RepositoryLiveModule(
           (prevValue as V3LiveTable['summary']) || null,
           (nextValue as V3LiveTable['summary']) || null
         )
-        const overviewChanged = queueSummaryObjectPatch(
-          payload,
-          `${RTDB_V3_ROOT}/live/tableSummaries/${encodedTable}`,
-          (prevValue as V3LiveTable['summary']) || null,
-          (nextValue as V3LiveTable['summary']) || null
-        )
 
-        if (!summaryChanged && !overviewChanged) {
+        if (!summaryChanged) {
           return
         }
 
@@ -918,12 +908,12 @@ export function createRtdbV3RepositoryLiveModule(
   async function startStaffLive() {
     if (ctx.staffLiveStarted) return
     ctx.staffLiveStarted = true
-    const summariesPath = `${RTDB_V3_ROOT}/live/tableSummaries`
-    const pendingSubscriptionLoads = new Map<string, Promise<void>>()
+    const shardSubscriptionLoads = new Map<string, Promise<void>>()
 
-    function subscribePendingShard(table: string) {
-      const key = `staff-pending-revision-${table}`
-      const existingLoad = pendingSubscriptionLoads.get(table)
+    function subscribeShard<K extends 'summary' | 'pendingBatches'>(table: string, shard: K, roots: string[]) {
+      const key = `staff-${shard}-revision-${table}`
+      const loadKey = `${table}:${shard}`
+      const existingLoad = shardSubscriptionLoads.get(loadKey)
       if (existingLoad) {
         return existingLoad
       }
@@ -933,98 +923,32 @@ export function createRtdbV3RepositoryLiveModule(
       const initialLoad = new Promise<void>((resolve) => {
         resolveInitial = resolve
       })
-      pendingSubscriptionLoads.set(table, initialLoad)
+      shardSubscriptionLoads.set(loadKey, initialLoad)
 
-      const descriptor = ctx.liveTableShardDescriptor(table, 'pendingBatches')
+      const descriptor = ctx.liveTableShardDescriptor(table, shard)
       ctx.setSubscription(
         key,
-        ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-          const revision =
-            typeof snapshot.val() === 'number' && Number.isFinite(snapshot.val()) ? Number(snapshot.val()) : 0
-          const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-          ctx.revisionCache.set(descriptor.revision.path, revision)
-          if (previousRevision === revision) {
-            if (!initialized) {
-              initialized = true
-              resolveInitial()
-            }
-            return
-          }
-          void ctx.readLiveTableShard(table, 'pendingBatches').then((value) => {
-            ctx.applyLiveTableShard(table, 'pendingBatches', value, ctx.currentTableSession?.mode)
-            ctx.notifyLiveStateChange(['pendingBatches'])
+        ctx.watchRevision(descriptor.revision.path, () => {
+          void ctx.readLiveTableShard(table, shard).then((value) => {
+            ctx.applyLiveTableShard(table, shard, value, ctx.currentTableSession?.mode)
+            ctx.notifyLiveStateChange(roots)
             if (!initialized) {
               initialized = true
               resolveInitial()
             }
           })
-        }) as () => void
+        })
       )
 
       return initialLoad
     }
 
-    function clearPendingShard(table: string) {
-      pendingSubscriptionLoads.delete(table)
-      ctx.clearSubscription(`staff-pending-revision-${table}`)
-      delete ctx.state.pendingBatchPreviews[table]
-      delete ctx.state.pendingBatches[table]
-      if (ctx.currentTableSession?.table === table && ctx.currentTableSession.mode === 'staff') {
-        ctx.state.activePendingBatches = []
-      }
-    }
-
-    ctx.setSubscription(
-      'staff-table-added',
-      ctx.db.ref(summariesPath).on('child_added', (child) => {
-        const tableId = child.key()
-        if (!tableId) return
-        const decodedTableId = decodeTableKey(tableId)
-        const summary = tableSummaryStorageCodec.decode(child.val() || null)
-        ctx.setCachedLiveTable(decodedTableId, {
-          ...ctx.getCachedLiveTable(decodedTableId),
-          summary,
-        })
-        ctx.applyTableSummary(decodedTableId, summary)
-        subscribePendingShard(decodedTableId)
-        ctx.notifyLiveStateChange(['tableSummaries'])
-      }) as () => void
+    await Promise.all(
+      ctx.tables.flatMap((table) => [
+        subscribeShard(table, 'summary', ['tableSummaries']),
+        subscribeShard(table, 'pendingBatches', ['pendingBatches']),
+      ])
     )
-    ctx.setSubscription(
-      'staff-table-changed',
-      ctx.db.ref(summariesPath).on('child_changed', (child) => {
-        const tableId = child.key()
-        if (!tableId) return
-        const decodedTableId = decodeTableKey(tableId)
-        const summary = tableSummaryStorageCodec.decode(child.val() || null)
-        ctx.setCachedLiveTable(decodedTableId, {
-          ...ctx.getCachedLiveTable(decodedTableId),
-          summary,
-        })
-        ctx.applyTableSummary(decodedTableId, summary)
-        subscribePendingShard(decodedTableId)
-        ctx.notifyLiveStateChange(['tableSummaries'])
-      }) as () => void
-    )
-    ctx.setSubscription(
-      'staff-table-removed',
-      ctx.db.ref(summariesPath).on('child_removed', (child) => {
-        const tableId = child.key()
-        if (!tableId) return
-        const decodedTableId = decodeTableKey(tableId)
-        ctx.setCachedLiveTable(decodedTableId, {
-          ...ctx.getCachedLiveTable(decodedTableId),
-          summary: null,
-        })
-        ctx.applyTableSummary(decodedTableId, null)
-        delete ctx.state.tableDrafts[decodedTableId]
-        delete ctx.state.submittedBatches[decodedTableId]
-        clearPendingShard(decodedTableId)
-        ctx.notifyLiveStateChange(['tableSummaries'])
-      }) as () => void
-    )
-
-    await Promise.all(ctx.tables.map((table) => subscribePendingShard(table)))
   }
 
   async function startTableLiveSession(mode: LiveMode, table: string) {
@@ -1041,19 +965,12 @@ export function createRtdbV3RepositoryLiveModule(
       apply: (value: V3LiveTable[K]) => void
     ) {
       const descriptor = ctx.liveTableShardDescriptor(table, shard)
-      return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-        const revision =
-          typeof snapshot.val() === 'number' && Number.isFinite(snapshot.val()) ? Number(snapshot.val()) : 0
-        const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-        ctx.revisionCache.set(descriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      return ctx.watchRevision(descriptor.revision.path, () => {
         void ctx.readLiveTableShard(table, shard).then((value) => {
           apply(value)
           ctx.notifyLiveStateChange(roots)
         })
-      }) as () => void
+      })
     }
 
     ctx.setSubscription(
@@ -1070,11 +987,9 @@ export function createRtdbV3RepositoryLiveModule(
     )
     ctx.setSubscription(
       `table-live-pending-${table}`,
-      mode === 'customer'
-        ? subscribeShardRevision('pendingBatches', ['pendingBatches'], (value) => {
-            ctx.applyLiveTableShard(table, 'pendingBatches', value, mode)
-          })
-        : undefined
+      subscribeShardRevision('pendingBatches', ['pendingBatches'], (value) => {
+        ctx.applyLiveTableShard(table, 'pendingBatches', value, mode)
+      })
     )
     ctx.setSubscription(
       `table-live-submitted-${table}`,

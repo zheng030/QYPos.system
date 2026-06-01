@@ -44,10 +44,7 @@ function expectSummaryPatchKeys(
   >
 ) {
   const baseKeys = ['v3/meta/revisions/live/tables/A1/summary']
-  const summaryKeys = fields.flatMap((field) => [
-    `v3/live/tables/A1/summary/${getStoredTableSummaryFieldKey(field)}`,
-    `v3/live/tableSummaries/A1/${getStoredTableSummaryFieldKey(field)}`,
-  ])
+  const summaryKeys = fields.map((field) => `v3/live/tables/A1/summary/${getStoredTableSummaryFieldKey(field)}`)
   expect(keys.sort()).toEqual([...baseKeys, ...summaryKeys].sort())
 }
 
@@ -319,7 +316,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(keys).toContain(`v3/live/tables/A1/draft/${entry.entryId}`)
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/draft')
     expectSummaryPatchKeys(
-      keys.filter((key) => key.includes('/summary') || key.includes('/tableSummaries/')),
+      keys.filter((key) => key.includes('/summary')),
       ['draftEntryCount', 'timerStartedAt', 'updatedAt']
     )
   })
@@ -448,7 +445,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/pendingBatches')
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/submittedBatches')
     expectSummaryPatchKeys(
-      keys.filter((key) => key.includes('/summary') || key.includes('/tableSummaries/')),
+      keys.filter((key) => key.includes('/summary')),
       ['submittedBatchCount', 'updatedAt']
     )
   })
@@ -520,7 +517,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(keys).toContain('v3/live/tables/A1/submittedBatches/submitted_1')
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/submittedBatches')
     expectSummaryPatchKeys(
-      keys.filter((key) => key.includes('/summary') || key.includes('/tableSummaries/')),
+      keys.filter((key) => key.includes('/summary')),
       ['submittedBatchCount', 'updatedAt']
     )
   })
@@ -1107,7 +1104,6 @@ describe('rtdb-v3 repository contract', () => {
     const update = lastRootUpdate(db)
     const fullRewriteBaseline = JSON.stringify({
       'v3/live/tables/A1': readAtPath(db.data, 'v3/live/tables/A1'),
-      'v3/live/tableSummaries/A1': readAtPath(db.data, 'v3/live/tableSummaries/A1'),
     }).length
     expect(update?.payloadSize || 0).toBeLessThan(fullRewriteBaseline)
   })
@@ -1244,7 +1240,6 @@ describe('rtdb-v3 repository contract', () => {
     const repository = createRtdbV3Repository({ db: db as never, state })
     const baseline = JSON.stringify({
       'v3/live/tables/A1': readAtPath(db.data, 'v3/live/tables/A1'),
-      'v3/live/tableSummaries/A1': readAtPath(db.data, 'v3/live/tableSummaries/A1'),
     }).length
 
     await repository.acceptPendingBatch('A1', 'pending_1')
@@ -1616,7 +1611,6 @@ describe('rtdb-v3 repository contract', () => {
     const actualWriteSize = db.updateCalls.slice(beforeUpdates).reduce((sum, call) => sum + call.payloadSize, 0)
     const baseline = JSON.stringify({
       'v3/live/tables/A1': readAtPath(db.data, 'v3/live/tables/A1'),
-      'v3/live/tableSummaries/A1': readAtPath(db.data, 'v3/live/tableSummaries/A1'),
       [`v3/history/ordersByMonth/${order.monthKey}/${order.bizDateKey}`]: readAtPath(
         db.data,
         `v3/history/ordersByMonth/${order.monthKey}/${order.bizDateKey}`
@@ -1702,26 +1696,6 @@ describe('rtdb-v3 repository contract', () => {
           sequenceByDate: {},
         },
         live: {
-          tableSummaries: {
-            A1: {
-              timerStartedAt: null,
-              displaySeqBase: 5,
-              draftEntryCount: 0,
-              pendingBatchCount: 0,
-              submittedBatchCount: 0,
-              customer: { name: '', phone: '' },
-              updatedAt: 1,
-            },
-            B1: {
-              timerStartedAt: null,
-              displaySeqBase: 6,
-              draftEntryCount: 0,
-              pendingBatchCount: 0,
-              submittedBatchCount: 0,
-              customer: { name: '', phone: '' },
-              updatedAt: 1,
-            },
-          },
           tables: {
             A1: {
               summary: {
@@ -1823,26 +1797,6 @@ describe('rtdb-v3 repository contract', () => {
           sequenceByDate: {},
         },
         live: {
-          tableSummaries: {
-            A1: {
-              timerStartedAt: null,
-              displaySeqBase: 5,
-              draftEntryCount: 0,
-              pendingBatchCount: 0,
-              submittedBatchCount: 0,
-              customer: { name: '', phone: '' },
-              updatedAt: 1,
-            },
-            B1: {
-              timerStartedAt: null,
-              displaySeqBase: 6,
-              draftEntryCount: 0,
-              pendingBatchCount: 0,
-              submittedBatchCount: 1,
-              customer: { name: '', phone: '' },
-              updatedAt: 1,
-            },
-          },
           tables: {
             A1: {
               summary: {

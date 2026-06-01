@@ -4,8 +4,8 @@ import { ATTENDANCE_SERVICE_KEY, type AttendanceService } from '@/shared/attenda
 import { CHECKIN_PAGE_SERVICE_KEY, type CheckinPageService } from '@/shared/checkin-page-service'
 
 import { init, openCheckinPage } from './handlers'
-import { bridge, initBridge, state } from './store'
-import { logout } from './utils'
+import { bridge, CHECKIN_PAGE_ID, initBridge, state } from './store'
+import { logout, stopAttendanceScopeWatch, watchAttendanceWindowScope } from './utils'
 
 export async function bootCheckinApp(context: AppContext) {
   const attendance = context.getService<AttendanceService>(ATTENDANCE_SERVICE_KEY)
@@ -19,6 +19,14 @@ export async function bootCheckinApp(context: AppContext) {
     await init({})
   }
 
+  appShell.subscribe((pageId) => {
+    if (pageId === CHECKIN_PAGE_ID) {
+      watchAttendanceWindowScope(state.calendarDate)
+      return
+    }
+    stopAttendanceScopeWatch()
+  })
+
   const service: CheckinPageService = {
     open: openCheckinPage,
   }
@@ -27,6 +35,7 @@ export async function bootCheckinApp(context: AppContext) {
 
   return {
     handleCheckinBack() {
+      stopAttendanceScopeWatch()
       logout()
       bridge.appShell?.showHome()
     },

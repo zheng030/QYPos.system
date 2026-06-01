@@ -55,6 +55,7 @@ export const RTDB_V3_RESOURCE_KEYS = {
   catalogPrices: 'catalog:prices',
   catalogCosts: 'catalog:costs',
   attendanceEmployees: 'attendance:employees',
+  attendanceMonthIndex: 'attendance:month-index',
   liveTableSummary: (table: string) => liveTableResourceKey(table, 'summary'),
   liveTableDraft: (table: string) => liveTableResourceKey(table, 'draft'),
   liveTablePending: (table: string) => liveTableResourceKey(table, 'pendingBatches'),
@@ -89,6 +90,12 @@ const staticDescriptors = [
     remotePath: 'attendance/employees',
     revision: { path: 'attendance/employees' },
     codec: createIdentityCodec<Record<string, AttendanceEmployee>>(),
+  }),
+  registerResourceDescriptor({
+    resourceKey: RTDB_V3_RESOURCE_KEYS.attendanceMonthIndex,
+    remotePath: 'attendance/monthIndex',
+    revision: { path: 'attendance/monthIndex' },
+    codec: createIdentityCodec<Record<string, true>>(),
   }),
 ] satisfies ResourceDescriptor<unknown, unknown>[]
 

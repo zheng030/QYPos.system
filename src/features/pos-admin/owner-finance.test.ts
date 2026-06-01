@@ -93,6 +93,7 @@ function createFinanceModule(overrides: Partial<Parameters<typeof createOwnerFin
     getItemPrices: () => ({}),
     listClosedOrdersByRange: async () => [],
     loadDailySummariesRange: async () => ({}),
+    watchClosedOrdersRange: () => () => {},
     watchDailySummariesRange: () => () => {},
     readDailySummariesRange: () => ({}),
     hideAll: () => {},

@@ -15,10 +15,6 @@ export function createRtdbV3RepositoryAttendanceModule(
   ctx: RtdbV3RepositoryContext,
   deps: { fetchAttendanceEmployees: () => Promise<void> }
 ) {
-  function toRevisionValue(value: unknown) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : 0
-  }
-
   function replaceAttendanceMonth(monthKey: V3MonthKey, records: AttendanceMonthMap) {
     const previous = ctx.attendanceMonthCache.get(monthKey) || {}
     for (const recordId of Object.keys(previous)) {
@@ -48,6 +44,25 @@ export function createRtdbV3RepositoryAttendanceModule(
       getStaticDescriptorOrThrow<Record<string, AttendanceEmployee>>(RTDB_V3_RESOURCE_KEYS.attendanceEmployees).revision
         .path
     )
+  }
+
+  async function ensureAttendanceMonthIndex() {
+    const descriptor = getStaticDescriptorOrThrow<Record<string, true>>(RTDB_V3_RESOURCE_KEYS.attendanceMonthIndex)
+    return await ctx.loadCacheFirstResource({
+      descriptor,
+      readRemote: async () => {
+        const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+        return { ...((snapshot.val() || {}) as Record<string, true>) }
+      },
+    })
+  }
+
+  async function refreshAttendanceMonthIndex() {
+    const descriptor = getStaticDescriptorOrThrow<Record<string, true>>(RTDB_V3_RESOURCE_KEYS.attendanceMonthIndex)
+    const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+    const value = { ...((snapshot.val() || {}) as Record<string, true>) }
+    await ctx.saveCachedResource(descriptor, ctx.revisionCache.get(descriptor.revision.path) || 0, value)
+    return value
   }
 
   async function ensureAttendanceMonth(monthKey: V3MonthKey) {
@@ -83,8 +98,8 @@ export function createRtdbV3RepositoryAttendanceModule(
 
   async function ensureAttendanceFullHistory() {
     await ensureAttendanceEmployees()
-    const revisionSnapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/attendance/recordsByMonth`).once('value')
-    const monthKeys = Object.keys((revisionSnapshot.val() || {}) as Record<string, unknown>) as V3MonthKey[]
+    const monthIndex = await ensureAttendanceMonthIndex()
+    const monthKeys = Object.keys(monthIndex) as V3MonthKey[]
     await Promise.all(monthKeys.map((monthKey) => ensureAttendanceMonth(monthKey)))
     ctx.activeAttendanceMonths = new Set(monthKeys)
     rebuildAttendanceState()
@@ -98,13 +113,7 @@ export function createRtdbV3RepositoryAttendanceModule(
       RTDB_V3_RESOURCE_KEYS.attendanceEmployees
     )
     const stops = [
-      ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${employeesDescriptor.revision.path}`).on('value', (snapshot) => {
-        const revision = toRevisionValue(snapshot.val())
-        const previousRevision = ctx.revisionCache.get(employeesDescriptor.revision.path)
-        ctx.revisionCache.set(employeesDescriptor.revision.path, revision)
-        if (previousRevision === revision) {
-          return
-        }
+      ctx.watchRevision(employeesDescriptor.revision.path, () => {
         void deps.fetchAttendanceEmployees().then(() => {
           ctx.attendanceEmployeesRev = ctx.revisionCache.get(employeesDescriptor.revision.path) || 0
           onInvalidate({
@@ -113,16 +122,10 @@ export function createRtdbV3RepositoryAttendanceModule(
             employeesChanged: true,
           })
         })
-      }) as () => void,
+      }),
       ...normalized.map((monthKey) => {
         const descriptor = createAttendanceMonthDescriptor(monthKey)
-        return ctx.db.ref(`${RTDB_V3_ROOT}/meta/revisions/${descriptor.revision.path}`).on('value', (snapshot) => {
-          const revision = toRevisionValue(snapshot.val())
-          const previousRevision = ctx.revisionCache.get(descriptor.revision.path)
-          ctx.revisionCache.set(descriptor.revision.path, revision)
-          if (previousRevision === revision) {
-            return
-          }
+        return ctx.watchRevision(descriptor.revision.path, () => {
           void refreshAttendanceMonth(monthKey).then(() => {
             rebuildAttendanceState()
             onInvalidate({
@@ -131,7 +134,7 @@ export function createRtdbV3RepositoryAttendanceModule(
               employeesChanged: false,
             })
           })
-        }) as () => void
+        })
       }),
     ]
     return () => {
@@ -141,11 +144,60 @@ export function createRtdbV3RepositoryAttendanceModule(
     }
   }
 
+  function watchAttendanceFullHistory(onInvalidate: (event: V3AttendanceWindowEvent) => void) {
+    let stopWindowWatch = () => {}
+    let stopMonthIndexWatch = () => {}
+    let activeMonthKeys = [] as V3MonthKey[]
+
+    const syncWindowWatch = (monthKeys: V3MonthKey[]) => {
+      const nextKeys = [...new Set(monthKeys)].sort()
+      const currentKeys = [...activeMonthKeys].sort()
+      if (JSON.stringify(nextKeys) === JSON.stringify(currentKeys)) {
+        return
+      }
+      activeMonthKeys = nextKeys
+      stopWindowWatch()
+      stopWindowWatch = watchAttendanceWindow(nextKeys, onInvalidate)
+    }
+
+    void ensureAttendanceMonthIndex().then((monthIndex) => {
+      syncWindowWatch(Object.keys(monthIndex) as V3MonthKey[])
+    })
+
+    const monthIndexDescriptor = getStaticDescriptorOrThrow<Record<string, true>>(
+      RTDB_V3_RESOURCE_KEYS.attendanceMonthIndex
+    )
+    stopMonthIndexWatch = ctx.watchRevision(monthIndexDescriptor.revision.path, () => {
+      void refreshAttendanceMonthIndex().then((monthIndex) => {
+        const monthKeys = Object.keys(monthIndex) as V3MonthKey[]
+        void Promise.all(monthKeys.map((monthKey) => ensureAttendanceMonth(monthKey))).then(() => {
+          ctx.activeAttendanceMonths = new Set(monthKeys)
+          rebuildAttendanceState()
+          syncWindowWatch(monthKeys)
+          onInvalidate({
+            kind: 'attendance-window',
+            changedMonthKeys: monthKeys,
+            employeesChanged: false,
+          })
+        })
+      })
+    })
+
+    return () => {
+      stopMonthIndexWatch()
+      stopWindowWatch()
+    }
+  }
+
   async function saveAttendanceUpdates(updates: Record<string, unknown>) {
     const payload: Record<string, unknown> = {}
     const employeeUpdates = new Map<string, AttendanceEmployee | null>()
     const monthUpdates = new Map<V3MonthKey, AttendanceMonthMap>()
     const touchedMonths = new Set<V3MonthKey>()
+    const monthIndexDescriptor = getStaticDescriptorOrThrow<Record<string, true>>(
+      RTDB_V3_RESOURCE_KEYS.attendanceMonthIndex
+    )
+    const monthIndexUpdates = new Map<V3MonthKey, true | null>()
     let touchedEmployees = false
     const employeesDescriptor = getStaticDescriptorOrThrow<Record<string, AttendanceEmployee>>(
       RTDB_V3_RESOURCE_KEYS.attendanceEmployees
@@ -193,7 +245,16 @@ export function createRtdbV3RepositoryAttendanceModule(
       newMonthRecords[key] = record
       monthUpdates.set(newMonthKey, newMonthRecords)
       touchedMonths.add(newMonthKey)
+      monthIndexUpdates.set(newMonthKey, true)
     }
+
+    monthUpdates.forEach((records, monthKey) => {
+      if (Object.keys(records).length === 0) {
+        monthIndexUpdates.set(monthKey, null)
+      } else {
+        monthIndexUpdates.set(monthKey, true)
+      }
+    })
 
     if (touchedEmployees) {
       ctx.touchRevision('attendance/employees', payload)
@@ -201,6 +262,12 @@ export function createRtdbV3RepositoryAttendanceModule(
     touchedMonths.forEach((monthKey) => {
       ctx.touchRevision(`attendance/recordsByMonth/${monthKey}`, payload)
     })
+    if (monthIndexUpdates.size > 0) {
+      monthIndexUpdates.forEach((value, monthKey) => {
+        payload[`${RTDB_V3_ROOT}/${monthIndexDescriptor.remotePath}/${monthKey}`] = value
+      })
+      ctx.touchRevision(monthIndexDescriptor.revision.path, payload)
+    }
     await ctx.updateRoot(payload)
 
     employeeUpdates.forEach((employee, key) => {
@@ -226,12 +293,28 @@ export function createRtdbV3RepositoryAttendanceModule(
         )
       })
     )
+    if (monthIndexUpdates.size > 0) {
+      const currentMonthIndex = await ensureAttendanceMonthIndex()
+      monthIndexUpdates.forEach((value, monthKey) => {
+        if (value) {
+          currentMonthIndex[monthKey] = true
+        } else {
+          delete currentMonthIndex[monthKey]
+        }
+      })
+      await ctx.saveCachedResource(
+        monthIndexDescriptor,
+        ctx.revisionCache.get(monthIndexDescriptor.revision.path) || 0,
+        currentMonthIndex
+      )
+    }
     rebuildAttendanceState()
   }
 
   return {
     ensureAttendanceFullHistory,
     ensureAttendanceWindow,
+    watchAttendanceFullHistory,
     watchAttendanceWindow,
     saveAttendanceUpdates,
   }

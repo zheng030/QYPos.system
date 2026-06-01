@@ -13,9 +13,12 @@ import {
   logout,
   makePasswordRecord,
   open,
+  stopAttendanceScopeWatch,
   toDate,
   verifyPassword,
   verifyPasswordChangeCurrent,
+  watchAttendanceFullHistoryScope,
+  watchAttendanceWindowScope,
   wrapHideAll,
 } from './utils'
 
@@ -216,6 +219,7 @@ function handleRootClick(event: MouseEvent) {
     return void setState({ loginEmployeeId: actionEl.dataset.id, loginError: '' })
   if (action === 'login-back') return void setState({ loginEmployeeId: null, loginError: '' })
   if (action === 'checkin-back') {
+    stopAttendanceScopeWatch()
     logout()
     bridge.appShell?.showHome()
     return
@@ -223,10 +227,12 @@ function handleRootClick(event: MouseEvent) {
   if (action === 'nav' && actionEl.dataset.view) {
     if (actionEl.dataset.view === 'reports') {
       void bridge.attendance?.ensureFullHistory().then(() => {
+        watchAttendanceFullHistoryScope()
         setState({ currentView: actionEl.dataset.view || 'clock' })
       })
       return
     }
+    watchAttendanceWindowScope(state.calendarDate)
     return void setState({ currentView: actionEl.dataset.view })
   }
   if (action === 'logout') return void logout()
@@ -237,14 +243,14 @@ function handleRootClick(event: MouseEvent) {
     const date = new Date(state.calendarDate)
     date.setMonth(date.getMonth() - 1)
     void bridge.attendance?.ensureWindow(getWindowMonthKeys(date))
-    bridge.attendance?.watchWindow(getWindowMonthKeys(date))
+    watchAttendanceWindowScope(date)
     return void setState({ calendarDate: date })
   }
   if (action === 'calendar-next') {
     const date = new Date(state.calendarDate)
     date.setMonth(date.getMonth() + 1)
     void bridge.attendance?.ensureWindow(getWindowMonthKeys(date))
-    bridge.attendance?.watchWindow(getWindowMonthKeys(date))
+    watchAttendanceWindowScope(date)
     return void setState({ calendarDate: date })
   }
   if (action === 'open-add-employee') return void setState({ modal: { type: 'addEmployee' } })

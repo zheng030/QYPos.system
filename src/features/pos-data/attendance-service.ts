@@ -4,6 +4,7 @@ type AttendanceServiceDeps = {
   ensureWindow: (monthKeys: string[]) => Promise<void>
   ensureFullHistory: () => Promise<void>
   watchWindow: (monthKeys: string[], onChange: () => void) => () => void
+  watchFullHistory: (onChange: () => void) => () => void
   save: (updates: Record<string, unknown>) => Promise<void>
   getEmployees: () => Record<string, unknown>
   getRecords: () => Record<string, unknown>
@@ -11,7 +12,7 @@ type AttendanceServiceDeps = {
 
 export function createAttendanceService(deps: AttendanceServiceDeps): AttendanceService {
   const listeners = new Set<(snapshot: AttendanceSnapshot) => void>()
-  let stopWatchingWindow: (() => void) | null = null
+  let stopWatchingScope: (() => void) | null = null
 
   function getSnapshot(): AttendanceSnapshot {
     return {
@@ -37,11 +38,19 @@ export function createAttendanceService(deps: AttendanceServiceDeps): Attendance
       emit()
     },
     watchWindow(monthKeys) {
-      stopWatchingWindow?.()
-      stopWatchingWindow = deps.watchWindow(monthKeys, emit)
+      stopWatchingScope?.()
+      stopWatchingScope = deps.watchWindow(monthKeys, emit)
       return () => {
-        stopWatchingWindow?.()
-        stopWatchingWindow = null
+        stopWatchingScope?.()
+        stopWatchingScope = null
+      }
+    },
+    watchFullHistory() {
+      stopWatchingScope?.()
+      stopWatchingScope = deps.watchFullHistory(emit)
+      return () => {
+        stopWatchingScope?.()
+        stopWatchingScope = null
       }
     },
     getSnapshot,

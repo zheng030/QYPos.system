@@ -220,6 +220,26 @@ export function createRtdbV3RepositoryContext({
         ctx.unsubs.set(key, unsubscribe)
       }
     },
+    watchRevision(path: string, onChange: (revision: number) => void) {
+      let lastSeen: number | null = null
+      return db.ref(`${RTDB_V3_ROOT}/meta/revisions/${path}`).on('value', (snapshot) => {
+        const revision = toRevValue(snapshot.val())
+        const cached = ctx.revisionCache.get(path)
+        ctx.revisionCache.set(path, revision)
+        if (lastSeen === null) {
+          lastSeen = revision
+          if (cached === undefined || cached !== revision) {
+            onChange(revision)
+          }
+          return
+        }
+        if (lastSeen === revision) {
+          return
+        }
+        lastSeen = revision
+        onChange(revision)
+      }) as () => void
+    },
     touchRevision(path: string, payload: Record<string, unknown>) {
       payload[`${RTDB_V3_ROOT}/meta/revisions/${path}`] = Date.now()
     },
@@ -403,10 +423,8 @@ export function createRtdbV3RepositoryContext({
       })
     },
     functionReadPendingBatchDetail: async (table: string, batchId: string): Promise<PosOrderBatch | null> => {
-      const snapshot = await db
-        .ref(`${ctx.liveTableShardPath(table, 'pendingBatches')}/${encodeBatchMapKey(batchId)}`)
-        .once('value')
-      const raw = snapshot.val()
+      const pendingBatches = await ctx.readLiveTableShard(table, 'pendingBatches')
+      const raw = pendingBatches[encodeBatchMapKey(batchId)]
       if (!raw) {
         return null
       }

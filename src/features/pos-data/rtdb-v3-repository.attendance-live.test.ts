@@ -94,6 +94,7 @@ describe('rtdb-v3-repository', () => {
         meta: {
           revisions: {
             attendance: {
+              monthIndex: 1,
               recordsByMonth: {
                 '2026-04': 1,
                 '2026-05': 1,
@@ -103,6 +104,10 @@ describe('rtdb-v3-repository', () => {
         },
         attendance: {
           employees: {},
+          monthIndex: {
+            '2026-04': true,
+            '2026-05': true,
+          },
           recordsByMonth: {
             '2026-04': {
               rec_1: {
@@ -582,7 +587,7 @@ describe('rtdb-v3-repository', () => {
           costs: {},
         },
         live: {
-          tableSummaries: {},
+          tables: {},
         },
       },
     })
@@ -600,13 +605,11 @@ describe('rtdb-v3-repository', () => {
     expect(
       db.onCalls.filter(
         ({ path, eventName }) =>
-          (path === 'v3/live/tableSummaries' &&
-            ['child_added', 'child_changed', 'child_removed'].includes(eventName)) ||
-          (path.startsWith('v3/meta/revisions/live/tables/') &&
-            path.endsWith('/pendingBatches') &&
-            eventName === 'value')
+          path.startsWith('v3/meta/revisions/live/tables/') &&
+          (path.endsWith('/pendingBatches') || path.endsWith('/summary')) &&
+          eventName === 'value'
       )
-    ).toHaveLength(5)
+    ).toHaveLength(4)
   })
 
   it('seeds staff live preview batches from canonical pending shard subscriptions', async () => {
@@ -666,19 +669,17 @@ describe('rtdb-v3-repository', () => {
           costs: {},
         },
         live: {
-          tableSummaries: {
-            A1: {
-              timerStartedAt: 1,
-              displaySeqBase: 8,
-              draftEntryCount: 0,
-              pendingBatchCount: 1,
-              submittedBatchCount: 0,
-              customer: { name: 'A', phone: '' },
-              updatedAt: 1,
-            },
-          },
           tables: {
             A1: {
+              summary: {
+                timerStartedAt: 1,
+                displaySeqBase: 8,
+                draftEntryCount: 0,
+                pendingBatchCount: 1,
+                submittedBatchCount: 0,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
               pendingBatches: encodedPendingBatches,
             },
           },
@@ -700,20 +701,33 @@ describe('rtdb-v3-repository', () => {
   it('keeps local split counter when staff summary mirror update omits counter fields', async () => {
     const db = createDbStub({
       v3: {
+        meta: {
+          revisions: {
+            live: {
+              tables: {
+                A1: {
+                  summary: 1,
+                },
+              },
+            },
+          },
+        },
         catalog: {
           inventory: {},
           prices: {},
           costs: {},
         },
         live: {
-          tableSummaries: {
+          tables: {
             A1: {
-              status: 'yellow',
-              timerStartedAt: 1,
-              displaySeqBase: 8,
-              batchCount: 1,
-              customer: { name: 'A', phone: '' },
-              updatedAt: 1,
+              summary: {
+                status: 'yellow',
+                timerStartedAt: 1,
+                displaySeqBase: 8,
+                batchCount: 1,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
             },
           },
         },
@@ -724,19 +738,7 @@ describe('rtdb-v3-repository', () => {
     const repository = createRtdbV3Repository({ db: db as never, state, tables: ['A1'] })
 
     await repository.startStaffLive()
-    db.emit(
-      'v3/live/tableSummaries',
-      'child_changed',
-      {
-        status: 'yellow',
-        timerStartedAt: 2,
-        displaySeqBase: 8,
-        batchCount: 2,
-        customer: { name: 'A', phone: '' },
-        updatedAt: 2,
-      },
-      'A1'
-    )
+    db.emit('v3/meta/revisions/live/tables/A1/summary', 'value', 2)
 
     expect(state.tableSplitCounters.A1).toBe(7)
   })
@@ -776,7 +778,8 @@ describe('rtdb-v3-repository', () => {
 
     const batch = await repository.readPendingBatchDetail('A1', 'pending_1')
 
-    expect(db.onceCalls).toContain('v3/live/tables/A1/pendingBatches/pending_1')
+    expect(db.onceCalls).toContain('v3/live/tables/A1/pendingBatches')
+    expect(db.onceCalls).not.toContain('v3/live/tables/A1/pendingBatches/pending_1')
     expect(batch).toMatchObject({
       batchId: 'pending_1',
       requestSeq: 1,

@@ -1,4 +1,4 @@
-import type { V3DailySummary, V3DailySummaryRangeEvent } from '@/features/pos-data/rtdb-v3-types'
+import type { V3DailySummary, V3DailySummaryRangeEvent, V3HistoryRangeEvent } from '@/features/pos-data/rtdb-v3-types'
 import type {
   PosCategoryKey,
   PosFinanceMode,
@@ -40,6 +40,11 @@ type FinanceConsoleDeps = {
     start: Date,
     endExclusive: Date,
     listener: (event: V3DailySummaryRangeEvent) => void
+  ) => () => void
+  watchClosedOrdersRange: (
+    start: Date,
+    endExclusive: Date,
+    listener: (event: V3HistoryRangeEvent) => void
   ) => () => void
   readDailySummariesRange: (start: Date, endExclusive: Date) => Record<string, V3DailySummary>
   hideAll: () => void
@@ -199,8 +204,10 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
   let dailyFinancialData: Record<string, DailyFinanceEntry> = {}
   let revenueDetails: PosRevenueDetails = buildRevenueDetails()
   let activeFinanceRange: { start: Date; end: Date; titleText: string } | null = null
+  let activeDetailedOrdersBizDateKey: string | null = null
   let stopFinanceSummaryWatch: (() => void) | null = null
   let stopFinanceCalendarWatch: (() => void) | null = null
+  let stopDetailedOrdersWatch: (() => void) | null = null
   let historyViewDate = toBusinessDate(new Date())
 
   function resetFinanceWatch() {
@@ -213,9 +220,15 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
     stopFinanceCalendarWatch = null
   }
 
+  function resetDetailedOrdersWatch() {
+    stopDetailedOrdersWatch?.()
+    stopDetailedOrdersWatch = null
+  }
+
   function stopAllWatches() {
     resetFinanceWatch()
     resetFinanceCalendarWatch()
+    resetDetailedOrdersWatch()
   }
 
   function setFinanceRangeControls(range: PosReportRange | string) {
@@ -249,6 +262,10 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
       setDisplay('costInputSection', 'block')
       setDisplay('financeCalendarSection', 'none')
       setText('confidentialTitle', '成本輸入')
+      activeDetailedOrdersBizDateKey = null
+      resetFinanceWatch()
+      resetFinanceCalendarWatch()
+      resetDetailedOrdersWatch()
       updateFinancialPage()
       return
     }
@@ -256,6 +273,8 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
     setDisplay('costInputSection', 'none')
     setDisplay('financeCalendarSection', 'block')
     setText('confidentialTitle', '財務與詳細訂單')
+    activeDetailedOrdersBizDateKey = null
+    resetDetailedOrdersWatch()
     historyViewDate = toBusinessDate(new Date())
     await renderConfidentialCalendar()
   }
@@ -386,6 +405,7 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
     const { start, endExclusive: end } = getBusinessMonthRange(historyViewDate)
     activeFinanceRange = { start, end, titleText: '🏠 全店總計 (本月)' }
     resetFinanceWatch()
+    resetFinanceCalendarWatch()
     await deps.loadDailySummariesRange(start, end)
 
     const render = () => {
@@ -567,6 +587,8 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
   async function showDetailedOrders(bizDateKey: string) {
     const normalizedBizDateKey = parseBusinessDateKey(bizDateKey)
     const { start, endExclusive } = getBusinessDayRangeFromKey(normalizedBizDateKey)
+    activeDetailedOrdersBizDateKey = normalizedBizDateKey
+    resetDetailedOrdersWatch()
     const targetOrders = [...(await deps.listClosedOrdersByRange(start, endExclusive))].reverse()
     setDisplay('financeOrderListSection', 'block')
     setText('financeSelectedDateTitle', `📅 ${formatBusinessDateLabel(normalizedBizDateKey)} 詳細訂單`)
@@ -592,6 +614,12 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
       })
       .join('')
     setHtml('financeOrderBox', rows)
+    stopDetailedOrdersWatch = deps.watchClosedOrdersRange(start, endExclusive, () => {
+      if (activeDetailedOrdersBizDateKey !== normalizedBizDateKey) {
+        return
+      }
+      void showDetailedOrders(normalizedBizDateKey)
+    })
   }
 
   return {

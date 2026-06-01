@@ -101,6 +101,11 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
             onChange()
           })
         },
+        watchFullHistory: (onChange) => {
+          return repository.watchAttendanceFullHistory(() => {
+            onChange()
+          })
+        },
         save: async (updates) => {
           await repository.saveAttendanceUpdates(updates)
         },
