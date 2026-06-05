@@ -50,6 +50,7 @@ type PersistCustomerInfoSilentlyParams = {
   entries: PosOrderEntry[]
   customer: PosTableCustomer
   saveCustomerDraft: (table: string, entries: PosOrderEntry[], customer: PosTableCustomer) => Promise<unknown>
+  updateTableCustomer: (table: string, customer: PosTableCustomer) => Promise<unknown>
 }
 
 type SubmitDraftBatchParams = {
@@ -554,13 +555,19 @@ export async function persistCustomerInfoSilently({
   entries,
   customer,
   saveCustomerDraft,
+  updateTableCustomer,
 }: PersistCustomerInfoSilentlyParams) {
   if (mode !== 'customer') {
-    return false
+    await updateTableCustomer(table, customer)
+    return true
   }
 
   await saveCustomerDraft(table, entries, customer)
   return true
+}
+
+export function getCustomerBoxDisplay(mode: PosOrderMode) {
+  return mode === 'customer' || mode === 'staff' ? 'flex' : 'none'
 }
 
 export async function submitDraftBatch({

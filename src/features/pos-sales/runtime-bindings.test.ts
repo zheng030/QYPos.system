@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppContext } from '@/app/app-context'
 import type { PosUiService } from '@/features/pos-shell/service'
@@ -113,6 +113,10 @@ function createDeps() {
 }
 
 describe('pos-sales runtime-bindings', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('re-renders menu category chips and grid when switching categories', () => {
     const { deps, handlers } = createDeps()
 
@@ -132,5 +136,32 @@ describe('pos-sales runtime-bindings', () => {
     expect(deps.kernel.state.menuFilter.activeCategoryKey).toBe('grill')
     expect(deps.renderMenuCategoryChips).toHaveBeenCalledTimes(1)
     expect(deps.renderMenuGrid).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps builder text inputs focused by not re-rendering on each character', () => {
+    const { deps, handlers } = createDeps()
+    const nextBuilder = { itemId: 'drink.black-tea' }
+    class TestInput {
+      dataset: Record<string, string> = {}
+      value = ''
+    }
+    vi.stubGlobal('HTMLInputElement', TestInput)
+    deps.updateBuilderSelection.mockReturnValue(nextBuilder)
+    deps.kernel.state.currentBuilder = { itemId: 'drink.black-tea' } as never
+
+    registerPosSalesBindings(deps)
+
+    const handler = handlers.get('input:builder-select-main')
+    expect(handler).toBeTypeOf('function')
+
+    const input = new TestInput()
+    input.dataset.ruleId = 'note'
+    input.value = '少冰'
+
+    handler?.({ target: input } as unknown as Event, input as unknown as HTMLElement)
+
+    expect(deps.updateBuilderSelection).toHaveBeenCalledWith({ itemId: 'drink.black-tea' }, 'main', 'note', '少冰')
+    expect(deps.kernel.state.currentBuilder).toBe(nextBuilder)
+    expect(deps.renderBuilder).not.toHaveBeenCalled()
   })
 })

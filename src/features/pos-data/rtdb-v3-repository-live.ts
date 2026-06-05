@@ -358,6 +358,40 @@ export function createRtdbV3RepositoryLiveModule(
     return { displaySeqBase }
   }
 
+  async function updateTableCustomer(table: string, customerInput: PosTableCustomer) {
+    const displaySeqBase = await ctx.ensureDisplaySeqBase(table, customerInput)
+    const customer = cloneCustomer(customerInput)
+    customer.orderId = displaySeqBase
+    ctx.state.tableCustomers[table] = customer
+    const summary = await readShard(table, 'summary')
+    const updatedAt = Date.now()
+    const nextSummary = buildTableSummary({
+      timerStartedAt: getCurrentTimer(table, summary, updatedAt),
+      draftEntryCount: summary?.draftEntryCount || 0,
+      pendingBatchCount: summary?.pendingBatchCount || 0,
+      submittedBatchCount: summary?.submittedBatchCount || 0,
+      nextRequestSeq: ctx.readNextRequestSeq({
+        summary,
+        draft: {},
+        pendingBatches: {},
+        submittedBatches: {},
+      }),
+      nextSplitCounter: readSplitCounter(summary?.nextSplitCounter),
+      customer,
+      updatedAt,
+    })
+    await commitLivePatch(
+      table,
+      {
+        summary,
+      },
+      {
+        summary: nextSummary,
+      }
+    )
+    return { displaySeqBase }
+  }
+
   async function discardCustomerDraft(table: string) {
     const [summary, draft, pendingBatches, submittedBatches] = await Promise.all([
       readShard(table, 'summary'),
@@ -999,6 +1033,7 @@ export function createRtdbV3RepositoryLiveModule(
   return {
     readPendingBatchDetail,
     saveCustomerDraft,
+    updateTableCustomer,
     discardCustomerDraft,
     submitCustomerDraft,
     acceptPendingBatch,

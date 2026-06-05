@@ -10,6 +10,7 @@ import {
   calculateSplitCheckoutTotal,
   calculateStaffOrderTotal,
   getBuilderGroupSelector,
+  getCustomerBoxDisplay,
   getEntryAdjustedAmountDisplay,
   getEntryDisplaySummary,
   getFloatingBarViewModel,
@@ -439,8 +440,9 @@ describe('pos-sales runtime-support', () => {
     expect(guideBuilderIssue({ querySelector }, 'missing-group')).toBe(false)
   })
 
-  it('persists customer info silently only in customer mode', async () => {
+  it('persists customer info silently in customer and staff mode through mode-specific writes', async () => {
     const saveCustomerDraft = vi.fn(async () => ({ displaySeqBase: 12 }))
+    const updateTableCustomer = vi.fn(async () => ({ displaySeqBase: 12 }))
 
     await expect(
       persistCustomerInfoSilently({
@@ -449,8 +451,9 @@ describe('pos-sales runtime-support', () => {
         entries: [createEntry()],
         customer: { name: '王小明' },
         saveCustomerDraft,
+        updateTableCustomer,
       })
-    ).resolves.toBe(false)
+    ).resolves.toBe(true)
 
     await expect(
       persistCustomerInfoSilently({
@@ -459,10 +462,18 @@ describe('pos-sales runtime-support', () => {
         entries: [createEntry()],
         customer: { name: '王小明' },
         saveCustomerDraft,
+        updateTableCustomer,
       })
     ).resolves.toBe(true)
 
     expect(saveCustomerDraft).toHaveBeenCalledTimes(1)
+    expect(updateTableCustomer).toHaveBeenCalledTimes(1)
+    expect(updateTableCustomer).toHaveBeenCalledWith('A1', { name: '王小明' })
+  })
+
+  it('shows the customer info input box for both customer and staff table sessions', () => {
+    expect(getCustomerBoxDisplay('customer')).toBe('flex')
+    expect(getCustomerBoxDisplay('staff')).toBe('flex')
   })
 
   it('submits customer drafts without printing and prints staff-created batches immediately', async () => {

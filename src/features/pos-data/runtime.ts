@@ -174,6 +174,12 @@ export function createPosDataFeature(context: AppContext): FeatureRuntime {
           await uiBridge.refreshUiAfterDataChange()
           return result
         },
+        async updateTableCustomer(table, customer) {
+          const result = await repository.updateTableCustomer(table, customer)
+          emitDataChange(['tableCustomers'])
+          await uiBridge.refreshUiAfterDataChange()
+          return result
+        },
         async submitCustomerDraft(table, entries, customer) {
           const batch = await repository.submitCustomerDraft(table, entries, customer)
           emitDataChange(['tableDrafts', 'pendingBatches'])

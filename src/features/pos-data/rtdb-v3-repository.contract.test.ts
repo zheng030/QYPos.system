@@ -321,6 +321,63 @@ describe('rtdb-v3 repository contract', () => {
     )
   })
 
+  it('updateTableCustomer writes only the summary customer fields', async () => {
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            live: {
+              tables: {
+                A1: {
+                  summary: 1,
+                  draft: 1,
+                  pendingBatches: 1,
+                  submittedBatches: 1,
+                },
+              },
+            },
+          },
+        },
+        history: {
+          sequenceByDate: {},
+        },
+        live: {
+          tables: {
+            A1: {
+              summary: {
+                status: null,
+                timerStartedAt: 1,
+                displaySeqBase: 5,
+                draftEntryCount: 1,
+                pendingBatchCount: 0,
+                submittedBatchCount: 1,
+                customer: { name: 'A', phone: '' },
+                updatedAt: 1,
+              },
+              draft: {},
+              pendingBatches: {},
+              submittedBatches: {},
+            },
+          },
+        },
+      },
+    })
+    const state = createState()
+    state.tableCustomers.A1 = { name: 'A', phone: '', orderId: 5 }
+    const repository = createRtdbV3Repository({ db: db as never, state })
+
+    await repository.updateTableCustomer('A1', { name: 'B', phone: '0912', orderId: 5 })
+
+    const keys = lastRootUpdateKeys(db)
+    expectSummaryPatchKeys(
+      keys.filter((key) => key.includes('/summary')),
+      ['customer', 'updatedAt']
+    )
+    expect(keys.some((key) => key.includes('/draft'))).toBe(false)
+    expect(keys.some((key) => key.includes('/pendingBatches'))).toBe(false)
+    expect(keys.some((key) => key.includes('/submittedBatches'))).toBe(false)
+  })
+
   it('saveCustomerDraft strips undefined fields from encoded draft payloads', async () => {
     const entry = createEntry()
     const db = createDbStub({

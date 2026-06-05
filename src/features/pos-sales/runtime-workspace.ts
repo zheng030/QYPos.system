@@ -3,6 +3,7 @@ import type { PosKernelService } from '@/features/pos-kernel/service'
 import type { PosMenuCategoryKey, PosOrderEntry } from '@/features/pos-kernel/types'
 import type { PosUiService } from '@/features/pos-shell/service'
 import {
+  getCustomerBoxDisplay,
   getEntryAdjustedAmountDisplay,
   getFloatingBarViewModel,
   getStaffWorkspaceRowActions,
@@ -315,7 +316,7 @@ export function createPosSalesWorkspaceModule({
   function setCustomerBoxVisibility() {
     const box = document.getElementById('orderCustomerBox')
     if (!box) return
-    box.style.display = kernel.state.currentMode === 'customer' ? 'flex' : 'none'
+    box.style.display = getCustomerBoxDisplay(kernel.state.currentMode)
   }
 
   function setCustomerMode(mode: 'staff' | 'customer') {

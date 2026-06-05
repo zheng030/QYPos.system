@@ -282,7 +282,6 @@ export function registerPosSalesBindings({
       ruleId,
       event.target.value
     )
-    renderBuilder()
   })
   ui.on('click', 'builder-select-upgrade', (_event, element) => {
     const groupId = element.dataset.groupId
@@ -317,7 +316,6 @@ export function registerPosSalesBindings({
       event.target.value,
       ruleId
     )
-    renderBuilder()
   })
   ui.on('click', 'builder-confirm', () => {
     void commitBuilder()

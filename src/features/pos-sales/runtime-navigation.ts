@@ -79,6 +79,7 @@ export function createPosSalesNavigationModule({
       entries: currentDraftEntries(),
       customer: readCustomerInfo(),
       saveCustomerDraft: data.saveCustomerDraft,
+      updateTableCustomer: data.updateTableCustomer,
     })
   }
 
