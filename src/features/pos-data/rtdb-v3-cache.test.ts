@@ -613,9 +613,6 @@ describe('rtdb-v3-cache', () => {
     const summary = {
       timerStartedAt: 1,
       displaySeqBase: 12,
-      draftEntryCount: 1,
-      pendingBatchCount: 2,
-      submittedBatchCount: 2,
       nextRequestSeq: 9,
       nextSplitCounter: 4,
       customer: { name: 'A', phone: '0912' },

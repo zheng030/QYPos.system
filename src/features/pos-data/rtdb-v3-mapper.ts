@@ -223,9 +223,6 @@ export function buildLiveTable(params: {
   pendingBatches?: PosOrderBatch[]
   submittedBatches?: PosOrderBatch[]
   timerStartedAt?: number
-  draftEntryCount?: number
-  pendingBatchCount?: number
-  submittedBatchCount?: number
   nextRequestSeq?: number
   nextSplitCounter?: number
   customer?: PosTableCustomer
@@ -236,9 +233,6 @@ export function buildLiveTable(params: {
     pendingBatches = [],
     submittedBatches = [],
     timerStartedAt,
-    draftEntryCount = draft.length,
-    pendingBatchCount = pendingBatches.length,
-    submittedBatchCount = submittedBatches.length,
     nextRequestSeq,
     nextSplitCounter,
     customer,
@@ -246,18 +240,9 @@ export function buildLiveTable(params: {
   } = params
 
   const summary =
-    draft.length > 0 ||
-    pendingBatches.length > 0 ||
-    submittedBatches.length > 0 ||
-    timerStartedAt ||
-    customer ||
-    nextRequestSeq ||
-    nextSplitCounter
+    timerStartedAt || customer || nextRequestSeq || nextSplitCounter
       ? buildTableSummary({
           timerStartedAt,
-          draftEntryCount,
-          pendingBatchCount,
-          submittedBatchCount,
           nextRequestSeq,
           nextSplitCounter,
           customer,
@@ -279,24 +264,12 @@ export function buildLiveTable(params: {
 
 export function buildTableSummary(params: {
   timerStartedAt?: number
-  draftEntryCount?: number
-  pendingBatchCount?: number
-  submittedBatchCount?: number
   nextRequestSeq?: number
   nextSplitCounter?: number
   customer?: PosTableCustomer
   updatedAt?: number
 }) {
-  const {
-    timerStartedAt,
-    draftEntryCount = 0,
-    pendingBatchCount = 0,
-    submittedBatchCount = 0,
-    nextRequestSeq,
-    nextSplitCounter,
-    customer,
-    updatedAt = Date.now(),
-  } = params
+  const { timerStartedAt, nextRequestSeq, nextSplitCounter, customer, updatedAt = Date.now() } = params
   const orderId = customer?.orderId
   const displaySeqBase =
     typeof orderId === 'number' ? orderId : typeof orderId === 'string' ? parseInt(orderId, 10) || null : null
@@ -304,9 +277,6 @@ export function buildTableSummary(params: {
   return {
     timerStartedAt: timerStartedAt ?? null,
     displaySeqBase,
-    draftEntryCount,
-    pendingBatchCount,
-    submittedBatchCount,
     nextRequestSeq: nextRequestSeq && nextRequestSeq > 1 ? nextRequestSeq : null,
     nextSplitCounter: nextSplitCounter && nextSplitCounter > 1 ? nextSplitCounter : null,
     customer: normalizeCustomer(customer),

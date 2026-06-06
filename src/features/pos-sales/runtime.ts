@@ -7,6 +7,7 @@ import { createPosSalesActionsModule } from './runtime-actions'
 import { registerPosSalesBindings } from './runtime-bindings'
 import { createPosSalesNavigationModule } from './runtime-navigation'
 import { createPosSalesOrderUiModule } from './runtime-order-ui'
+import { getStartupAuthIntent } from './runtime-support'
 import { createPosSalesWorkspaceModule } from './runtime-workspace'
 import { POS_SALES_SERVICE_KEY, type PosSalesService } from './service'
 
@@ -324,15 +325,21 @@ export function createPosSalesFeature(context: AppContext): FeatureRuntime {
       ui.startRouter()
       const urlParams = new URLSearchParams(location.search)
       const tableParam = urlParams.get('table')
+      const startupAuth = getStartupAuthIntent({
+        isStaffLoggedIn: sessionStorage.getItem('isLoggedIn') === 'true',
+        isCustomerRoute: Boolean(tableParam),
+      })
       if (tableParam) {
-        sessionStorage.setItem('isLoggedIn', 'true')
+        sessionStorage.removeItem('isLoggedIn')
+        sessionStorage.setItem('customerMode', 'true')
         workspace.setCustomerMode('customer')
         await showApp({ skipHome: true, skipStaffLive: true })
         await openOrderPage(decodeURIComponent(tableParam), { mode: 'customer' })
         return
       }
 
-      if (sessionStorage.getItem('isLoggedIn') === 'true') {
+      sessionStorage.removeItem('customerMode')
+      if (startupAuth.staffAuthenticated) {
         await showApp()
       }
     },

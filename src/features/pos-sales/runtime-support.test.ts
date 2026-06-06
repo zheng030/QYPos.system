@@ -16,6 +16,7 @@ import {
   getFloatingBarViewModel,
   getStaffWorkspaceRowActions,
   getStaffWorkspaceTotalDisplay,
+  getStartupAuthIntent,
   getVisibleOrderBatches,
   guideBuilderIssue,
   persistCustomerInfoSilently,
@@ -126,6 +127,17 @@ describe('pos-sales runtime-support', () => {
     expect(getVisibleOrderBatches('staff', pending, submitted).map((item) => item.batch.batchId)).toEqual([
       'submitted_1',
     ])
+  })
+
+  it('does not treat customer QR sessions as staff login sessions', () => {
+    expect(getStartupAuthIntent({ isStaffLoggedIn: true, isCustomerRoute: true })).toEqual({
+      staffAuthenticated: false,
+      customerAuthenticated: true,
+    })
+    expect(getStartupAuthIntent({ isStaffLoggedIn: true, isCustomerRoute: false })).toEqual({
+      staffAuthenticated: true,
+      customerAuthenticated: false,
+    })
   })
 
   it('selects the first pending overlay batch by table order only for staff mode', () => {

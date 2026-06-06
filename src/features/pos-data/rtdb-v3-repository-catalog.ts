@@ -44,36 +44,6 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     return (snapshot.val() || {}) as Record<string, number>
   }
 
-  async function refreshInventorySegment() {
-    return await ctx.refreshManagedResource({
-      descriptor: inventoryDescriptor,
-      writeMemory: (value) => {
-        applyCatalogSegment('inventory', value)
-      },
-      readRemote: readInventoryRemote,
-    })
-  }
-
-  async function refreshPricesSegment() {
-    return await ctx.refreshManagedResource({
-      descriptor: pricesDescriptor,
-      writeMemory: (value) => {
-        applyCatalogSegment('prices', value)
-      },
-      readRemote: readPricesRemote,
-    })
-  }
-
-  async function refreshCostsSegment() {
-    return await ctx.refreshManagedResource({
-      descriptor: costsDescriptor,
-      writeMemory: (value) => {
-        applyCatalogSegment('costs', value)
-      },
-      readRemote: readCostsRemote,
-    })
-  }
-
   async function ensureInventorySegment() {
     const existingLoad = ctx.catalogSegmentLoads.get('inventory')
     if (existingLoad) {
@@ -159,16 +129,6 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     await load
   }
 
-  async function refreshCatalogSegment(segment: V3CatalogSegment) {
-    if (segment === 'inventory') {
-      return await refreshInventorySegment()
-    }
-    if (segment === 'prices') {
-      return await refreshPricesSegment()
-    }
-    return await refreshCostsSegment()
-  }
-
   async function ensureCatalogSegment(segment: V3CatalogSegment) {
     if (segment === 'inventory') {
       await ensureInventorySegment()
@@ -222,23 +182,57 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
 
   function watchCatalogRevision(listener: (event: V3CatalogRevisionEvent) => void) {
     const stops = [
-      ctx.watchRevision(inventoryDescriptor.revision.path, () => {
-        ctx.clearResourceFresh(inventoryDescriptor.resourceKey)
-        void refreshCatalogSegment('inventory').then(() => {
+      ctx.watchManagedResource({
+        descriptor: inventoryDescriptor,
+        readMemory: () => {
+          return { ...ctx.state.inventory }
+        },
+        writeMemory: (value) => {
+          applyCatalogSegment('inventory', value)
+        },
+        clearMemory: () => {
+          ctx.state.inventory = {}
+        },
+        readRemote: readInventoryRemote,
+        onChange: () => {
           listener({ kind: 'catalog', changedSegments: ['inventory'] })
-        })
+        },
       }),
-      ctx.watchRevision(pricesDescriptor.revision.path, () => {
-        ctx.clearResourceFresh(pricesDescriptor.resourceKey)
-        void refreshCatalogSegment('prices').then(() => {
+      ctx.watchManagedResource({
+        descriptor: pricesDescriptor,
+        readMemory: () => {
+          return Object.fromEntries(
+            Object.entries(ctx.state.itemPrices).filter(([, value]) => value !== undefined)
+          ) as Record<string, number | string>
+        },
+        writeMemory: (value) => {
+          applyCatalogSegment('prices', value)
+        },
+        clearMemory: () => {
+          ctx.state.itemPrices = {}
+        },
+        readRemote: readPricesRemote,
+        onChange: () => {
           listener({ kind: 'catalog', changedSegments: ['prices'] })
-        })
+        },
       }),
-      ctx.watchRevision(costsDescriptor.revision.path, () => {
-        ctx.clearResourceFresh(costsDescriptor.resourceKey)
-        void refreshCatalogSegment('costs').then(() => {
+      ctx.watchManagedResource({
+        descriptor: costsDescriptor,
+        readMemory: () => {
+          return Object.fromEntries(
+            Object.entries(ctx.state.itemCosts).filter(([, value]) => value !== undefined)
+          ) as Record<string, number>
+        },
+        writeMemory: (value) => {
+          applyCatalogSegment('costs', value)
+        },
+        clearMemory: () => {
+          ctx.state.itemCosts = {}
+        },
+        readRemote: readCostsRemote,
+        onChange: () => {
           listener({ kind: 'catalog', changedSegments: ['costs'] })
-        })
+        },
       }),
     ]
     return () => {
@@ -255,8 +249,10 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     ctx.touchRevision('catalog/inventory', payload)
     await ctx.updateRoot(payload)
     ctx.state.inventory[itemId] = checked
-    ctx.clearResourceFresh(inventoryDescriptor.resourceKey)
-    await ctx.invalidateManagedResource(inventoryDescriptor)
+    await ctx.writeManagedResourceCache(
+      inventoryDescriptor,
+      Object.fromEntries(Object.entries(ctx.state.inventory).map(([key, value]) => [encodeCatalogKey(key), value]))
+    )
   }
 
   async function updateInventoryBatch(batch: Record<string, boolean>) {
@@ -267,8 +263,10 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     })
     ctx.touchRevision('catalog/inventory', payload)
     await ctx.updateRoot(payload)
-    ctx.clearResourceFresh(inventoryDescriptor.resourceKey)
-    await ctx.invalidateManagedResource(inventoryDescriptor)
+    await ctx.writeManagedResourceCache(
+      inventoryDescriptor,
+      Object.fromEntries(Object.entries(ctx.state.inventory).map(([key, value]) => [encodeCatalogKey(key), value]))
+    )
   }
 
   async function updateItemPrice(itemId: string, value: number) {
@@ -278,8 +276,14 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     ctx.touchRevision('catalog/prices', payload)
     await ctx.updateRoot(payload)
     ctx.state.itemPrices[itemId] = value
-    ctx.clearResourceFresh(pricesDescriptor.resourceKey)
-    await ctx.invalidateManagedResource(pricesDescriptor)
+    await ctx.writeManagedResourceCache(
+      pricesDescriptor,
+      Object.fromEntries(
+        Object.entries(ctx.state.itemPrices)
+          .filter(([, entry]) => entry !== undefined)
+          .map(([key, entry]) => [encodeCatalogKey(key), entry as number])
+      )
+    )
   }
 
   async function updateItemCost(itemId: string, value: number) {
@@ -289,8 +293,14 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
     ctx.touchRevision('catalog/costs', payload)
     await ctx.updateRoot(payload)
     ctx.state.itemCosts[itemId] = value
-    ctx.clearResourceFresh(costsDescriptor.resourceKey)
-    await ctx.invalidateManagedResource(costsDescriptor)
+    await ctx.writeManagedResourceCache(
+      costsDescriptor,
+      Object.fromEntries(
+        Object.entries(ctx.state.itemCosts)
+          .filter(([, entry]) => entry !== undefined)
+          .map(([key, entry]) => [encodeCatalogKey(key), entry as number])
+      )
+    )
   }
 
   return {

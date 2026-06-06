@@ -23,9 +23,6 @@ describe('rtdb-v3-repository', () => {
               summary: {
                 timerStartedAt: 1,
                 displaySeqBase: 5,
-                draftEntryCount: 0,
-                pendingBatchCount: 0,
-                submittedBatchCount: 0,
                 customer: { name: 'A', phone: '' },
                 updatedAt: 1,
               },

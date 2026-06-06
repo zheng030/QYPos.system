@@ -4,6 +4,12 @@ import { createRtdbV3Repository } from './rtdb-v3-repository'
 import { createDbStub, createEntry, createState, readAtPath, setAtPath } from './rtdb-v3-repository.test-support'
 import { dailySummaryStorageCodec } from './rtdb-v3-storage-codecs'
 
+async function flushAsyncListeners() {
+  await Promise.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Promise.resolve()
+}
+
 describe('rtdb-v3-repository', () => {
   it('refreshes only changed daily summary day on revision invalidation', async () => {
     const db = createDbStub({
@@ -54,7 +60,7 @@ describe('rtdb-v3-repository', () => {
 
     setAtPath(db.data, 'v3/reports/dailyByMonth/2026-05/2026-05-31/pt', 250)
     db.emit('v3/meta/revisions/reports/dailyByDay/2026-05-31', 'value', 2)
-    await Promise.resolve()
+    await flushAsyncListeners()
 
     expect(db.onceCalls).toContain('v3/reports/dailyByMonth/2026-05/2026-05-31')
     expect(db.onceCalls).not.toContain('v3/reports/dailyByMonth/2026-05/2026-05-30')

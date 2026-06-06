@@ -8,6 +8,7 @@ import {
   createState,
   measurePayloadSize,
   readAtPath,
+  setAtPath,
 } from './rtdb-v3-repository.test-support'
 import { encodeLiveTableShardValue, getStoredTableSummaryFieldKey } from './rtdb-v3-storage-codecs'
 
@@ -31,17 +32,15 @@ async function flushMicrotasks() {
   await Promise.resolve()
 }
 
+async function flushAsyncListeners() {
+  await flushMicrotasks()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await flushMicrotasks()
+}
+
 function expectSummaryPatchKeys(
   keys: string[],
-  fields: Array<
-    | 'timerStartedAt'
-    | 'displaySeqBase'
-    | 'draftEntryCount'
-    | 'pendingBatchCount'
-    | 'submittedBatchCount'
-    | 'customer'
-    | 'updatedAt'
-  >
+  fields: Array<'timerStartedAt' | 'displaySeqBase' | 'customer' | 'updatedAt'>
 ) {
   const baseKeys = ['v3/meta/revisions/live/tables/A1/summary']
   const summaryKeys = fields.map((field) => `v3/live/tables/A1/summary/${getStoredTableSummaryFieldKey(field)}`)
@@ -317,7 +316,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/draft')
     expectSummaryPatchKeys(
       keys.filter((key) => key.includes('/summary')),
-      ['draftEntryCount', 'timerStartedAt', 'updatedAt']
+      ['timerStartedAt', 'updatedAt']
     )
   })
 
@@ -348,9 +347,6 @@ describe('rtdb-v3 repository contract', () => {
                 status: null,
                 timerStartedAt: 1,
                 displaySeqBase: 5,
-                draftEntryCount: 1,
-                pendingBatchCount: 0,
-                submittedBatchCount: 1,
                 customer: { name: 'A', phone: '' },
                 updatedAt: 1,
               },
@@ -503,7 +499,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/submittedBatches')
     expectSummaryPatchKeys(
       keys.filter((key) => key.includes('/summary')),
-      ['submittedBatchCount', 'updatedAt']
+      ['updatedAt']
     )
   })
 
@@ -575,7 +571,7 @@ describe('rtdb-v3 repository contract', () => {
     expect(keys).toContain('v3/meta/revisions/live/tables/A1/submittedBatches')
     expectSummaryPatchKeys(
       keys.filter((key) => key.includes('/summary')),
-      ['submittedBatchCount', 'updatedAt']
+      ['updatedAt']
     )
   })
 
@@ -1758,9 +1754,6 @@ describe('rtdb-v3 repository contract', () => {
               summary: {
                 timerStartedAt: null,
                 displaySeqBase: 5,
-                draftEntryCount: 0,
-                pendingBatchCount: 1,
-                submittedBatchCount: 0,
                 customer: { name: '王小明', phone: '0900' },
                 updatedAt: 2,
               },
@@ -1772,9 +1765,6 @@ describe('rtdb-v3 repository contract', () => {
               summary: {
                 timerStartedAt: null,
                 displaySeqBase: 6,
-                draftEntryCount: 0,
-                pendingBatchCount: 0,
-                submittedBatchCount: 0,
                 customer: { name: '', phone: '' },
                 updatedAt: 1,
               },
@@ -1799,6 +1789,97 @@ describe('rtdb-v3 repository contract', () => {
       entries: [expect.objectContaining({ title: '可樂' })],
     })
     expect(staffState.pendingBatches.A1?.[0]?.entries[0]?.entryId).toBe('entry_pending')
+  })
+
+  it('derives staff table status only from submitted shard data', async () => {
+    const submitted = {
+      batchId: 'submitted_1',
+      source: 'staff' as const,
+      status: 'accepted' as const,
+      table: 'B1',
+      customer: { name: '', phone: '' },
+      createdAt: 2,
+      updatedAt: 2,
+      acceptedAt: 2,
+      requestSeq: 1,
+      requestLabel: '#6-1',
+      entries: {},
+      subtotal: 0,
+    }
+    const db = createDbStub({
+      v3: {
+        meta: {
+          revisions: {
+            live: {
+              tables: {
+                A1: { summary: 1, pendingBatches: 1, submittedBatches: 1 },
+                B1: { summary: 1, pendingBatches: 1, submittedBatches: 1 },
+              },
+            },
+          },
+        },
+        history: {
+          sequenceByDate: {},
+        },
+        live: {
+          tables: {
+            A1: {
+              summary: {
+                timerStartedAt: null,
+                displaySeqBase: 5,
+                customer: { name: '', phone: '' },
+                updatedAt: 1,
+              },
+              pendingBatches: {
+                ...encodeLiveTableShardValue('pendingBatches', {
+                  pending_1: {
+                    batchId: 'pending_1',
+                    source: 'customer' as const,
+                    status: 'pending' as const,
+                    table: 'A1',
+                    customer: { name: '', phone: '' },
+                    createdAt: 1,
+                    updatedAt: 1,
+                    requestSeq: 1,
+                    requestLabel: '#5-1',
+                    entries: {},
+                    subtotal: 0,
+                  },
+                }),
+              },
+              submittedBatches: {},
+            },
+            B1: {
+              summary: {
+                timerStartedAt: null,
+                displaySeqBase: 6,
+                customer: { name: '', phone: '' },
+                updatedAt: 1,
+              },
+              pendingBatches: {},
+              submittedBatches: {
+                ...encodeLiveTableShardValue('submittedBatches', {
+                  submitted_1: submitted,
+                }),
+              },
+            },
+          },
+        },
+      },
+    })
+    const staffState = createState()
+    const staffRepository = createRtdbV3Repository({ db: db as never, state: staffState, tables: ['A1', 'B1'] })
+
+    await staffRepository.startStaffLive()
+
+    expect(staffState.tableStatuses.A1).toBeUndefined()
+    expect(staffState.tableStatuses.B1).toBe('yellow')
+
+    setAtPath(db.data, 'v3/live/tables/B1/submittedBatches', {})
+    db.emit('v3/meta/revisions/live/tables/B1/submittedBatches', 'value', 2)
+    await flushAsyncListeners()
+
+    expect(staffState.tableStatuses.B1).toBeUndefined()
   })
 
   it('keeps staff selected table stable while another table receives a new pending batch', async () => {
@@ -1859,9 +1940,6 @@ describe('rtdb-v3 repository contract', () => {
               summary: {
                 timerStartedAt: null,
                 displaySeqBase: 5,
-                draftEntryCount: 0,
-                pendingBatchCount: 1,
-                submittedBatchCount: 0,
                 customer: { name: '王小明', phone: '0900' },
                 updatedAt: 2,
               },
@@ -1873,9 +1951,6 @@ describe('rtdb-v3 repository contract', () => {
               summary: {
                 timerStartedAt: null,
                 displaySeqBase: 6,
-                draftEntryCount: 0,
-                pendingBatchCount: 0,
-                submittedBatchCount: 1,
                 customer: { name: '', phone: '' },
                 updatedAt: 1,
               },

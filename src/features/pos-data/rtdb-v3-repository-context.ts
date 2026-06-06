@@ -59,9 +59,35 @@ type RepositoryDeps = {
 }
 
 type AttendanceMonthMap = Record<string, AttendanceRecord>
-type ResourceLoaders = Map<string, Promise<unknown>>
+type ResourceLoadState<TDomain = unknown> = {
+  revision: number
+  promise: Promise<TDomain>
+}
+type ResourceLoaders = Map<string, ResourceLoadState<unknown>>
 type ResourceFreshness = Map<string, number>
+type ResourceSyncTargets = Map<string, number>
 type CatalogSegmentLoads = Map<V3CatalogSegment, Promise<unknown>>
+
+type ManagedResourceParams<TDomain, TStored = TDomain> = {
+  descriptor: ResourceDescriptor<TDomain, TStored>
+  readMemory: () => TDomain | undefined
+  writeMemory: (value: TDomain) => void
+  clearMemory?: () => void
+  readRemote: () => Promise<TDomain>
+}
+
+type ManagedResourceSyncParams<TDomain, TStored = TDomain> = Omit<
+  ManagedResourceParams<TDomain, TStored>,
+  'readMemory'
+> & {
+  readMemory?: () => TDomain | undefined
+  revision?: number
+}
+
+type ManagedResourceWatchParams<TDomain, TStored = TDomain> = ManagedResourceParams<TDomain, TStored> & {
+  emitInitial?: boolean
+  onChange: (value: TDomain, revision: number) => void
+}
 
 function toRevValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -189,7 +215,8 @@ export function createRtdbV3RepositoryContext({
     unsubs: new Map<string, () => void>(),
     revisionCache: new Map<string, V3RevisionValue>(),
     resourceFreshness: new Map<string, number>() as ResourceFreshness,
-    resourceLoads: new Map<string, Promise<unknown>>() as ResourceLoaders,
+    resourceSyncTargets: new Map<string, number>() as ResourceSyncTargets,
+    resourceLoads: new Map<string, ResourceLoadState<unknown>>() as ResourceLoaders,
     catalogSegmentLoads: new Map<V3CatalogSegment, Promise<unknown>>() as CatalogSegmentLoads,
     liveTableCache: new Map<string, V3LiveTable>(),
     dailySummaryDayCache: new Map<V3BizDateKey, V3DailySummary>(),
@@ -223,17 +250,20 @@ export function createRtdbV3RepositoryContext({
         ctx.unsubs.set(key, unsubscribe)
       }
     },
+    rememberRevision(path: string, revision: number) {
+      const previous = ctx.revisionCache.get(path)
+      if (previous === undefined || previous <= revision) {
+        ctx.revisionCache.set(path, revision)
+      }
+    },
     watchRevision(path: string, onChange: (revision: number) => void) {
       let lastSeen: number | null = null
       return db.ref(`${RTDB_V3_ROOT}/meta/revisions/${path}`).on('value', (snapshot) => {
         const revision = toRevValue(snapshot.val())
-        const cached = ctx.revisionCache.get(path)
-        ctx.revisionCache.set(path, revision)
+        ctx.rememberRevision(path, revision)
         if (lastSeen === null) {
           lastSeen = revision
-          if (cached === undefined || cached !== revision) {
-            onChange(revision)
-          }
+          onChange(revision)
           return
         }
         if (lastSeen === revision) {
@@ -253,18 +283,18 @@ export function createRtdbV3RepositoryContext({
       const prefix = `${RTDB_V3_ROOT}/meta/revisions/`
       Object.entries(sanitizedPayload).forEach(([path, value]) => {
         if (path.startsWith(prefix)) {
-          ctx.revisionCache.set(path.slice(prefix.length), toRevValue(value))
+          ctx.rememberRevision(path.slice(prefix.length), toRevValue(value))
         }
       })
     },
-    async readRevision(path: string) {
-      if (ctx.revisionCache.has(path)) {
-        return ctx.revisionCache.get(path) || 0
-      }
+    async readRemoteRevision(path: string) {
       const snapshot = await db.ref(`${RTDB_V3_ROOT}/meta/revisions/${path}`).once('value')
       const revision = toRevValue(snapshot.val())
-      ctx.revisionCache.set(path, revision)
+      ctx.rememberRevision(path, revision)
       return revision
+    },
+    async readRevision(path: string) {
+      return await ctx.readRemoteRevision(path)
     },
     assertDescriptorRegistered(descriptor: ResourceDescriptor<unknown, unknown>) {
       if (!descriptor.remotePath) {
@@ -327,109 +357,153 @@ export function createRtdbV3RepositoryContext({
     markResourceFresh(resourceKey: string, revision: number) {
       ctx.resourceFreshness.set(resourceKey, revision)
     },
+    rememberResourceSyncTarget(resourceKey: string, revision: number) {
+      const previous = ctx.resourceSyncTargets.get(resourceKey)
+      if (previous === undefined || previous <= revision) {
+        ctx.resourceSyncTargets.set(resourceKey, revision)
+      }
+    },
     clearResourceFresh(resourceKey: string) {
       ctx.resourceFreshness.delete(resourceKey)
+      ctx.resourceSyncTargets.delete(resourceKey)
     },
     async invalidateCachedResource(resourceKey: string) {
       await ctx.cacheStore.deleteManifest(resourceKey)
       await ctx.cacheStore.deleteBody(resourceKey)
     },
-    async ensureManagedResource<TDomain, TStored = TDomain>(params: {
-      descriptor: ResourceDescriptor<TDomain, TStored>
-      readMemory: () => TDomain | undefined
-      writeMemory: (value: TDomain) => void
-      clearMemory?: () => void
-      readRemote: () => Promise<TDomain>
-    }) {
-      const { descriptor, readMemory, writeMemory, clearMemory, readRemote } = params
+    async hydrateCachedResource<TDomain, TStored = TDomain>(params: ManagedResourceParams<TDomain, TStored>) {
+      const { descriptor, writeMemory } = params
       ctx.assertDescriptorRegistered(descriptor)
-      const remoteRevision = await ctx.readRevision(descriptor.revision.path)
-      const memoryValue = readMemory()
-      const memoryRevision = ctx.resourceFreshness.get(descriptor.resourceKey)
-      if (memoryValue !== undefined && memoryRevision === remoteRevision) {
-        return memoryValue
+      const cached = await ctx.loadCachedResource(descriptor)
+      if (!cached) {
+        return null
       }
+      writeMemory(cached.value)
+      ctx.markResourceFresh(descriptor.resourceKey, cached.revision)
+      return cached
+    },
+    async syncResource<TDomain, TStored = TDomain>(params: ManagedResourceSyncParams<TDomain, TStored>) {
+      const { descriptor, readMemory, writeMemory, readRemote, revision: knownRevision } = params
+      ctx.assertDescriptorRegistered(descriptor)
+      const revision = knownRevision ?? (await ctx.readRemoteRevision(descriptor.revision.path))
+      ctx.rememberRevision(descriptor.revision.path, revision)
+      ctx.rememberResourceSyncTarget(descriptor.resourceKey, revision)
 
-      const existingLoad = ctx.resourceLoads.get(descriptor.resourceKey) as Promise<TDomain> | undefined
-      if (existingLoad) {
-        return await existingLoad
-      }
-
-      const load = (async () => {
+      while (true) {
+        const memoryValue = readMemory?.()
+        const memoryRevision = ctx.resourceFreshness.get(descriptor.resourceKey)
+        if (memoryValue !== undefined && memoryRevision !== undefined && memoryRevision >= revision) {
+          return memoryValue
+        }
         const cached = await ctx.loadCachedResource(descriptor)
-        if (cached && cached.revision === remoteRevision) {
+        if (cached && cached.revision >= revision) {
           writeMemory(cached.value)
-          ctx.markResourceFresh(descriptor.resourceKey, remoteRevision)
+          ctx.markResourceFresh(descriptor.resourceKey, cached.revision)
           return cached.value
         }
-        if (cached) {
-          await ctx.invalidateCachedResource(descriptor.resourceKey)
+
+        const existingLoad = ctx.resourceLoads.get(descriptor.resourceKey) as ResourceLoadState<TDomain> | undefined
+        if (existingLoad && existingLoad.revision >= revision) {
+          return await existingLoad.promise
         }
-        clearMemory?.()
-        ctx.clearResourceFresh(descriptor.resourceKey)
-        const remote = await readRemote()
-        writeMemory(remote)
-        await ctx.saveCachedResource(descriptor, remoteRevision, remote)
-        ctx.markResourceFresh(descriptor.resourceKey, remoteRevision)
-        return remote
-      })().finally(() => {
-        ctx.resourceLoads.delete(descriptor.resourceKey)
-      })
 
-      ctx.resourceLoads.set(descriptor.resourceKey, load)
-      return await load
+        let load: Promise<TDomain>
+        load = (async () => {
+          const remote = await readRemote()
+          const latestTargetRevision = ctx.resourceSyncTargets.get(descriptor.resourceKey)
+          const latestRevision = ctx.resourceFreshness.get(descriptor.resourceKey)
+          const latestValue = readMemory?.()
+          const currentLoad = ctx.resourceLoads.get(descriptor.resourceKey) as ResourceLoadState<TDomain> | undefined
+          if (currentLoad && currentLoad.revision > revision) {
+            return await currentLoad.promise
+          }
+          if (latestTargetRevision !== undefined && latestTargetRevision > revision) {
+            return latestValue ?? remote
+          }
+          if (latestValue !== undefined && latestRevision !== undefined && latestRevision > revision) {
+            return latestValue
+          }
+          writeMemory(remote)
+          await ctx.saveCachedResource(descriptor, revision, remote)
+          ctx.markResourceFresh(descriptor.resourceKey, revision)
+          return remote
+        })().finally(() => {
+          if (ctx.resourceLoads.get(descriptor.resourceKey)?.promise === load) {
+            ctx.resourceLoads.delete(descriptor.resourceKey)
+          }
+        })
+
+        ctx.resourceLoads.set(descriptor.resourceKey, { revision, promise: load })
+        return await load
+      }
     },
-    async refreshManagedResource<TDomain, TStored = TDomain>(params: {
-      descriptor: ResourceDescriptor<TDomain, TStored>
-      readRemote: () => Promise<TDomain>
-      writeMemory: (value: TDomain) => void
-      clearMemory?: () => void
-    }) {
-      const { descriptor, readRemote, writeMemory, clearMemory } = params
+    async getResource<TDomain, TStored = TDomain>(params: ManagedResourceParams<TDomain, TStored>) {
+      const { descriptor, readMemory } = params
       ctx.assertDescriptorRegistered(descriptor)
-      const load = (async () => {
-        clearMemory?.()
-        ctx.clearResourceFresh(descriptor.resourceKey)
-        const remote = await readRemote()
-        writeMemory(remote)
-        const revision =
-          ctx.revisionCache.get(descriptor.revision.path) || (await ctx.readRevision(descriptor.revision.path))
-        await ctx.saveCachedResource(descriptor, revision, remote)
-        ctx.markResourceFresh(descriptor.resourceKey, revision)
-        return remote
-      })().finally(() => {
-        ctx.resourceLoads.delete(descriptor.resourceKey)
+      await ctx.hydrateCachedResource(params)
+      const remoteRevision = await ctx.readRemoteRevision(descriptor.revision.path)
+      const memoryValue = readMemory()
+      if (memoryValue !== undefined && ctx.resourceFreshness.get(descriptor.resourceKey) === remoteRevision) {
+        return memoryValue
+      }
+      return await ctx.syncResource({
+        ...params,
+        revision: remoteRevision,
       })
-
-      ctx.resourceLoads.set(descriptor.resourceKey, load)
-      return await load
+    },
+    async ensureManagedResource<TDomain, TStored = TDomain>(params: ManagedResourceParams<TDomain, TStored>) {
+      return await ctx.getResource(params)
+    },
+    async refreshManagedResource<TDomain, TStored = TDomain>(params: ManagedResourceSyncParams<TDomain, TStored>) {
+      return await ctx.syncResource(params)
+    },
+    watchManagedResource<TDomain, TStored = TDomain>(params: ManagedResourceWatchParams<TDomain, TStored>) {
+      const { descriptor, emitInitial, onChange } = params
+      ctx.assertDescriptorRegistered(descriptor)
+      void ctx.hydrateCachedResource(params)
+      let latestRevision = 0
+      let initialized = false
+      return ctx.watchRevision(descriptor.revision.path, (revision) => {
+        if (revision < latestRevision) {
+          return
+        }
+        const isInitial = !initialized
+        initialized = true
+        const previousFreshness = ctx.resourceFreshness.get(descriptor.resourceKey)
+        const shouldNotify =
+          !isInitial || emitInitial || previousFreshness === undefined || previousFreshness < revision
+        latestRevision = revision
+        void ctx
+          .syncResource({
+            ...params,
+            revision,
+          })
+          .then((value) => {
+            if (revision < latestRevision) {
+              return
+            }
+            if (!shouldNotify) {
+              return
+            }
+            onChange(value, revision)
+          })
+      })
+    },
+    async writeManagedResourceCache<TDomain, TStored = TDomain>(
+      descriptor: ResourceDescriptor<TDomain, TStored>,
+      value: TDomain
+    ) {
+      ctx.assertDescriptorRegistered(descriptor)
+      const revision =
+        ctx.revisionCache.get(descriptor.revision.path) ?? (await ctx.readRemoteRevision(descriptor.revision.path))
+      await ctx.saveCachedResource(descriptor, revision, value)
+      ctx.markResourceFresh(descriptor.resourceKey, revision)
     },
     async invalidateManagedResource<TDomain, TStored = TDomain>(descriptor: ResourceDescriptor<TDomain, TStored>) {
       ctx.assertDescriptorRegistered(descriptor)
       ctx.clearResourceFresh(descriptor.resourceKey)
       ctx.resourceLoads.delete(descriptor.resourceKey)
       await ctx.invalidateCachedResource(descriptor.resourceKey)
-    },
-    async loadCacheFirstResource<TDomain, TStored = TDomain>(params: {
-      descriptor: ResourceDescriptor<TDomain, TStored>
-      readRemote: () => Promise<TDomain>
-    }) {
-      const cached = await ctx.loadCachedResource(params.descriptor)
-      if (!cached) {
-        const revision = await ctx.readRevision(params.descriptor.revision.path)
-        const remote = await params.readRemote()
-        await ctx.saveCachedResource(params.descriptor, revision, remote)
-        return remote
-      }
-
-      const remoteRevision = await ctx.readRevision(params.descriptor.revision.path)
-      if (remoteRevision === cached.revision) {
-        return cached.value
-      }
-
-      const remote = await params.readRemote()
-      await ctx.saveCachedResource(params.descriptor, remoteRevision, remote)
-      return remote
     },
     liveTablePath(table: string) {
       return `${RTDB_V3_ROOT}/live/tables/${encodeTableKey(table)}`
@@ -439,6 +513,12 @@ export function createRtdbV3RepositoryContext({
     },
     liveTableShardDescriptor<K extends keyof V3LiveTable>(table: string, shard: K) {
       return createLiveTableShardDescriptor(table, shard)
+    },
+    toLiveTableShardValue<K extends keyof V3LiveTable>(shard: K, value: V3LiveTable[K] | null | undefined) {
+      return toLiveTableShardValue(shard, value)
+    },
+    toLiveTableShardValueFromSnapshot<K extends keyof V3LiveTable>(shard: K, value: unknown) {
+      return toLiveTableShardValue(shard, decodeLiveTableShardValue(shard, value)) as V3LiveTable[K]
     },
     setCachedLiveTable(table: string, liveTable: V3LiveTable | null | undefined) {
       const normalized = normalizeLiveTable(liveTable)
@@ -491,6 +571,23 @@ export function createRtdbV3RepositoryContext({
           const liveTable = ctx.liveTableCache.get(table)
           return liveTable ? (toLiveTableShardValue(shard, liveTable[shard]) as V3LiveTable[K]) : undefined
         },
+        writeMemory: (value) => {
+          ctx.setCachedLiveTable(table, {
+            ...ctx.getCachedLiveTable(table),
+            [shard]: value,
+          } as V3LiveTable)
+        },
+        readRemote: async () => {
+          const snapshot = await db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return toLiveTableShardValue(shard, decodeLiveTableShardValue(shard, snapshot.val()))
+        },
+      })
+    },
+    async refreshLiveTableShard<K extends keyof V3LiveTable>(table: string, shard: K, revision?: number) {
+      const descriptor = ctx.liveTableShardDescriptor(table, shard)
+      return await ctx.refreshManagedResource({
+        descriptor,
+        revision,
         writeMemory: (value) => {
           ctx.setCachedLiveTable(table, {
             ...ctx.getCachedLiveTable(table),
@@ -569,6 +666,14 @@ export function createRtdbV3RepositoryContext({
 
       delete state.pendingBatchPreviews[tableId]
     },
+    syncTableStatusFromSubmitted(tableId: string, value?: Record<string, V3OrderBatch>) {
+      const submittedBatches = value ?? ctx.liveTableCache.get(tableId)?.submittedBatches ?? {}
+      if (Object.keys(submittedBatches).length > 0) {
+        state.tableStatuses[tableId] = 'yellow'
+        return
+      }
+      delete state.tableStatuses[tableId]
+    },
     readNextRequestSeq(liveTable: V3LiveTable | null | undefined) {
       const summaryValue = readRequestSeqCounter(liveTable?.summary?.nextRequestSeq)
       if (liveTable?.summary?.nextRequestSeq) {
@@ -586,20 +691,12 @@ export function createRtdbV3RepositoryContext({
     applyTableSummary(tableId: string, summary: V3TableSummary | null | undefined) {
       if (!summary) {
         delete state.tableTimers[tableId]
-        delete state.tableStatuses[tableId]
         delete state.tableCustomers[tableId]
         delete state.tableSplitCounters[tableId]
         return
       }
       if (summary.timerStartedAt) state.tableTimers[tableId] = summary.timerStartedAt
       else delete state.tableTimers[tableId]
-      if (
-        (summary.draftEntryCount || 0) > 0 ||
-        (summary.pendingBatchCount || 0) > 0 ||
-        (summary.submittedBatchCount || 0) > 0
-      )
-        state.tableStatuses[tableId] = 'yellow'
-      else delete state.tableStatuses[tableId]
       state.tableCustomers[tableId] = {
         name: summary.customer?.name || '',
         phone: summary.customer?.phone || '',
@@ -625,6 +722,7 @@ export function createRtdbV3RepositoryContext({
       ctx.syncPendingBatchPreview(tableId, liveTable?.pendingBatches)
       if (submitted.length > 0) state.submittedBatches[tableId] = submitted
       else delete state.submittedBatches[tableId]
+      ctx.syncTableStatusFromSubmitted(tableId, liveTable?.submittedBatches)
 
       if (ctx.currentTableSession?.table === tableId) {
         if (mode === 'customer') {

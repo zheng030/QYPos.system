@@ -14,6 +14,12 @@ import {
 import { encodeLiveTableShardValue } from './rtdb-v3-storage-codecs'
 import type { V3OrderLine } from './rtdb-v3-types'
 
+async function flushAsyncListeners() {
+  await Promise.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Promise.resolve()
+}
+
 describe('rtdb-v3-repository', () => {
   it('deletes attendance record from its original month bucket', async () => {
     const db = createDbStub({
@@ -572,7 +578,7 @@ describe('rtdb-v3-repository', () => {
     warmDb.onceCalls.length = 0
 
     warmDb.emit('v3/meta/revisions/catalog/inventory', 'value', 2)
-    await Promise.resolve()
+    await flushAsyncListeners()
 
     expect(warmDb.onceCalls).toContain('v3/catalog/inventory')
     stop()
@@ -674,9 +680,6 @@ describe('rtdb-v3-repository', () => {
               summary: {
                 timerStartedAt: 1,
                 displaySeqBase: 8,
-                draftEntryCount: 0,
-                pendingBatchCount: 1,
-                submittedBatchCount: 0,
                 customer: { name: 'A', phone: '' },
                 updatedAt: 1,
               },
@@ -691,7 +694,7 @@ describe('rtdb-v3-repository', () => {
 
     await repository.startStaffLive()
 
-    expect(state.tableStatuses.A1).toBe('yellow')
+    expect(state.tableStatuses.A1).toBeUndefined()
     expect(state.pendingBatchPreviews.A1?.[0]?.batchId).toBe('pending_1')
     expect(state.pendingBatchPreviews.A1?.[0]?.requestSeq).toBe(1)
     expect(state.pendingBatchPreviews.A1?.[0]?.entries[0]?.title).toBe('可樂')

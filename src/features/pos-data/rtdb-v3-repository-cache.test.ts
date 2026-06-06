@@ -13,6 +13,12 @@ import { createHistoryOrdersByDayDescriptor } from './rtdb-v3-resource-registry'
 import type { V3ClosedOrder } from './rtdb-v3-types'
 import { RTDB_V3_SCHEMA_VERSION } from './rtdb-v3-types'
 
+async function flushAsyncListeners() {
+  await Promise.resolve()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Promise.resolve()
+}
+
 describe('rtdb-v3 repository cache helpers', () => {
   it('drops corrupted cached bodies when codec decode fails', async () => {
     const cacheStore = createMemoryPersistentCacheStore()
@@ -212,9 +218,6 @@ describe('rtdb-v3 repository cache helpers', () => {
       draft: [entry],
       pendingBatches: [],
       submittedBatches: [],
-      draftEntryCount: 1,
-      pendingBatchCount: 0,
-      submittedBatchCount: 0,
       customer: { name: 'A', phone: '' },
       updatedAt: 1,
     })
@@ -321,9 +324,6 @@ describe('rtdb-v3 repository cache helpers', () => {
                 draft: [entry],
                 pendingBatches: [],
                 submittedBatches: [],
-                draftEntryCount: 1,
-                pendingBatchCount: 0,
-                submittedBatchCount: 0,
                 customer: { name: 'A', phone: '' },
                 updatedAt: 1,
               }),
@@ -373,9 +373,6 @@ describe('rtdb-v3 repository cache helpers', () => {
                 },
               ],
               submittedBatches: [],
-              draftEntryCount: 1,
-              pendingBatchCount: 1,
-              submittedBatchCount: 0,
               customer: { name: 'A', phone: '' },
               updatedAt: 2,
             }),
@@ -516,5 +513,255 @@ describe('rtdb-v3 repository cache helpers', () => {
 
     expect(Object.keys(result).sort()).toEqual(['ord_fresh', 'ord_stale'])
     expect(warmDb.onceCalls).toContain('v3/history/ordersByMonth/2026-06/2026-06-01')
+  })
+
+  it('does not use the remembered revision cache as a freshness shortcut', async () => {
+    const descriptor = registerResourceDescriptor({
+      resourceKey: 'runtime:freshness',
+      remotePath: 'runtime/body',
+      revision: { path: 'runtime/body' },
+      codec: {
+        encode(value: { value: string }) {
+          return value
+        },
+        decode(value: { value: string }) {
+          return value
+        },
+      },
+    })
+    const db = createDbStub({
+      v3: {
+        meta: { revisions: { runtime: { body: 2 } } },
+        runtime: { body: { value: 'remote' } },
+      },
+    })
+    const ctx = createRtdbV3RepositoryContext({
+      db: db as never,
+      state: createState(),
+      cacheStore: createMemoryPersistentCacheStore(),
+    })
+    let memory = { value: 'stale' }
+    ctx.rememberRevision(descriptor.revision.path, 1)
+    ctx.markResourceFresh(descriptor.resourceKey, 1)
+
+    const result = await ctx.getResource({
+      descriptor,
+      readMemory: () => memory,
+      writeMemory: (value) => {
+        memory = value
+      },
+      readRemote: async () => {
+        const snapshot = await ctx.db.ref('v3/runtime/body').once('value')
+        return descriptor.codec.decode(snapshot.val() as { value: string })
+      },
+    })
+
+    expect(result.value).toBe('remote')
+    expect(db.onceCalls).toContain('v3/meta/revisions/runtime/body')
+    expect(db.onceCalls).toContain('v3/runtime/body')
+  })
+
+  it('hydrates warm cache before resource watch and skips body read when revision is unchanged', async () => {
+    const descriptor = registerResourceDescriptor({
+      resourceKey: 'runtime:watched',
+      remotePath: 'runtime/watched',
+      revision: { path: 'runtime/watched' },
+      codec: {
+        encode(value: { value: string }) {
+          return value
+        },
+        decode(value: { value: string }) {
+          return value
+        },
+      },
+    })
+    const cacheStore = createMemoryPersistentCacheStore()
+    await cacheStore.writeBody(descriptor.resourceKey, { value: 'cached' })
+    await cacheStore.writeManifest({
+      schemaVersion: RTDB_V3_SCHEMA_VERSION,
+      resourceKey: descriptor.resourceKey,
+      revision: 7,
+      updatedAt: 1,
+      payloadSize: 18,
+      payloadHash: createPayloadHash({ value: 'cached' }),
+    })
+    const db = createDbStub({
+      v3: {
+        meta: { revisions: { runtime: { watched: 7 } } },
+        runtime: { watched: { value: 'remote' } },
+      },
+    })
+    const ctx = createRtdbV3RepositoryContext({
+      db: db as never,
+      state: createState(),
+      cacheStore,
+    })
+    let memory: { value: string } | undefined
+    let changeCount = 0
+
+    const stop = ctx.watchManagedResource({
+      descriptor,
+      readMemory: () => memory,
+      writeMemory: (value) => {
+        memory = value
+      },
+      readRemote: async () => {
+        const snapshot = await ctx.db.ref('v3/runtime/watched').once('value')
+        return descriptor.codec.decode(snapshot.val() as { value: string })
+      },
+      onChange: () => {
+        changeCount += 1
+      },
+    })
+    await flushAsyncListeners()
+
+    expect(memory?.value).toBe('cached')
+    expect(changeCount).toBe(1)
+    expect(db.onceCalls).not.toContain('v3/runtime/watched')
+    stop()
+  })
+
+  it('does not let an older resource revision overwrite newer memory', async () => {
+    const descriptor = registerResourceDescriptor({
+      resourceKey: 'runtime:race',
+      remotePath: 'runtime/race',
+      revision: { path: 'runtime/race' },
+      codec: {
+        encode(value: { value: string }) {
+          return value
+        },
+        decode(value: { value: string }) {
+          return value
+        },
+      },
+    })
+    const ctx = createRtdbV3RepositoryContext({
+      db: createDbStub({}) as never,
+      state: createState(),
+      cacheStore: createMemoryPersistentCacheStore(),
+    })
+    let memory = { value: 'newer' }
+    ctx.markResourceFresh(descriptor.resourceKey, 4)
+
+    const result = await ctx.syncResource({
+      descriptor,
+      revision: 3,
+      readMemory: () => memory,
+      writeMemory: (value) => {
+        memory = value
+      },
+      readRemote: async () => ({ value: 'older' }),
+    })
+
+    expect(result.value).toBe('newer')
+    expect(memory.value).toBe('newer')
+  })
+
+  it('does not apply an older in-flight remote result after newer memory wins', async () => {
+    const descriptor = registerResourceDescriptor({
+      resourceKey: 'runtime:in-flight-race',
+      remotePath: 'runtime/inFlightRace',
+      revision: { path: 'runtime/inFlightRace' },
+      codec: {
+        encode(value: { value: string }) {
+          return value
+        },
+        decode(value: { value: string }) {
+          return value
+        },
+      },
+    })
+    const ctx = createRtdbV3RepositoryContext({
+      db: createDbStub({}) as never,
+      state: createState(),
+      cacheStore: createMemoryPersistentCacheStore(),
+    })
+    let memory: { value: string } | undefined
+    let resolveOlder!: (value: { value: string }) => void
+    const olderRemote = new Promise<{ value: string }>((resolve) => {
+      resolveOlder = resolve
+    })
+
+    const olderLoad = ctx.syncResource({
+      descriptor,
+      revision: 3,
+      readMemory: () => memory,
+      writeMemory: (value) => {
+        memory = value
+      },
+      readRemote: async () => await olderRemote,
+    })
+    await Promise.resolve()
+
+    memory = { value: 'newer' }
+    ctx.markResourceFresh(descriptor.resourceKey, 4)
+    resolveOlder({ value: 'older' })
+    const result = await olderLoad
+
+    expect(result.value).toBe('newer')
+    expect(memory.value).toBe('newer')
+    expect(await ctx.loadCachedResource(descriptor)).toBeNull()
+  })
+
+  it('lets a newer in-flight resource load supersede an older one', async () => {
+    const descriptor = registerResourceDescriptor({
+      resourceKey: 'runtime:concurrent-race',
+      remotePath: 'runtime/concurrentRace',
+      revision: { path: 'runtime/concurrentRace' },
+      codec: {
+        encode(value: { value: string }) {
+          return value
+        },
+        decode(value: { value: string }) {
+          return value
+        },
+      },
+    })
+    const ctx = createRtdbV3RepositoryContext({
+      db: createDbStub({}) as never,
+      state: createState(),
+      cacheStore: createMemoryPersistentCacheStore(),
+    })
+    let memory: { value: string } | undefined
+    let resolveOlder!: (value: { value: string }) => void
+    let resolveNewer!: (value: { value: string }) => void
+    const olderRemote = new Promise<{ value: string }>((resolve) => {
+      resolveOlder = resolve
+    })
+    const newerRemote = new Promise<{ value: string }>((resolve) => {
+      resolveNewer = resolve
+    })
+
+    const olderLoad = ctx.syncResource({
+      descriptor,
+      revision: 3,
+      readMemory: () => memory,
+      writeMemory: (value) => {
+        memory = value
+      },
+      readRemote: async () => await olderRemote,
+    })
+    await Promise.resolve()
+    const newerLoad = ctx.syncResource({
+      descriptor,
+      revision: 4,
+      readMemory: () => memory,
+      writeMemory: (value) => {
+        memory = value
+      },
+      readRemote: async () => await newerRemote,
+    })
+    await Promise.resolve()
+
+    resolveOlder({ value: 'older' })
+    resolveNewer({ value: 'newer' })
+    const [olderResult, newerResult] = await Promise.all([olderLoad, newerLoad])
+    const cached = await ctx.loadCachedResource(descriptor)
+
+    expect(olderResult.value).toBe('newer')
+    expect(newerResult.value).toBe('newer')
+    expect(memory?.value).toBe('newer')
+    expect(cached?.revision).toBe(4)
+    expect(cached?.value.value).toBe('newer')
   })
 })

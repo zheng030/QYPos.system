@@ -12,6 +12,11 @@ import { groupOrderLines } from '@/shared/grouped-order-lines'
 
 type PosOrderMode = 'customer' | 'staff'
 
+type PosStartupSession = {
+  isStaffLoggedIn: boolean
+  isCustomerRoute: boolean
+}
+
 type VisibleBatchCard = {
   batch: PosOrderBatch
   editable: boolean
@@ -568,6 +573,20 @@ export async function persistCustomerInfoSilently({
 
 export function getCustomerBoxDisplay(mode: PosOrderMode) {
   return mode === 'customer' || mode === 'staff' ? 'flex' : 'none'
+}
+
+export function getStartupAuthIntent(session: PosStartupSession) {
+  if (session.isCustomerRoute) {
+    return {
+      staffAuthenticated: false,
+      customerAuthenticated: true,
+    }
+  }
+
+  return {
+    staffAuthenticated: session.isStaffLoggedIn,
+    customerAuthenticated: false,
+  }
 }
 
 export async function submitDraftBatch({

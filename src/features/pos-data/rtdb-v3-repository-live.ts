@@ -162,6 +162,7 @@ export function createRtdbV3RepositoryLiveModule(
       } else {
         delete ctx.state.submittedBatches[table]
       }
+      ctx.syncTableStatusFromSubmitted(table, patch.submittedBatches || {})
       if (sessionMode) {
         ctx.state.activeSubmittedBatches = submittedBatches
       }
@@ -300,7 +301,8 @@ export function createRtdbV3RepositoryLiveModule(
   ) {
     await Promise.all(
       [...patch.changedShards].map((shard) => {
-        return ctx.invalidateLiveTableShardCache(table, shard)
+        const descriptor = ctx.liveTableShardDescriptor(table, shard)
+        return ctx.writeManagedResourceCache(descriptor, patch.normalizedNext[shard] as V3LiveTable[typeof shard])
       })
     )
     mergeCachedShards(table, patch.normalizedNext)
@@ -326,9 +328,6 @@ export function createRtdbV3RepositoryLiveModule(
     const nextDraftMap = buildLiveTable({ draft: nextDraft }).draft
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary),
-      draftEntryCount: nextDraft.length,
-      pendingBatchCount: Object.keys(pendingBatches).length,
-      submittedBatchCount: Object.keys(submittedBatches).length,
       nextRequestSeq: ctx.readNextRequestSeq({
         summary,
         draft,
@@ -367,9 +366,6 @@ export function createRtdbV3RepositoryLiveModule(
     const updatedAt = Date.now()
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary, updatedAt),
-      draftEntryCount: summary?.draftEntryCount || 0,
-      pendingBatchCount: summary?.pendingBatchCount || 0,
-      submittedBatchCount: summary?.submittedBatchCount || 0,
       nextRequestSeq: ctx.readNextRequestSeq({
         summary,
         draft: {},
@@ -402,9 +398,6 @@ export function createRtdbV3RepositoryLiveModule(
     const updatedAt = Date.now()
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary),
-      draftEntryCount: 0,
-      pendingBatchCount: Object.keys(pendingBatches).length,
-      submittedBatchCount: Object.keys(submittedBatches).length,
       nextRequestSeq: ctx.readNextRequestSeq({
         summary,
         draft,
@@ -475,9 +468,6 @@ export function createRtdbV3RepositoryLiveModule(
     }
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary, createdAt),
-      draftEntryCount: 0,
-      pendingBatchCount: Object.keys(nextPendingBatches).length,
-      submittedBatchCount: Object.keys(submittedBatches).length,
       nextRequestSeq,
       nextSplitCounter: readSplitCounter(summary?.nextSplitCounter),
       customer,
@@ -534,9 +524,6 @@ export function createRtdbV3RepositoryLiveModule(
     }
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary),
-      draftEntryCount: 0,
-      pendingBatchCount: Object.keys(nextPendingBatches).length,
-      submittedBatchCount: Object.keys(nextSubmittedBatches).length,
       nextRequestSeq: ctx.readNextRequestSeq({
         summary,
         draft: {},
@@ -594,9 +581,6 @@ export function createRtdbV3RepositoryLiveModule(
     delete nextPendingBatches[batchKey]
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary),
-      draftEntryCount: nextDraftEntries.length,
-      pendingBatchCount: Object.keys(nextPendingBatches).length,
-      submittedBatchCount: Object.keys(submittedBatches).length,
       nextRequestSeq: ctx.readNextRequestSeq({
         summary,
         draft,
@@ -676,9 +660,6 @@ export function createRtdbV3RepositoryLiveModule(
     ctx.state.staffDrafts[table] = []
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary, createdAt),
-      draftEntryCount: 0,
-      pendingBatchCount: Object.keys(pendingBatches).length,
-      submittedBatchCount: Object.keys(nextSubmittedBatches).length,
       nextRequestSeq,
       nextSplitCounter: readSplitCounter(summary?.nextSplitCounter),
       customer: batch.customer,
@@ -734,9 +715,6 @@ export function createRtdbV3RepositoryLiveModule(
     }
     const nextSummary = buildTableSummary({
       timerStartedAt: getCurrentTimer(table, summary),
-      draftEntryCount: 0,
-      pendingBatchCount: Object.keys(pendingBatches).length,
-      submittedBatchCount: Object.keys(nextSubmittedBatches).length,
       nextRequestSeq: ctx.readNextRequestSeq({
         summary,
         draft: {},
@@ -843,9 +821,6 @@ export function createRtdbV3RepositoryLiveModule(
       ? null
       : buildTableSummary({
           timerStartedAt: getCurrentTimer(payload.table, summary),
-          draftEntryCount: 0,
-          pendingBatchCount: 0,
-          submittedBatchCount: remainingSubmitted.length,
           nextRequestSeq: ctx.readNextRequestSeq({
             summary,
             draft: {},
@@ -893,9 +868,9 @@ export function createRtdbV3RepositoryLiveModule(
       delete ctx.state.submittedBatches[payload.table]
       delete ctx.state.staffDrafts[payload.table]
       delete ctx.state.tableTimers[payload.table]
-      delete ctx.state.tableStatuses[payload.table]
       delete ctx.state.tableCustomers[payload.table]
       delete ctx.state.tableSplitCounters[payload.table]
+      ctx.syncTableStatusFromSubmitted(payload.table, {})
       if (ctx.currentTableSession?.table === payload.table) {
         ctx.state.activeDraftEntries = []
         ctx.state.activePendingBatches = []
@@ -905,7 +880,7 @@ export function createRtdbV3RepositoryLiveModule(
       ctx.state.tableDrafts[payload.table] = []
       delete ctx.state.pendingBatches[payload.table]
       ctx.state.submittedBatches[payload.table] = remainingSubmitted
-      ctx.state.tableStatuses[payload.table] = 'yellow'
+      ctx.syncTableStatusFromSubmitted(payload.table, nextSubmittedBatches)
       ctx.state.tableSplitCounters[payload.table] = splitReservation?.nextSplitCounter || minimumNextSplitCounter + 1
       if (ctx.currentTableSession?.table === payload.table) {
         ctx.state.activeDraftEntries =
@@ -923,7 +898,11 @@ export function createRtdbV3RepositoryLiveModule(
     ctx.staffLiveStarted = true
     const shardSubscriptionLoads = new Map<string, Promise<void>>()
 
-    function subscribeShard<K extends 'summary' | 'pendingBatches'>(table: string, shard: K, roots: string[]) {
+    function subscribeShard<K extends 'summary' | 'pendingBatches' | 'submittedBatches'>(
+      table: string,
+      shard: K,
+      roots: string[]
+    ) {
       const key = `staff-${shard}-revision-${table}`
       const loadKey = `${table}:${shard}`
       const existingLoad = shardSubscriptionLoads.get(loadKey)
@@ -941,15 +920,31 @@ export function createRtdbV3RepositoryLiveModule(
       const descriptor = ctx.liveTableShardDescriptor(table, shard)
       ctx.setSubscription(
         key,
-        ctx.watchRevision(descriptor.revision.path, () => {
-          void ctx.readLiveTableShard(table, shard).then((value) => {
+        ctx.watchManagedResource({
+          descriptor,
+          emitInitial: true,
+          readMemory: () => {
+            const liveTable = ctx.liveTableCache.get(table)
+            return liveTable ? liveTable[shard] : undefined
+          },
+          writeMemory: (value) => {
+            ctx.setCachedLiveTable(table, {
+              ...ctx.getCachedLiveTable(table),
+              [shard]: value,
+            } as V3LiveTable)
+          },
+          readRemote: async () => {
+            const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+            return ctx.toLiveTableShardValueFromSnapshot(shard, snapshot.val())
+          },
+          onChange: (value) => {
             ctx.applyLiveTableShard(table, shard, value, ctx.currentTableSession?.mode)
             ctx.notifyLiveStateChange(roots)
             if (!initialized) {
               initialized = true
               resolveInitial()
             }
-          })
+          },
         })
       )
 
@@ -960,6 +955,7 @@ export function createRtdbV3RepositoryLiveModule(
       ctx.tables.flatMap((table) => [
         subscribeShard(table, 'summary', ['tableSummaries']),
         subscribeShard(table, 'pendingBatches', ['pendingBatches']),
+        subscribeShard(table, 'submittedBatches', ['submittedBatches']),
       ])
     )
   }
@@ -978,11 +974,27 @@ export function createRtdbV3RepositoryLiveModule(
       apply: (value: V3LiveTable[K]) => void
     ) {
       const descriptor = ctx.liveTableShardDescriptor(table, shard)
-      return ctx.watchRevision(descriptor.revision.path, () => {
-        void ctx.readLiveTableShard(table, shard).then((value) => {
+      return ctx.watchManagedResource({
+        descriptor,
+        emitInitial: true,
+        readMemory: () => {
+          const liveTable = ctx.liveTableCache.get(table)
+          return liveTable ? (ctx.toLiveTableShardValue(shard, liveTable[shard]) as V3LiveTable[K]) : undefined
+        },
+        writeMemory: (value) => {
+          ctx.setCachedLiveTable(table, {
+            ...ctx.getCachedLiveTable(table),
+            [shard]: value,
+          } as V3LiveTable)
+        },
+        readRemote: async () => {
+          const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return ctx.toLiveTableShardValueFromSnapshot(shard, snapshot.val())
+        },
+        onChange: (value) => {
           apply(value)
           ctx.notifyLiveStateChange(roots)
-        })
+        },
       })
     }
 

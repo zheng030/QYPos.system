@@ -39,10 +39,11 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     })
   }
 
-  async function refreshHistoryBizDate(bizDate: V3BizDateKey) {
+  async function refreshHistoryBizDate(bizDate: V3BizDateKey, revision?: number) {
     const descriptor = createHistoryOrdersByDayDescriptor(bizDate)
     return await ctx.refreshManagedResource({
       descriptor,
+      revision,
       clearMemory: () => {
         ctx.historyDayCache.delete(bizDate)
       },
@@ -75,49 +76,11 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     })
   }
 
-  async function refreshDailySummaryDay(bizDate: V3BizDateKey) {
-    const descriptor = createDailySummaryDescriptor(bizDate)
-    return await ctx.refreshManagedResource({
-      descriptor,
-      clearMemory: () => {
-        ctx.dailySummaryDayCache.delete(bizDate)
-      },
-      writeMemory: (value) => {
-        if (value) {
-          ctx.dailySummaryDayCache.set(bizDate, value)
-          return
-        }
-        ctx.dailySummaryDayCache.delete(bizDate)
-      },
-      readRemote: async () => {
-        const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
-        return descriptor.codec.decode((snapshot.val() || null) as ReturnType<typeof dailySummaryStorageCodec.encode>)
-      },
-    })
-  }
-
   async function ensureItemStatsDay(bizDate: V3BizDateKey) {
     const descriptor = createItemStatsDescriptor(bizDate)
     return await ctx.ensureManagedResource({
       descriptor,
       readMemory: () => ctx.itemStatsDayCache.get(bizDate),
-      writeMemory: (value) => {
-        ctx.itemStatsDayCache.set(bizDate, value)
-      },
-      readRemote: async () => {
-        const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
-        return descriptor.codec.decode((snapshot.val() || {}) as ReturnType<typeof itemStatsStorageCodec.encode>)
-      },
-    })
-  }
-
-  async function refreshItemStatsDay(bizDate: V3BizDateKey) {
-    const descriptor = createItemStatsDescriptor(bizDate)
-    return await ctx.refreshManagedResource({
-      descriptor,
-      clearMemory: () => {
-        ctx.itemStatsDayCache.delete(bizDate)
-      },
       writeMemory: (value) => {
         ctx.itemStatsDayCache.set(bizDate, value)
       },
@@ -191,12 +154,22 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
     const stops = bizDateKeys.map((bizDate) => {
       const descriptor = createHistoryOrdersByDayDescriptor(bizDate)
-      return ctx.watchRevision(descriptor.revision.path, () => {
-        ctx.historyDayCache.delete(bizDate)
-        ctx.clearResourceFresh(descriptor.resourceKey)
-        void refreshHistoryBizDate(bizDate).then(() => {
+      return ctx.watchManagedResource({
+        descriptor,
+        readMemory: () => ctx.historyDayCache.get(bizDate),
+        writeMemory: (value) => {
+          ctx.historyDayCache.set(bizDate, value)
+        },
+        clearMemory: () => {
+          ctx.historyDayCache.delete(bizDate)
+        },
+        readRemote: async () => {
+          const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return descriptor.codec.decode((snapshot.val() || {}) as Record<string, never>)
+        },
+        onChange: () => {
           onInvalidate({ kind: 'history-orders', changedBizDates: [bizDate] })
-        })
+        },
       })
     })
     return () => {
@@ -219,12 +192,26 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
     const stops = bizDateKeys.map((bizDate) => {
       const descriptor = createDailySummaryDescriptor(bizDate)
-      return ctx.watchRevision(descriptor.revision.path, () => {
-        ctx.dailySummaryDayCache.delete(bizDate)
-        ctx.clearResourceFresh(descriptor.resourceKey)
-        void refreshDailySummaryDay(bizDate).then(() => {
+      return ctx.watchManagedResource({
+        descriptor,
+        readMemory: () => ctx.dailySummaryDayCache.get(bizDate),
+        writeMemory: (value) => {
+          if (value) {
+            ctx.dailySummaryDayCache.set(bizDate, value)
+            return
+          }
+          ctx.dailySummaryDayCache.delete(bizDate)
+        },
+        clearMemory: () => {
+          ctx.dailySummaryDayCache.delete(bizDate)
+        },
+        readRemote: async () => {
+          const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return descriptor.codec.decode((snapshot.val() || null) as ReturnType<typeof dailySummaryStorageCodec.encode>)
+        },
+        onChange: () => {
           onInvalidate({ kind: 'daily-summary', changedBizDates: [bizDate] })
-        })
+        },
       })
     })
     return () => {
@@ -238,12 +225,22 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     const bizDateKeys = getBizDateKeysBetween(start, endExclusive)
     const stops = bizDateKeys.map((bizDate) => {
       const descriptor = createItemStatsDescriptor(bizDate)
-      return ctx.watchRevision(descriptor.revision.path, () => {
-        ctx.itemStatsDayCache.delete(bizDate)
-        ctx.clearResourceFresh(descriptor.resourceKey)
-        void refreshItemStatsDay(bizDate).then(() => {
+      return ctx.watchManagedResource({
+        descriptor,
+        readMemory: () => ctx.itemStatsDayCache.get(bizDate),
+        writeMemory: (value) => {
+          ctx.itemStatsDayCache.set(bizDate, value)
+        },
+        clearMemory: () => {
+          ctx.itemStatsDayCache.delete(bizDate)
+        },
+        readRemote: async () => {
+          const snapshot = await ctx.db.ref(`${RTDB_V3_ROOT}/${descriptor.remotePath}`).once('value')
+          return descriptor.codec.decode((snapshot.val() || {}) as ReturnType<typeof itemStatsStorageCodec.encode>)
+        },
+        onChange: () => {
           onInvalidate({ kind: 'item-stats', changedBizDates: [bizDate] })
-        })
+        },
       })
     })
     return () => {
@@ -269,21 +266,8 @@ export function createRtdbV3RepositoryHistoryModule(ctx: RtdbV3RepositoryContext
     else ctx.dailySummaryDayCache.delete(bizDate)
     if (rebuilt.itemStats) ctx.itemStatsDayCache.set(bizDate, rebuilt.itemStats)
     else ctx.itemStatsDayCache.delete(bizDate)
-    await ctx.saveCachedResource(
-      dailyDescriptor,
-      ctx.revisionCache.get(`reports/dailyByDay/${bizDate}`) || 0,
-      rebuilt.summary
-    )
-    ctx.markResourceFresh(dailyDescriptor.resourceKey, ctx.revisionCache.get(`reports/dailyByDay/${bizDate}`) || 0)
-    await ctx.saveCachedResource(
-      itemStatsDescriptor,
-      ctx.revisionCache.get(`reports/itemStatsByDay/${bizDate}`) || 0,
-      rebuilt.itemStats || {}
-    )
-    ctx.markResourceFresh(
-      itemStatsDescriptor.resourceKey,
-      ctx.revisionCache.get(`reports/itemStatsByDay/${bizDate}`) || 0
-    )
+    await ctx.writeManagedResourceCache(dailyDescriptor, rebuilt.summary)
+    await ctx.writeManagedResourceCache(itemStatsDescriptor, rebuilt.itemStats || {})
   }
 
   async function deleteClosedOrder(order: PosOrder) {

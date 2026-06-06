@@ -1,5 +1,5 @@
 export const RTDB_V3_ROOT = 'v3'
-export const RTDB_V3_SCHEMA_VERSION = 5
+export const RTDB_V3_SCHEMA_VERSION = 6
 
 export type V3CatalogKey = string
 export type V3MonthKey = `${number}-${string}`
@@ -77,9 +77,6 @@ export type V3OrderBatch = {
 export type V3TableSummary = {
   timerStartedAt: number | null
   displaySeqBase: number | null
-  draftEntryCount: number
-  pendingBatchCount: number
-  submittedBatchCount: number
   nextRequestSeq?: number | null
   nextSplitCounter?: number | null
   customer: V3TableCustomer

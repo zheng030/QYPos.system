@@ -87,9 +87,6 @@ const STATION_FROM_CODE = {
 const SUMMARY_FIELD_KEY_MAP = {
   timerStartedAt: 't',
   displaySeqBase: 'd',
-  draftEntryCount: 'de',
-  pendingBatchCount: 'pb',
-  submittedBatchCount: 'sb',
   nextRequestSeq: 'rq',
   nextSplitCounter: 'sc',
   customer: 'c',
@@ -104,9 +101,6 @@ export type V3StoredTableCustomer = {
 export type V3StoredTableSummary = {
   t?: number | null
   d?: number | null
-  de?: number
-  pb?: number
-  sb?: number
   rq?: number | null
   sc?: number | null
   c?: V3StoredTableCustomer
@@ -701,9 +695,6 @@ export const tableSummaryStorageCodec: StorageCodec<V3TableSummary | null, V3Sto
     return encodeStoredValue({
       t: value.timerStartedAt,
       d: value.displaySeqBase,
-      de: value.draftEntryCount,
-      pb: value.pendingBatchCount,
-      sb: value.submittedBatchCount,
       rq: value.nextRequestSeq,
       sc: value.nextSplitCounter,
       c: encodeCustomer(value.customer),
@@ -728,9 +719,6 @@ export const tableSummaryStorageCodec: StorageCodec<V3TableSummary | null, V3Sto
     const decoded: V3TableSummary = {
       timerStartedAt: toNullableNumber(pickAliasedValue(raw, 't', 'timerStartedAt')),
       displaySeqBase: toNullableNumber(pickAliasedValue(raw, 'd', 'displaySeqBase')),
-      draftEntryCount: toNumber(pickAliasedValue(raw, 'de', 'draftEntryCount')),
-      pendingBatchCount: toNumber(pickAliasedValue(raw, 'pb', 'pendingBatchCount')),
-      submittedBatchCount: toNumber(pickAliasedValue(raw, 'sb', 'submittedBatchCount')),
       customer: decodeCustomer(pickAliasedValue(raw, 'c', 'customer')),
       updatedAt: toNumber(pickAliasedValue(raw, 'u', 'updatedAt')),
     }
