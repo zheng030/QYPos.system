@@ -19,6 +19,25 @@ function createHelpers(inventory: Record<string, boolean | undefined> = {}) {
 }
 
 describe('pos-sales builder', () => {
+  it('keeps menu item ids unique across rendered categories', () => {
+    const itemIds = Object.values(menuMeta.categories).flatMap((category) =>
+      category.sections.flatMap((section) => section.items.map((item) => item.id))
+    )
+    const duplicateIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index)
+
+    expect(duplicateIds).toEqual([])
+  })
+
+  it('allows black tea and green tea as customer standalone drinks at 80', () => {
+    const helpers = createHelpers()
+    const customerItemIds = helpers.getMenuItemsByMode('customer').map((item) => item.id)
+
+    expect(customerItemIds).toContain('drink.black-tea')
+    expect(customerItemIds).toContain('drink.green-tea')
+    expect(helpers.getItemDisplayPrice('drink.black-tea')).toBe(80)
+    expect(helpers.getItemDisplayPrice('drink.green-tea')).toBe(80)
+  })
+
   it('normalizes schema metadata for every product and selectable child', () => {
     Object.values(menuMeta.itemsById).forEach((item) => {
       expect(item.productKey).toBe(item.id)

@@ -613,7 +613,7 @@ const categories: PosMenuCategory[] = [
             selections: [textRule('note', '備註')],
           }),
           singleItem({
-            id: 'a_la_carte.balsamic-mushroom',
+            id: 'a_la_carte.mashed-potato',
             name: '法式馬鈴薯泥',
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
@@ -697,11 +697,10 @@ const categories: PosMenuCategory[] = [
           }),
           singleItem({
             id: 'drink.black-tea',
-            name: '紅茶',
+            name: '肯尼亞紅茶',
             categoryKey: 'drink',
             courseKind: 'drink',
-            basePrice: 0,
-            menuModes: ['staff'],
+            basePrice: 80,
             selections: [drinkTemperatureRule],
           }),
           singleItem({
@@ -709,8 +708,7 @@ const categories: PosMenuCategory[] = [
             name: '綠茶',
             categoryKey: 'drink',
             courseKind: 'drink',
-            basePrice: 0,
-            menuModes: ['staff'],
+            basePrice: 80,
             selections: [drinkTemperatureRule],
           }),
         ],
