@@ -148,6 +148,7 @@ const drinkTemperatureRule = singleRule(
 const pastaBaseOptions = {
   pastaAndRisotto: [option('pasta', '義大利麵'), option('risotto', '燉飯')],
   pastaOnly: [option('pasta', '義大利麵')],
+  risottoOnly: [option('risotto', '燉飯')],
   macaroniOnly: [option('macaroni', '通心粉')],
 } as const satisfies Record<string, PosSelectionOption[]>
 
@@ -372,6 +373,19 @@ const categories: PosMenuCategory[] = [
             selections: buildPastaSelections({
               baseOptions: pastaBaseOptions.pastaOnly,
               defaultBase: 'pasta',
+            }),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.beef-short-rib-risotto',
+            name: '留香牛小排燉飯',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 450,
+            selections: buildPastaSelections({
+              baseOptions: pastaBaseOptions.risottoOnly,
+              defaultBase: 'risotto',
             }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
