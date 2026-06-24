@@ -330,11 +330,10 @@ input:checked + .slider:before {
 		flex: 1;
 	}
 	.builder-modal-shell {
-		padding: 12px;
+		--builder-modal-padding: 12px;
 		align-items: flex-end;
 	}
 	.builder-modal-card {
-		max-height: 92vh;
 		border-bottom-left-radius: 0;
 		border-bottom-right-radius: 0;
 	}

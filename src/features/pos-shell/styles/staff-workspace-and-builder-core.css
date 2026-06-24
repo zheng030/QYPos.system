@@ -582,18 +582,29 @@
 .builder-modal-shell {
 	position: fixed;
 	inset: 0;
+	box-sizing: border-box;
 	z-index: 10020;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 20px;
+	padding: calc(var(--builder-modal-padding) + env(safe-area-inset-top, 0px)) var(--builder-modal-padding)
+		calc(var(--builder-modal-padding) + env(safe-area-inset-bottom, 0px));
 	background: rgba(15, 23, 42, 0.6);
 	backdrop-filter: blur(4px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 
 .builder-modal-card {
+	box-sizing: border-box;
 	width: min(760px, 100%);
-	max-height: min(88vh, 920px);
+	max-height: min(
+		calc(
+			var(--builder-modal-viewport-height) - var(--builder-modal-safe-area-block) -
+				(var(--builder-modal-padding) * 2)
+		),
+		920px
+	);
 	margin-bottom: 0;
 	overflow-y: auto;
 	box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);

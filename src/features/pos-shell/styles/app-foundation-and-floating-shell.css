@@ -17,8 +17,23 @@
 	--shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 	--radius-md: 12px;
 	--radius-lg: 20px;
+	--builder-modal-viewport-height: 100vh;
+	--builder-modal-padding: 20px;
+	--builder-modal-safe-area-block: calc(env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px));
 	--staff-floating-collapsed-max-height: min(40svh, 420px);
 	--staff-floating-expanded-max-height: min(90svh, 960px);
+}
+
+@supports (height: 100svh) {
+	:root {
+		--builder-modal-viewport-height: 100svh;
+	}
+}
+
+@supports (height: 100dvh) {
+	:root {
+		--builder-modal-viewport-height: 100dvh;
+	}
 }
 
 body {
