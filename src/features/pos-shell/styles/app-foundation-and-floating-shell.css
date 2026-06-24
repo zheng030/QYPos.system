@@ -94,6 +94,74 @@ button {
 	transform: translateY(0);
 }
 
+.image-preview-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 10050;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 22px;
+	background: rgba(15, 23, 42, 0.72);
+	backdrop-filter: blur(6px);
+	opacity: 0;
+	transition: opacity 0.22s ease;
+}
+
+.image-preview-backdrop.show {
+	opacity: 1;
+}
+
+.image-preview-sheet {
+	position: relative;
+	width: min(760px, 96vw);
+	max-height: 92svh;
+	border-radius: 18px;
+	background: #0f172a;
+	box-shadow: 0 28px 70px rgba(15, 23, 42, 0.38);
+	overflow: hidden;
+	transform: scale(0.96) translateY(10px);
+	animation: image-preview-enter 0.24s ease forwards;
+}
+
+.image-preview-sheet img {
+	display: block;
+	width: 100%;
+	max-height: 92svh;
+	object-fit: contain;
+	background: #0f172a;
+}
+
+.image-preview-close {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 1;
+	width: 38px;
+	height: 38px;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.36);
+	background: rgba(15, 23, 42, 0.72);
+	color: white;
+	font-size: 26px;
+	line-height: 1;
+}
+
+@keyframes image-preview-enter {
+	to {
+		transform: scale(1) translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.image-preview-backdrop,
+	.image-preview-sheet {
+		transition: none;
+		animation: none;
+		transform: none;
+	}
+}
+
 /* ========== 2. 登入畫面 ========== */
 #login-screen {
 	position: fixed;

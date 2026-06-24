@@ -18,7 +18,13 @@ import {
   renderAdjustedAmountHtml,
   selectPendingOverlayBatch,
 } from './runtime-support'
-import { escapeHtml, formatCurrency, getVisibleDetailChildLines, groupChildLines } from './runtime-utils'
+import {
+  escapeHtml,
+  formatCurrency,
+  getVisibleDetailChildLines,
+  groupChildLines,
+  renderItemImageButton,
+} from './runtime-utils'
 
 type PendingOverlayState = {
   requestKey: string | null
@@ -56,6 +62,19 @@ export function createPosSalesOrderUiModule({
   getDisplaySummary,
   renderEntrySubtitleLines,
 }: OrderUiDeps) {
+  function getEntryMenuItem(entry: PosOrderEntry) {
+    const mainLine = entry.lines.find((line) => !line.parentLineId) || entry.lines[0]
+    return (
+      kernel.helpers.getItemById(entry.itemId) ||
+      kernel.helpers.getItemById(entry.catalogKey) ||
+      kernel.helpers.getItemById(mainLine?.catalogKey || '')
+    )
+  }
+
+  function renderEntryThumbnail(entry: PosOrderEntry) {
+    return renderItemImageButton(getEntryMenuItem(entry), 'entry-card-thumb')
+  }
+
   function renderMenuGrid() {
     const grid = document.getElementById('menuGrid')
     if (!grid) {
@@ -80,9 +99,9 @@ export function createPosSalesOrderUiModule({
             const tags = item.tags?.length
               ? `<div class="menu-item-tags">${escapeHtml(item.tags.join(' / '))}</div>`
               : ''
-            return `
+            const button = `
               <button
-                class="item btn-effect${disabled ? ' sold-out' : ''}"
+                class="item${item.imageUrl ? ' menu-item-main' : ''} btn-effect${disabled && !item.imageUrl ? ' sold-out' : ''}"
                 data-action="select-menu-item"
                 data-item-id="${escapeHtml(item.id)}"
                 ${disabled ? 'disabled' : ''}
@@ -93,6 +112,16 @@ export function createPosSalesOrderUiModule({
                 </span>
                 <b>${formatCurrency(price)}</b>
               </button>
+            `
+            if (!item.imageUrl) {
+              return button
+            }
+            const image = renderItemImageButton(item, 'menu-card-image')
+            return `
+              <article class="menu-item-card${disabled ? ' sold-out' : ''}">
+                ${image}
+                ${button}
+              </article>
             `
           })
           .join('')
@@ -124,9 +153,11 @@ export function createPosSalesOrderUiModule({
     const isTreat = entry.lines.every((line) => line.isTreat)
     const summary = getDisplaySummary(entry)
     const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
+    const thumbnail = renderEntryThumbnail(entry)
     return `
       <article class="entry-card">
         <div class="entry-card-head">
+          ${thumbnail}
           <div>
             <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
             ${renderEntrySubtitleLines([{ text: summary.mainSummary }])}
@@ -213,6 +244,7 @@ export function createPosSalesOrderUiModule({
               )
               const summary = getDisplaySummary(entry)
               const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
+              const thumbnail = renderEntryThumbnail(entry)
               const entryActions =
                 options.pending || !options.editable
                   ? ''
@@ -223,6 +255,7 @@ export function createPosSalesOrderUiModule({
                     `
               return `
                 <div class="entry-line-row">
+                  ${thumbnail}
                   <div>
                     <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
                     ${renderEntrySubtitleLines([
@@ -266,9 +299,11 @@ export function createPosSalesOrderUiModule({
       .map((entry) => {
         const summary = getDisplaySummary(entry)
         const totalHtml = renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(entry))
+        const thumbnail = renderEntryThumbnail(entry)
         return `
           <div class="entry-card">
             <div class="entry-card-head">
+              ${thumbnail}
               <div>
                 <div class="entry-card-title">${escapeHtml(entry.summary.title)}</div>
                 ${renderEntrySubtitleLines([

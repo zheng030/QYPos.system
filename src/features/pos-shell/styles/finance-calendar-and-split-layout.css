@@ -93,6 +93,9 @@
 .finance-category-card[data-category="pasta_risotto"]::before {
 	background: #4361ee;
 }
+.finance-category-card[data-category="brunch"]::before {
+	background: #d97706;
+}
 .finance-category-card[data-category="bread_set"]::before {
 	background: #3a86ff;
 }

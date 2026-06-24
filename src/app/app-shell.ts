@@ -5,6 +5,7 @@ const authNotice = authGate.getDevBypassNotice()
 export const appShellHtml = `
   <div id="receipt-print-area" class="print-area-hidden"></div>
   <div id="toast-container"></div>
+  <div id="imagePreviewHost"></div>
 
   <div id="login-screen">
     <div class="login-box">

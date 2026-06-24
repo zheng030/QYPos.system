@@ -28,6 +28,98 @@ describe('pos-sales builder', () => {
     expect(duplicateIds).toEqual([])
   })
 
+  it('adds brunch as an image-backed bundle category with staff-only standalone juices', () => {
+    const brunch = menuMeta.categories.brunch
+    if (!brunch) {
+      throw new Error('expected brunch category')
+    }
+    const brunchItems = brunch.sections.flatMap((section) => section.items)
+    const customerItemIds = createHelpers()
+      .getMenuItemsByMode('customer')
+      .map((item) => item.id)
+    const staffItemIds = createHelpers()
+      .getMenuItemsByMode('staff')
+      .map((item) => item.id)
+
+    expect(brunch.label).toBe('早午餐')
+    expect(brunchItems.map((item) => item.id)).toEqual([
+      'brunch.garden-breakfast',
+      'brunch.garden-chicken-leg',
+      'brunch.garden-shrimp',
+      'brunch.garden-bone-in-beef',
+      'brunch.garden-seabass',
+      'brunch.garden-smoked-salmon',
+      'brunch.garden-crispy-duck-breast',
+    ])
+    expect(brunchItems.map((item) => item.basePrice)).toEqual([150, 220, 260, 280, 240, 280, 380])
+    expect(menuMeta.itemsById['brunch.garden-breakfast']?.imageUrl).toBe('menu-img/brunch/garden-breakfast.jpg')
+    expect(menuMeta.itemsById['brunch.garden-smoked-salmon']?.imageUrl).toBeUndefined()
+    expect(customerItemIds).not.toContain('drink.milk-tea')
+    expect(customerItemIds).not.toContain('drink.apple-juice')
+    expect(customerItemIds).not.toContain('drink.orange-juice')
+    expect(staffItemIds).toContain('drink.milk-tea')
+    expect(staffItemIds).toContain('drink.apple-juice')
+    expect(staffItemIds).toContain('drink.orange-juice')
+  })
+
+  it('builds brunch bundles with brunch-specific drink upgrade pricing', () => {
+    const helpers = createHelpers()
+    let state = createBuilderState('brunch.garden-chicken-leg', 'customer-draft')
+    let presentation = buildBuilderPresentation({ state, helpers })
+
+    expect(presentation?.missingIssues.map((issue) => issue.groupId)).toEqual(['brunch-drink-upgrade'])
+    expect(
+      presentation?.childBlocks[0]?.optionGroup?.options.map((option) => [option.value, option.priceDelta])
+    ).toEqual([
+      ['black-tea', 0],
+      ['green-tea', 0],
+      ['chef-soup', 80],
+      ['puff-soup', 120],
+      ['milk-tea', 50],
+      ['apple-juice', 50],
+      ['orange-juice', 50],
+      ['americano', 50],
+      ['latte', 80],
+    ])
+
+    state = updateBuilderSelection(state, 'upgrade', 'brunch-drink-upgrade', 'latte')
+    state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
+    presentation = buildBuilderPresentation({ state, helpers })
+
+    expect(presentation?.canConfirm).toBe(true)
+    expect(presentation?.subtotal).toBe(300)
+
+    const result = finalizeBuilderEntry({
+      state,
+      helpers,
+      source: 'customer',
+      status: 'draft',
+      entryId: 'entry_brunch',
+      createdAt: 10,
+      updatedAt: 20,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error('expected finalized brunch entry')
+    }
+    expect(result.entry.categoryKey).toBe('brunch')
+    expect(result.entry.lines[0]).toMatchObject({
+      catalogKey: 'brunch.garden-chicken-leg',
+      categoryKey: 'brunch',
+      lineTotal: 220,
+    })
+    expect(result.entry.lines[1]).toMatchObject({
+      role: 'upgrade',
+      catalogKey: 'drink.latte',
+      categoryKey: 'drink',
+      unitPrice: 80,
+      lineTotal: 80,
+      selectionSummary: '溫度：熱',
+    })
+    expect(result.entry.subtotal).toBe(300)
+  })
+
   it('allows black tea and green tea as customer standalone drinks at 80', () => {
     const helpers = createHelpers()
     const customerItemIds = helpers.getMenuItemsByMode('customer').map((item) => item.id)

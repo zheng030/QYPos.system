@@ -13,7 +13,7 @@ import {
   type StaffWorkspaceRow,
   summarizeStaffWorkspace,
 } from './runtime-support'
-import { escapeHtml, flattenBatchLines, getStaffCategoryLabel } from './runtime-utils'
+import { escapeHtml, flattenBatchLines, getStaffCategoryLabel, renderItemImageButton } from './runtime-utils'
 
 type WorkspaceDeps = {
   kernel: PosKernelService
@@ -72,6 +72,15 @@ export function createPosSalesWorkspaceModule({
     return parts.join(' · ')
   }
 
+  function renderEntryThumbnail(entry: PosOrderEntry) {
+    const mainLine = entry.lines.find((line) => !line.parentLineId) || entry.lines[0]
+    const item =
+      kernel.helpers.getItemById(entry.itemId) ||
+      kernel.helpers.getItemById(entry.catalogKey) ||
+      kernel.helpers.getItemById(mainLine?.catalogKey || '')
+    return renderItemImageButton(item, 'entry-card-thumb staff-entry-thumb')
+  }
+
   function renderEntrySubtitleLines(lines: Array<{ text: string; className?: string } | null | undefined | false>) {
     return lines
       .filter((line): line is { text: string; className?: string } =>
@@ -110,6 +119,7 @@ export function createPosSalesWorkspaceModule({
       return `
         <div class="staff-stream-entry-line is-collapsed">
           <div class="staff-stream-row-inline">
+            ${renderEntryThumbnail(entry)}
             <span class="staff-stream-row-inline-main">
               <span class="staff-stream-inline-title">${escapeHtml(entry.summary.title)}</span>
               <span class="staff-stream-inline-summary">${escapeHtml(compactSummary)}</span>
@@ -126,6 +136,7 @@ export function createPosSalesWorkspaceModule({
     return `
       <div class="staff-stream-entry-line">
         <div class="staff-stream-row-head">
+          ${renderEntryThumbnail(entry)}
           <div class="staff-stream-row-title-group">
             <div class="staff-stream-row-meta">
               <span class="staff-category-chip">${escapeHtml(categoryLabel)}</span>

@@ -348,6 +348,30 @@
 	gap: 12px;
 }
 
+.entry-card-thumb {
+	flex: 0 0 56px;
+	width: 56px;
+	aspect-ratio: 1;
+	border: 0;
+	border-radius: 10px;
+	padding: 0;
+	background: #e2e8f0;
+	overflow: hidden;
+	cursor: pointer;
+}
+
+.entry-card-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.staff-entry-thumb {
+	flex-basis: 48px;
+	width: 48px;
+}
+
 .entry-card-title,
 .batch-card-title {
 	font-size: 16px;
@@ -534,6 +558,25 @@
 	margin-bottom: 16px;
 	padding: 18px;
 	text-align: left;
+}
+
+.builder-item-image {
+	flex: 0 0 72px;
+	width: 72px;
+	aspect-ratio: 1;
+	border: 0;
+	border-radius: 12px;
+	padding: 0;
+	background: #e2e8f0;
+	overflow: hidden;
+	cursor: pointer;
+}
+
+.builder-item-image img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
 }
 
 .builder-modal-shell {

@@ -176,7 +176,7 @@ function isOptionDisabled(
 }
 
 function isAutoOptionalDrinkGroup(group: PosBundleUpgradeGroup, helpers: BuilderHelpers) {
-  if (group.id !== 'bundle-drink-upgrade') return false
+  if (!['bundle-drink-upgrade', 'brunch-drink-upgrade'].includes(group.id)) return false
   const freeDrinkOptions = group.options.filter((option) => option.priceDelta === 0)
   return freeDrinkOptions.length > 0 && freeDrinkOptions.every((option) => isOptionDisabled(option, group, helpers))
 }

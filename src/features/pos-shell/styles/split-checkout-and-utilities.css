@@ -485,6 +485,22 @@ body.staff-mode #orderMenuPanel {
 	background: transparent;
 }
 
+body.staff-mode .menu-item-card {
+	display: grid;
+	grid-template-columns: 108px minmax(0, 1fr);
+	align-items: stretch;
+}
+
+body.staff-mode .menu-card-image {
+	height: 100%;
+	min-height: 108px;
+	aspect-ratio: auto;
+}
+
+body.staff-mode .menu-item-card .item {
+	min-height: 108px;
+}
+
 body.staff-mode .floating-bar-customer {
 	display: none !important;
 }
@@ -514,6 +530,12 @@ body.staff-mode .floating-bar-staff {
 	}
 	.customer-floating-bar {
 		border-radius: 26px 26px 0 0;
+	}
+	body.staff-mode .menu-item-card {
+		grid-template-columns: 88px minmax(0, 1fr);
+	}
+	body.staff-mode .menu-card-image {
+		min-height: 96px;
 	}
 }
 

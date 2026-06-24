@@ -543,6 +543,7 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
       : 'total'
     const titleMap: Record<PosRevenueBucket, string> = {
       pasta_risotto: POS_CATEGORY_LABELS.pasta_risotto,
+      brunch: POS_CATEGORY_LABELS.brunch,
       bread_set: POS_CATEGORY_LABELS.bread_set,
       salad: POS_CATEGORY_LABELS.salad,
       plated_main: POS_CATEGORY_LABELS.plated_main,

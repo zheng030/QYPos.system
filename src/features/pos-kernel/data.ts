@@ -51,6 +51,7 @@ function inferCategoryKeyFromCatalogKey(value: string): PosCategoryKey {
   const head = String(value || '').split('.')[0]
   return ({
     pasta_risotto: 'pasta_risotto',
+    brunch: 'brunch',
     bread_set: 'bread_set',
     salad: 'salad',
     plated_main: 'plated_main',
@@ -186,6 +187,18 @@ const upgradeDrinkOptions = [
   option('puff-soup', '酥皮濃湯', 120, 'soup.puff'),
 ] as const
 
+const brunchUpgradeOptions = [
+  option('black-tea', '紅茶', 0, 'drink.black-tea'),
+  option('green-tea', '綠茶', 0, 'drink.green-tea'),
+  option('chef-soup', '主廚濃湯', 80, 'soup.chef'),
+  option('puff-soup', '酥皮濃湯', 120, 'soup.puff'),
+  option('milk-tea', '鮮奶茶', 50, 'drink.milk-tea'),
+  option('apple-juice', '蘋果汁', 50, 'drink.apple-juice'),
+  option('orange-juice', '橙汁', 50, 'drink.orange-juice'),
+  option('americano', '美式咖啡', 50, 'drink.americano'),
+  option('latte', '拿鐵咖啡', 80, 'drink.latte'),
+] as const
+
 function buildBundleIncludes() {
   return [
     {
@@ -208,6 +221,32 @@ function buildBundleUpgradeGroups() {
       required: true,
       summaryLabel: '附飲',
       options: [...upgradeDrinkOptions],
+    },
+  ]
+}
+
+function buildBrunchIncludes() {
+  return [
+    {
+      id: 'included-drink',
+      label: '附飲',
+      itemId: 'drink.black-tea',
+      inventoryKey: 'drink.black-tea',
+      categoryKey: 'drink',
+      upgradeGroupId: 'brunch-drink-upgrade',
+      defaultSelections: { temperature: 'ice' },
+    },
+  ] as const satisfies PosMenuItem['includes']
+}
+
+function buildBrunchUpgradeGroups() {
+  return [
+    {
+      id: 'brunch-drink-upgrade',
+      label: '附飲 / 換購',
+      required: true,
+      summaryLabel: '附飲',
+      options: [...brunchUpgradeOptions],
     },
   ]
 }
@@ -389,6 +428,101 @@ const categories: PosMenuCategory[] = [
             }),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+        ],
+      },
+    ],
+  },
+  {
+    key: 'brunch',
+    label: '早午餐',
+    shortLabel: '早午餐',
+    description: '皆附紅茶 / 綠茶，可加價換購',
+    sections: [
+      {
+        id: 'brunch-main',
+        label: '花園早午餐',
+        items: [
+          bundleItem({
+            id: 'brunch.garden-breakfast',
+            name: '花園早餐（無肉）',
+            shortName: '花園早餐',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 150,
+            imageUrl: 'menu-img/brunch/garden-breakfast.jpg',
+            imageAlt: '花園早餐（無肉）',
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'brunch.garden-chicken-leg',
+            name: '花園雞腿',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 220,
+            imageUrl: 'menu-img/brunch/garden-chicken-leg.jpg',
+            imageAlt: '花園雞腿',
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'brunch.garden-shrimp',
+            name: '花園鮮蝦',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 260,
+            imageUrl: 'menu-img/brunch/garden-shrimp.jpg',
+            imageAlt: '花園鮮蝦',
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'brunch.garden-bone-in-beef',
+            name: '花園帶骨牛',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 280,
+            imageUrl: 'menu-img/brunch/garden-bone-in-beef.jpg',
+            imageAlt: '花園帶骨牛',
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'brunch.garden-seabass',
+            name: '花園嫩鱸魚',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 240,
+            imageUrl: 'menu-img/brunch/garden-seabass.jpg',
+            imageAlt: '花園嫩鱸魚',
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'brunch.garden-smoked-salmon',
+            name: '花園燻鮭魚',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 280,
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'brunch.garden-crispy-duck-breast',
+            name: '花園酥鴨胸',
+            categoryKey: 'brunch',
+            courseKind: 'food',
+            basePrice: 380,
+            selections: buildBundleSelections(),
+            includes: buildBrunchIncludes(),
+            upgradeGroups: buildBrunchUpgradeGroups(),
           }),
         ],
       },
@@ -704,9 +838,37 @@ const categories: PosMenuCategory[] = [
           singleItem({
             id: 'drink.latte',
             name: '拿鐵咖啡',
+            shortName: '拿鐵',
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 150,
+            selections: [drinkTemperatureRule, textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'drink.milk-tea',
+            name: '鮮奶茶',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 130,
+            menuModes: ['staff'],
+            selections: [drinkTemperatureRule, textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'drink.apple-juice',
+            name: '蘋果汁',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 130,
+            menuModes: ['staff'],
+            selections: [drinkTemperatureRule, textRule('note', '備註')],
+          }),
+          singleItem({
+            id: 'drink.orange-juice',
+            name: '橙汁',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 130,
+            menuModes: ['staff'],
             selections: [drinkTemperatureRule, textRule('note', '備註')],
           }),
           singleItem({

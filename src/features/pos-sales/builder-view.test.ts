@@ -87,4 +87,26 @@ describe('pos-sales builder-view', () => {
 
     expect(html).toContain('data-action="builder-confirm" disabled')
   })
+
+  it('renders item image preview control when the product has an image', () => {
+    const helpers = createHelpers()
+    let state = createBuilderState('brunch.garden-breakfast', 'customer-draft')
+    state = updateBuilderSelection(state, 'upgrade', 'brunch-drink-upgrade', 'black-tea')
+    state = updateBuilderSelection(state, 'include', 'included-drink', 'ice', 'temperature')
+    const presentation = buildBuilderPresentation({ state, helpers })
+    if (!presentation) {
+      throw new Error('expected builder presentation')
+    }
+
+    const html = renderBuilderMarkup({
+      presentation,
+      editing: false,
+      issueMessage: '',
+    })
+
+    expect(html).toContain('class="builder-item-image menu-image-button"')
+    expect(html).toContain('data-action="open-image-preview"')
+    expect(html).toContain('src="/menu-img/brunch/garden-breakfast.jpg"')
+    expect(html).toContain('alt="花園早餐（無肉）"')
+  })
 })

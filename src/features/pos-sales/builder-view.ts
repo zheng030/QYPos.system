@@ -5,6 +5,7 @@ import type {
   BuilderRuleView,
   BuilderUpgradeGroupView,
 } from './builder'
+import { renderItemImageButton } from './runtime-utils'
 
 function formatCurrency(value: number) {
   return `$${Math.round(value || 0)}`
@@ -133,11 +134,13 @@ export function renderBuilderMarkup({
   issueMessage?: string
 }) {
   const childBlocks = presentation.childBlocks.map(renderChildBlock).join('')
+  const image = renderItemImageButton(presentation.item, 'builder-item-image')
 
   return `
     <div class="builder-modal-shell">
       <div class="builder-card builder-modal-card" data-builder-group="${escapeHtml(presentation.item.id)}">
         <div class="builder-card-head">
+          ${image}
           <div class="builder-title-group">
             <h3>${escapeHtml(presentation.title)}</h3>
             ${presentation.subtitle ? `<p>${escapeHtml(presentation.subtitle)}</p>` : '<p>完成必填欄位後即可加入購物車</p>'}

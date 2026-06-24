@@ -164,4 +164,44 @@ describe('pos-sales runtime-bindings', () => {
     expect(deps.kernel.state.currentBuilder).toBe(nextBuilder)
     expect(deps.renderBuilder).not.toHaveBeenCalled()
   })
+
+  it('opens the image preview host from any item thumbnail action', () => {
+    const { deps, handlers } = createDeps()
+    const host = { innerHTML: '' }
+    const addEventListener = vi.fn()
+    const removeEventListener = vi.fn()
+    const documentStub = {
+      getElementById: (id: string) => (id === 'imagePreviewHost' ? host : null),
+      addEventListener,
+      removeEventListener,
+    }
+    class TestElement {
+      dataset: Record<string, string> = {}
+      closest() {
+        return null
+      }
+    }
+    vi.stubGlobal('document', documentStub)
+    vi.stubGlobal('HTMLElement', TestElement)
+
+    registerPosSalesBindings(deps)
+
+    const handler = handlers.get('click:open-image-preview')
+    expect(handler).toBeTypeOf('function')
+
+    const button = new TestElement()
+    button.dataset.imageUrl = '/menu-img/brunch/garden-breakfast.jpg'
+    button.dataset.imageAlt = '花園早餐（無肉）'
+    const event = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as Event
+
+    handler?.(event, button as unknown as HTMLElement)
+
+    expect(host.innerHTML).toContain('class="image-preview-backdrop show"')
+    expect(host.innerHTML).toContain('src="/menu-img/brunch/garden-breakfast.jpg"')
+    expect(host.innerHTML).toContain('alt="花園早餐（無肉）"')
+    expect(addEventListener).toHaveBeenCalledWith('keydown', expect.any(Function))
+  })
 })

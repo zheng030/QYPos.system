@@ -88,6 +88,48 @@ type RuntimeBindingsDeps = {
   syncInventoryRevisionWatch: () => void
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+let closeImagePreviewKeydown: ((event: KeyboardEvent) => void) | null = null
+
+function closeImagePreview() {
+  const host = document.getElementById('imagePreviewHost')
+  if (host) {
+    host.innerHTML = ''
+  }
+  if (closeImagePreviewKeydown) {
+    document.removeEventListener('keydown', closeImagePreviewKeydown)
+    closeImagePreviewKeydown = null
+  }
+}
+
+function openImagePreview(imageUrl: string, imageAlt: string) {
+  const host = document.getElementById('imagePreviewHost')
+  if (!host) return
+  closeImagePreview()
+  host.innerHTML = `
+    <div class="image-preview-backdrop show" data-action="close-image-preview" role="dialog" aria-modal="true" aria-label="${escapeHtml(imageAlt)}大圖">
+      <div class="image-preview-sheet" data-image-preview-sheet>
+        <button class="image-preview-close btn-effect" type="button" data-action="close-image-preview" aria-label="關閉圖片">×</button>
+        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(imageAlt)}">
+      </div>
+    </div>
+  `
+  closeImagePreviewKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      closeImagePreview()
+    }
+  }
+  document.addEventListener('keydown', closeImagePreviewKeydown)
+}
+
 export function registerPosSalesBindings({
   context,
   ui,
@@ -199,6 +241,24 @@ export function registerPosSalesBindings({
     const itemId = element.dataset.itemId
     if (!itemId) return
     openBuilder(itemId, kernel.state.currentMode === 'customer' ? 'customer-draft' : 'staff-draft')
+  })
+  ui.on('click', 'open-image-preview', (event, element) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const imageUrl = element.dataset.imageUrl
+    if (!imageUrl) return
+    openImagePreview(imageUrl, element.dataset.imageAlt || '商品圖片')
+  })
+  ui.on('click', 'close-image-preview', (event) => {
+    const target = event.target
+    if (
+      target instanceof HTMLElement &&
+      target.closest('[data-image-preview-sheet]') &&
+      target.dataset.action !== 'close-image-preview'
+    ) {
+      return
+    }
+    closeImagePreview()
   })
   ui.on('click', 'edit-draft-entry', (_event, element) => {
     const entryId = element.dataset.entryId

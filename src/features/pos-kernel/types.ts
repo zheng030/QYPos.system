@@ -4,6 +4,7 @@ export type PosPrice = number
 export type PosItemId = string
 export const MENU_CATEGORY_KEYS = [
   'pasta_risotto',
+  'brunch',
   'bread_set',
   'salad',
   'plated_main',
@@ -16,6 +17,7 @@ export type PosMenuCategoryKey = (typeof MENU_CATEGORY_KEYS)[number]
 export type PosCategoryKey = (typeof POS_CATEGORY_KEYS)[number]
 export const POS_CATEGORY_LABELS: Record<PosCategoryKey, string> = {
   pasta_risotto: '義大利麵 / 燉飯',
+  brunch: '早午餐',
   bread_set: '麵包餐',
   salad: '沙拉',
   plated_main: '排餐',
@@ -129,6 +131,8 @@ export type PosMenuItem = {
   menuModes?: PosBatchSource[]
   soldOutKey?: string
   tags?: string[]
+  imageUrl?: string
+  imageAlt?: string
   selections?: PosSelectionRule[]
   includes?: PosBundleIncludeRule[]
   upgradeGroups?: PosBundleUpgradeGroup[]

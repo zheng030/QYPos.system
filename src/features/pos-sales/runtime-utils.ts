@@ -1,4 +1,4 @@
-import type { PosCategoryKey, PosOrderBatch, PosOrderEntry } from '@/features/pos-kernel/types'
+import type { PosCategoryKey, PosMenuItem, PosOrderBatch, PosOrderEntry } from '@/features/pos-kernel/types'
 import { POS_CATEGORY_LABELS } from '@/features/pos-kernel/types'
 
 export function formatCurrency(value: number) {
@@ -49,6 +49,47 @@ export function cloneEntryWithTreatState(entry: PosOrderEntry, isTreat: boolean)
 
 export function getStaffCategoryLabel(categoryKey: PosCategoryKey) {
   return POS_CATEGORY_LABELS[categoryKey] || POS_CATEGORY_LABELS.other
+}
+
+export function getItemImageAlt(item: Pick<PosMenuItem, 'imageAlt' | 'name'>) {
+  return item.imageAlt || item.name
+}
+
+export function resolvePublicAssetUrl(path: string, baseUrl = import.meta.env.BASE_URL || '/') {
+  const value = path.trim()
+  if (!value) {
+    return ''
+  }
+  if (/^[a-z][a-z\d+\-.]*:/i.test(value) || value.startsWith('//')) {
+    return value
+  }
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+  const normalizedPath = value.replace(/^\/+/, '').replace(/^\.\//, '')
+  return `${normalizedBase}${normalizedPath}`
+}
+
+export function renderItemImageButton(
+  item: Pick<PosMenuItem, 'imageUrl' | 'imageAlt' | 'name'> | null | undefined,
+  className: string,
+  options: { fallback?: boolean } = {}
+) {
+  if (!item?.imageUrl) {
+    return options.fallback ? `<div class="${className} menu-image-fallback" aria-hidden="true">無圖</div>` : ''
+  }
+  const alt = getItemImageAlt(item)
+  const imageUrl = resolvePublicAssetUrl(item.imageUrl)
+  return `
+    <button
+      class="${className} menu-image-button"
+      type="button"
+      data-action="open-image-preview"
+      data-image-url="${escapeHtml(imageUrl)}"
+      data-image-alt="${escapeHtml(alt)}"
+      aria-label="查看${escapeHtml(alt)}大圖"
+    >
+      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" loading="lazy">
+    </button>
+  `
 }
 
 export function flattenBatchLines(batch: PosOrderBatch, normalizeEntry: (entry: PosOrderEntry) => PosOrderEntry) {
