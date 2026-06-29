@@ -75,8 +75,8 @@ function getMainLine(entry: PosOrderEntry) {
   return entry.lines.find((line) => !line.parentLineId) || entry.lines[0] || null
 }
 
-function getDrinkLine(entry: PosOrderEntry) {
-  return entry.lines.find((line) => line.parentLineId && line.courseKind === 'drink') || null
+function getAttachedMealLine(entry: PosOrderEntry) {
+  return entry.lines.find((line) => line.parentLineId && ['included', 'upgrade'].includes(line.role)) || null
 }
 
 function resolveItem(menuMeta: PosMenuMeta, catalogKey: string) {
@@ -109,22 +109,22 @@ function buildMainSummaryParts(entry: PosOrderEntry, menuMeta: PosMenuMeta) {
 }
 
 function buildDrinkDisplay(entry: PosOrderEntry, menuMeta: PosMenuMeta) {
-  const drinkLine = getDrinkLine(entry)
-  if (!drinkLine) {
+  const attachedMealLine = getAttachedMealLine(entry)
+  if (!attachedMealLine) {
     return { drinkSummary: '', drinkCompact: '' }
   }
 
-  const drinkItem = resolveItem(menuMeta, drinkLine.catalogKey)
-  const drinkParts = buildLineSummaryParts(drinkLine, drinkItem).map(parseSummaryPart)
+  const drinkItem = resolveItem(menuMeta, attachedMealLine.catalogKey)
+  const drinkParts = buildLineSummaryParts(attachedMealLine, drinkItem).map(parseSummaryPart)
   const temperature = normalizeTemperatureValue(drinkParts.find((part) => part.label === '溫度')?.value || '')
   const extraParts = drinkParts
     .filter((part) => part.label && part.label !== '溫度')
     .map((part) => `${part.label}：${part.value}`)
-  const prefix = drinkLine.role === 'upgrade' ? '換購' : '附飲'
-  const drinkSummary = `${prefix}：${drinkLine.shortName}${temperature ? ` · 溫度：${temperature}` : ''}${
+  const prefix = attachedMealLine.role === 'upgrade' ? '換購' : '附飲'
+  const drinkSummary = `${prefix}：${attachedMealLine.shortName}${temperature ? ` · 溫度：${temperature}` : ''}${
     extraParts.length > 0 ? ` / ${extraParts.join(' / ')}` : ''
   }`
-  const drinkCompact = `${drinkLine.shortName}${temperature ? `(${temperature})` : ''}${
+  const drinkCompact = `${attachedMealLine.shortName}${temperature ? `(${temperature})` : ''}${
     extraParts.length > 0
       ? ` · ${extraParts
           .map((part) => parseSummaryPart(part).value)

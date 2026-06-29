@@ -28,7 +28,7 @@ describe('pos-sales builder', () => {
     expect(duplicateIds).toEqual([])
   })
 
-  it('adds brunch as an image-backed bundle category with staff-only standalone juices', () => {
+  it('adds brunch as an image-backed bundle category with customer-visible standalone drinks', () => {
     const brunch = menuMeta.categories.brunch
     if (!brunch) {
       throw new Error('expected brunch category')
@@ -37,8 +37,8 @@ describe('pos-sales builder', () => {
     const customerItemIds = createHelpers()
       .getMenuItemsByMode('customer')
       .map((item) => item.id)
-    const staffItemIds = createHelpers()
-      .getMenuItemsByMode('staff')
+    const nonZeroSingleItemIds = Object.values(menuMeta.itemsById)
+      .filter((item) => item.kind === 'single' && item.basePrice !== 0)
       .map((item) => item.id)
 
     expect(brunch.label).toBe('早午餐')
@@ -54,40 +54,46 @@ describe('pos-sales builder', () => {
     expect(brunchItems.map((item) => item.basePrice)).toEqual([150, 220, 260, 280, 240, 280, 380])
     expect(menuMeta.itemsById['brunch.garden-breakfast']?.imageUrl).toBe('menu-img/brunch/garden-breakfast.jpg')
     expect(menuMeta.itemsById['brunch.garden-smoked-salmon']?.imageUrl).toBeUndefined()
-    expect(customerItemIds).not.toContain('drink.milk-tea')
-    expect(customerItemIds).not.toContain('drink.apple-juice')
-    expect(customerItemIds).not.toContain('drink.orange-juice')
-    expect(staffItemIds).toContain('drink.milk-tea')
-    expect(staffItemIds).toContain('drink.apple-juice')
-    expect(staffItemIds).toContain('drink.orange-juice')
+    expect(customerItemIds).toContain('drink.milk-tea')
+    expect(customerItemIds).toContain('drink.apple-juice')
+    expect(customerItemIds).toContain('drink.orange-juice')
+    expect(nonZeroSingleItemIds.every((itemId) => customerItemIds.includes(itemId))).toBe(true)
   })
 
-  it('builds brunch bundles with brunch-specific drink upgrade pricing', () => {
+  it('builds brunch bundles with the shared drink upgrade pricing', () => {
     const helpers = createHelpers()
     let state = createBuilderState('brunch.garden-chicken-leg', 'customer-draft')
     let presentation = buildBuilderPresentation({ state, helpers })
 
-    expect(presentation?.missingIssues.map((issue) => issue.groupId)).toEqual(['brunch-drink-upgrade'])
+    expect(presentation?.missingIssues.map((issue) => issue.groupId)).toEqual(['bundle-drink-upgrade'])
     expect(
       presentation?.childBlocks[0]?.optionGroup?.options.map((option) => [option.value, option.priceDelta])
     ).toEqual([
       ['black-tea', 0],
       ['green-tea', 0],
-      ['chef-soup', 80],
-      ['puff-soup', 120],
-      ['milk-tea', 50],
       ['apple-juice', 50],
       ['orange-juice', 50],
-      ['americano', 50],
-      ['latte', 80],
+      ['milk-tea', 50],
+      ['americano', 60],
+      ['latte', 70],
+      ['espresso', 60],
+      ['chef-soup', 90],
+      ['puff-soup', 120],
     ])
 
-    state = updateBuilderSelection(state, 'upgrade', 'brunch-drink-upgrade', 'latte')
+    expect(presentation?.childBlocks[0]?.optionGroup?.options.map((option) => option.value)).not.toContain(
+      'pumpkin-soup'
+    )
+    expect(presentation?.childBlocks[0]?.optionGroup?.options.map((option) => option.value)).not.toContain(
+      'seafood-soup'
+    )
+
+    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
     state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
     presentation = buildBuilderPresentation({ state, helpers })
 
     expect(presentation?.canConfirm).toBe(true)
-    expect(presentation?.subtotal).toBe(300)
+    expect(presentation?.subtotal).toBe(290)
 
     const result = finalizeBuilderEntry({
       state,
@@ -113,21 +119,29 @@ describe('pos-sales builder', () => {
       role: 'upgrade',
       catalogKey: 'drink.latte',
       categoryKey: 'drink',
-      unitPrice: 80,
-      lineTotal: 80,
+      unitPrice: 70,
+      lineTotal: 70,
       selectionSummary: '溫度：熱',
     })
-    expect(result.entry.subtotal).toBe(300)
+    expect(result.entry.subtotal).toBe(290)
   })
 
-  it('allows black tea and green tea as customer standalone drinks at 80', () => {
+  it('uses the requested customer standalone drink and soup prices', () => {
     const helpers = createHelpers()
     const customerItemIds = helpers.getMenuItemsByMode('customer').map((item) => item.id)
 
     expect(customerItemIds).toContain('drink.black-tea')
     expect(customerItemIds).toContain('drink.green-tea')
-    expect(helpers.getItemDisplayPrice('drink.black-tea')).toBe(80)
-    expect(helpers.getItemDisplayPrice('drink.green-tea')).toBe(80)
+    expect(customerItemIds).toContain('soup.pumpkin')
+    expect(menuMeta.itemsById['drink.black-tea']?.name).toBe('肯尼亞紅茶')
+    expect(menuMeta.itemsById['drink.orange-juice']?.name).toBe('柳橙汁')
+    expect(helpers.getItemDisplayPrice('drink.black-tea')).toBe(50)
+    expect(helpers.getItemDisplayPrice('drink.green-tea')).toBe(50)
+    expect(helpers.getItemDisplayPrice('drink.apple-juice')).toBe(80)
+    expect(helpers.getItemDisplayPrice('drink.orange-juice')).toBe(80)
+    expect(helpers.getItemDisplayPrice('drink.milk-tea')).toBe(80)
+    expect(helpers.getItemDisplayPrice('drink.espresso')).toBe(90)
+    expect(helpers.getItemDisplayPrice('soup.pumpkin')).toBe(180)
   })
 
   it('normalizes schema metadata for every product and selectable child', () => {
@@ -350,11 +364,11 @@ describe('pos-sales builder', () => {
       role: 'upgrade',
       catalogKey: 'drink.latte',
       categoryKey: 'drink',
-      unitPrice: 60,
-      lineTotal: 60,
+      unitPrice: 70,
+      lineTotal: 70,
       selectionSummary: '溫度：熱',
     })
-    expect(result.entry.subtotal).toBe(360)
+    expect(result.entry.subtotal).toBe(370)
   })
 
   it('generates firebase-safe entry and line ids for new entries', () => {

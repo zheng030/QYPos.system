@@ -379,6 +379,35 @@ describe('pos-sales runtime-support', () => {
     })
   })
 
+  it('formats upgraded soup child lines in the drink summary slot', () => {
+    const entry = createEntry({
+      lines: [
+        createEntry().lines[0],
+        {
+          ...createEntry().lines[1],
+          catalogKey: 'soup.chef',
+          inventoryKey: 'soup.chef',
+          categoryKey: 'soup',
+          displayName: '主廚濃湯',
+          shortName: '主廚濃湯',
+          courseKind: 'addon',
+          unitPrice: 90,
+          priceDelta: 90,
+          lineTotal: 90,
+          selectionSummary: '',
+        },
+      ],
+    })
+
+    expect(
+      getEntryDisplaySummary(entry, (candidate) => buildKernelEntryDisplaySummary(candidate, menuMeta))
+    ).toMatchObject({
+      drinkSummary: '換購：主廚濃湯',
+      drinkCompact: '主廚濃湯',
+      expandedSummary: '主食：義大利麵 / 口味：青醬 / 換購：主廚濃湯',
+    })
+  })
+
   it('maps the floating bar actions by tab and mode', () => {
     expect(getFloatingBarViewModel('customer', 'menu')).toMatchObject({
       visible: true,

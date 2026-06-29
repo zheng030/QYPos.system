@@ -91,7 +91,7 @@ describe('pos-sales builder-view', () => {
   it('renders item image preview control when the product has an image', () => {
     const helpers = createHelpers()
     let state = createBuilderState('brunch.garden-breakfast', 'customer-draft')
-    state = updateBuilderSelection(state, 'upgrade', 'brunch-drink-upgrade', 'black-tea')
+    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'black-tea')
     state = updateBuilderSelection(state, 'include', 'included-drink', 'ice', 'temperature')
     const presentation = buildBuilderPresentation({ state, helpers })
     if (!presentation) {
