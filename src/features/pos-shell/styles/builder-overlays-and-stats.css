@@ -213,7 +213,7 @@
 .menu-item-card {
 	display: flex;
 	flex-direction: column;
-	min-height: 100%;
+	min-height: 0;
 	border: 1px solid #d7e3f6;
 	border-radius: 18px;
 	background:
