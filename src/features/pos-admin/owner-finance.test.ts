@@ -257,6 +257,19 @@ describe('owner-finance', () => {
     expect(document.getElementById('revenueDetailList')?.innerHTML || '').toContain('$200')
   })
 
+  it('uses the dessert category label in revenue detail modal', async () => {
+    dom.add(createElementStub('revenueDetailTitle'))
+    dom.add(createElementStub('revenueDetailList'))
+    dom.add(createElementStub('revenueDetailModal'))
+
+    const finance = createFinanceModule()
+
+    await finance.openRevenueModal('dessert')
+
+    expect(document.getElementById('revenueDetailTitle')?.innerText).toBe('甜點')
+    expect(document.getElementById('revenueDetailModal')?.style.display).toBe('flex')
+  })
+
   it('shows detailed orders with business-date key routing', async () => {
     dom.add(createElementStub('financeOrderBox'))
     dom.add(createElementStub('financeSelectedDateTitle'))

@@ -74,6 +74,8 @@ describe('product-management', () => {
     expect(container.innerHTML).toContain('>口味 / 主食<')
     expect(container.innerHTML).toContain('義大利麵 / 燉飯')
     expect(container.innerHTML).toContain('>義大利麵 / 燉飯<')
+    expect(container.innerHTML).toContain('>甜點<')
+    expect(container.innerHTML).toContain('data-name="dessert.original-basque"')
     expect(container.innerHTML).toContain('主食 / 義大利麵')
     expect(container.innerHTML).toContain('主食 / 通心粉')
     expect(container.innerHTML).toContain('口味 / 青醬')

@@ -549,6 +549,7 @@ export function createOwnerFinanceModule(deps: FinanceConsoleDeps) {
       plated_main: POS_CATEGORY_LABELS.plated_main,
       a_la_carte: POS_CATEGORY_LABELS.a_la_carte,
       soup: POS_CATEGORY_LABELS.soup,
+      dessert: POS_CATEGORY_LABELS.dessert,
       drink: POS_CATEGORY_LABELS.drink,
       other: POS_CATEGORY_LABELS.other,
       extra: POS_CATEGORY_LABELS.extra,

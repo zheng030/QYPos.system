@@ -126,6 +126,60 @@ describe('pos-sales builder', () => {
     expect(result.entry.subtotal).toBe(290)
   })
 
+  it('adds five image-backed standalone desserts with the requested prices', () => {
+    const dessert = menuMeta.categories.dessert
+    if (!dessert) {
+      throw new Error('expected dessert category')
+    }
+
+    const dessertItems = dessert.sections.flatMap((section) => section.items)
+    const customerItemIds = createHelpers()
+      .getMenuItemsByMode('customer')
+      .map((item) => item.id)
+
+    expect(dessert.label).toBe('甜點')
+    expect(dessertItems.map((item) => item.id)).toEqual([
+      'dessert.original-basque',
+      'dessert.earl-grey-basque',
+      'dessert.tiramisu',
+      'dessert.creme-brulee',
+      'dessert.lemon-tart',
+    ])
+    expect(dessertItems.map((item) => item.basePrice)).toEqual([110, 120, 120, 160, 150])
+    expect(dessertItems.every((item) => item.kind === 'single' && item.courseKind === 'addon')).toBe(true)
+    expect(dessertItems.every((item) => item.imageUrl?.startsWith('menu-img/dessert/'))).toBe(true)
+    expect(dessertItems.every((item) => customerItemIds.includes(item.id))).toBe(true)
+
+    const helpers = createHelpers()
+    const result = finalizeBuilderEntry({
+      state: createBuilderState('dessert.original-basque', 'customer-draft'),
+      helpers,
+      source: 'customer',
+      status: 'draft',
+      entryId: 'entry_dessert',
+      createdAt: 10,
+      updatedAt: 20,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) {
+      throw new Error('expected finalized dessert entry')
+    }
+    expect(result.entry).toMatchObject({
+      itemId: 'dessert.original-basque',
+      categoryKey: 'dessert',
+      subtotal: 110,
+    })
+    expect(result.entry.lines[0]).toMatchObject({
+      catalogKey: 'dessert.original-basque',
+      inventoryKey: 'dessert.original-basque',
+      categoryKey: 'dessert',
+      courseKind: 'addon',
+      unitPrice: 110,
+      lineTotal: 110,
+    })
+  })
+
   it('uses the requested customer standalone drink and soup prices', () => {
     const helpers = createHelpers()
     const customerItemIds = helpers.getMenuItemsByMode('customer').map((item) => item.id)

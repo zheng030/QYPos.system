@@ -69,7 +69,7 @@ export function resolvePublicAssetUrl(path: string, baseUrl = import.meta.env.BA
 }
 
 export function renderItemImageButton(
-  item: Pick<PosMenuItem, 'imageUrl' | 'imageAlt' | 'name'> | null | undefined,
+  item: Pick<PosMenuItem, 'imageUrl' | 'imageAlt' | 'imageObjectPosition' | 'name'> | null | undefined,
   className: string,
   options: { fallback?: boolean } = {}
 ) {
@@ -78,6 +78,9 @@ export function renderItemImageButton(
   }
   const alt = getItemImageAlt(item)
   const imageUrl = resolvePublicAssetUrl(item.imageUrl)
+  const imageStyle = item.imageObjectPosition
+    ? ` style="object-position: ${escapeHtml(item.imageObjectPosition)};"`
+    : ''
   return `
     <button
       class="${className} menu-image-button"
@@ -87,7 +90,7 @@ export function renderItemImageButton(
       data-image-alt="${escapeHtml(alt)}"
       aria-label="查看${escapeHtml(alt)}大圖"
     >
-      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" loading="lazy">
+      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" loading="lazy"${imageStyle}>
     </button>
   `
 }

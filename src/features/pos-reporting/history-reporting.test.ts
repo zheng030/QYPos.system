@@ -202,7 +202,7 @@ describe('history-reporting', () => {
     expect(historyBox.innerHTML).toContain('$250')
   })
 
-  it('renders item stats with all-store total plus 7 menu categories and other bucket', async () => {
+  it('renders item stats with all-store total, every menu category, and other bucket', async () => {
     const itemStatsColumns = createElementStub('itemStatsColumns')
     const customRange = createElementStub('customStatsDateRange')
     dom.add(itemStatsColumns)
@@ -222,6 +222,7 @@ describe('history-reporting', () => {
           main: createItemStat('香煎雞腿排', 4, 'plated_main', 1200),
           aLaCarte: createItemStat('炸物拼盤', 5, 'a_la_carte', 500),
           soup: createItemStat('主廚濃湯', 2, 'soup', 180),
+          dessert: createItemStat('原味巴斯克', 2, 'dessert', 220),
           drink: createItemStat('拿鐵', 6, 'drink', 360),
           other: createItemStat('神秘品項', 1, 'other', 50),
         },
@@ -238,6 +239,7 @@ describe('history-reporting', () => {
           main: createItemStat('香煎雞腿排', 4, 'plated_main', 1200),
           aLaCarte: createItemStat('炸物拼盤', 5, 'a_la_carte', 500),
           soup: createItemStat('主廚濃湯', 2, 'soup', 180),
+          dessert: createItemStat('原味巴斯克', 2, 'dessert', 220),
           drink: createItemStat('拿鐵', 6, 'drink', 360),
           other: createItemStat('神秘品項', 1, 'other', 50),
         },
@@ -258,9 +260,11 @@ describe('history-reporting', () => {
     expect(itemStatsColumns.innerHTML).toContain('排餐')
     expect(itemStatsColumns.innerHTML).toContain('單品')
     expect(itemStatsColumns.innerHTML).toContain('湯品')
+    expect(itemStatsColumns.innerHTML).toContain('甜點')
     expect(itemStatsColumns.innerHTML).toContain('飲品')
     expect(itemStatsColumns.innerHTML).toContain('其他 / 未知')
     expect(itemStatsColumns.innerHTML).toContain('拿鐵')
+    expect(itemStatsColumns.innerHTML).toContain('原味巴斯克')
     expect(itemStatsColumns.innerHTML).toContain('炸物拼盤')
   })
 
