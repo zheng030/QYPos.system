@@ -1,295 +1,165 @@
-import type { AppContext, FeatureRuntime } from '@/app/app-context'
-import { POS_KERNEL_SERVICE_KEY, type PosKernelService } from '@/features/pos-kernel/service'
-import { POS_UI_SERVICE_KEY, type PosUiService } from '@/features/pos-shell/service'
-import { ATTENDANCE_SERVICE_KEY } from '@/shared/attendance-service'
-import { authGate } from '@/shared/auth-gate'
+import type { PosKernelService } from '@/features/pos-kernel/service'
+import type { PosOrderEntry } from '@/features/pos-kernel/types'
 import { createAttendanceService } from './attendance-service'
 import { createRtdbV3Repository } from './rtdb-v3-repository'
-import { POS_DATA_SERVICE_KEY, type PosDataService } from './service'
-import { createUiBridgeModule } from './ui-bridge'
+import type { PosDataChangeEvent, PosDataService } from './service'
 
-let booted = false
+export function createPosDataService(kernel: PosKernelService): PosDataService {
+  const listeners = new Set<(event: PosDataChangeEvent) => void>()
 
-export function createPosDataFeature(context: AppContext): FeatureRuntime {
+  function emitDataChange(roots: string[]) {
+    listeners.forEach((listener) => {
+      listener({ roots })
+    })
+  }
+
+  const repository = createRtdbV3Repository({
+    db: kernel.db,
+    state: kernel.state,
+    tables: kernel.tables,
+    helpers: {
+      getCanonicalDraftEntries: kernel.helpers.getCanonicalDraftEntries,
+      normalizeEntryForDisplay: kernel.helpers.normalizeEntryForDisplay,
+    },
+    onLiveStateChange(roots) {
+      emitDataChange(roots)
+    },
+  })
+
+  const attendance = createAttendanceService({
+    ensureWindow: async (monthKeys) => {
+      await repository.ensureAttendanceWindow(monthKeys)
+    },
+    ensureFullHistory: async () => {
+      await repository.ensureAttendanceFullHistory()
+    },
+    watchWindow: (monthKeys, onChange) => repository.watchAttendanceWindow(monthKeys, onChange),
+    watchFullHistory: (onChange) => repository.watchAttendanceFullHistory(onChange),
+    save: async (updates) => {
+      await repository.saveAttendanceUpdates(updates)
+    },
+    getEmployees: () => kernel.state.attendanceEmployees,
+    getRecords: () => kernel.state.attendanceRecords,
+  })
+
+  async function withChange<T>(roots: string[], run: () => Promise<T>) {
+    const result = await run()
+    emitDataChange(roots)
+    return result
+  }
+
+  function ensureInventory() {
+    return withChange(['inventory'], () => repository.ensureInventory())
+  }
+
+  async function ensureDrinkAvailability(entries: PosOrderEntry[]) {
+    await ensureInventory()
+    const unavailable = new Set<string>()
+    for (const entry of entries) {
+      for (const line of entry.lines) {
+        if (line.courseKind !== 'drink') continue
+        const temperature = kernel.drinkTemperatureSwitches.find(
+          (option) => option.value === line.selections?.temperature
+        )
+        if (temperature && kernel.helpers.isInventoryKeySoldOut(temperature.soldOutKey)) {
+          unavailable.add(`${line.shortName || line.displayName}（${temperature.label}）`)
+        }
+      }
+    }
+    if (unavailable.size > 0) {
+      throw new Error(`以下飲料暫停供應，請調整購物車後再送出：${[...unavailable].join('、')}`)
+    }
+  }
+
   return {
-    id: 'pos-data',
-    dependsOn: ['pos-kernel', 'pos-shell'],
-    async boot() {
-      if (booted) {
+    attendance,
+    startStaffLive: () => withChange(['pendingBatches'], () => repository.startStaffLive()),
+    startTableLiveSession: (mode, table) =>
+      withChange(['liveSession'], () => repository.startTableLiveSession(mode, table)),
+    stopTableLiveSession() {
+      repository.stopTableLiveSession()
+    },
+    ensureCatalog: () => withChange(['catalog'], () => repository.ensureCatalog()),
+    ensureInventory,
+    listClosedOrdersForBusinessDay: (anchor) => repository.listClosedOrdersForBusinessDay(anchor),
+    listClosedOrdersByRange: (start, endExclusive) => repository.listClosedOrdersByRange({ start, endExclusive }),
+    loadDailySummariesRange: (start, endExclusive) => repository.loadDailySummariesRange(start, endExclusive),
+    loadItemStatsRange: (start, endExclusive) => repository.loadItemStatsRange(start, endExclusive),
+    watchCatalogRevision: (listener) => repository.watchCatalogRevision(listener),
+    watchClosedOrdersRange: (start, endExclusive, listener) =>
+      repository.watchClosedOrdersRange(start, endExclusive, listener),
+    watchClosedOrdersForBusinessDay: (anchor, listener) => repository.watchClosedOrdersForBusinessDay(anchor, listener),
+    watchDailySummariesRange: (start, endExclusive, listener) =>
+      repository.watchDailySummariesRange(start, endExclusive, listener),
+    watchItemStatsRange: (start, endExclusive, listener) =>
+      repository.watchItemStatsRange(start, endExclusive, listener),
+    readDailySummariesRange: (start, endExclusive) => repository.readDailySummariesRange(start, endExclusive),
+    readItemStatsRange: (start, endExclusive) => repository.readItemStatsRange(start, endExclusive),
+    saveCustomerDraft: (table, entries, customer) =>
+      withChange(['tableDrafts'], () => repository.saveCustomerDraft(table, entries, customer)),
+    updateTableCustomer: (table, customer) =>
+      withChange(['tableCustomers'], () => repository.updateTableCustomer(table, customer)),
+    submitCustomerDraft: (table, entries, customer) =>
+      withChange(['tableDrafts', 'pendingBatches'], async () => {
+        await ensureDrinkAvailability(entries)
+        return repository.submitCustomerDraft(table, entries, customer)
+      }),
+    discardCustomerDraft: (table) => withChange(['tableDrafts'], () => repository.discardCustomerDraft(table)),
+    readPendingBatchDetail: (table, batchId) => repository.readPendingBatchDetail(table, batchId),
+    acceptPendingBatch: (table, batchId) =>
+      withChange(['pendingBatches', 'submittedBatches'], () => repository.acceptPendingBatch(table, batchId)),
+    rejectPendingBatch: (table, batchId) =>
+      withChange(['tableDrafts', 'pendingBatches'], () => repository.rejectPendingBatch(table, batchId)),
+    saveStaffDraft: (table, entries) => withChange(['staffDrafts'], () => repository.saveStaffDraft(table, entries)),
+    createStaffBatch: (table, entries, customer) =>
+      withChange(['submittedBatches', 'staffDrafts'], async () => {
+        await ensureDrinkAvailability(entries)
+        return repository.createStaffBatch(table, entries, customer)
+      }),
+    updateSubmittedBatch: (table, batchId, entries) =>
+      withChange(['submittedBatches'], () => repository.updateSubmittedBatch(table, batchId, entries)),
+    checkoutSubmittedBatches: (payload) =>
+      withChange(['historyOrders', 'tableDrafts', 'pendingBatches', 'submittedBatches'], () =>
+        repository.checkoutSubmittedBatches(payload)
+      ),
+    deleteClosedOrder: (order) => withChange(['historyOrders'], () => repository.deleteClosedOrder(order)),
+    readCustomerNotice: () => repository.readCustomerNotice(),
+    saveCustomerNotice: (notice) => repository.saveCustomerNotice(notice),
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    emitChange: emitDataChange,
+    async toggleStockStatus(itemId, checked) {
+      const item = kernel.helpers.getItemById(itemId)
+      if (!item) {
         return
       }
-
-      const kernel = context.getService<PosKernelService>(POS_KERNEL_SERVICE_KEY)
-      const ui = context.getService<PosUiService>(POS_UI_SERVICE_KEY)
-      if (!kernel || !ui) {
-        throw new Error('POS kernel or shell service is not ready')
+      const childKeys = kernel.helpers.getOwnedSelectionInventoryKeys(itemId)
+      const batch = Object.fromEntries([item.inventoryKey, ...childKeys].map((key) => [key, checked]))
+      await withChange(['inventory'], () => repository.updateInventoryBatch(batch))
+    },
+    async toggleInventoryBatch(batch) {
+      if (Object.keys(batch).length === 0) {
+        return
       }
-
-      booted = true
-      const listeners = new Set<(event: { roots: string[] }) => void>()
-      const uiBridge = createUiBridgeModule({
-        state: kernel.state,
-        systemPassword: kernel.systemPassword,
-        getShowApp: () => async (options) => {
-          const sales = context.getService<{
-            showApp(options?: { skipHome?: boolean; skipStaffLive?: boolean }): Promise<void>
-          }>('pos-sales')
-          if (!sales) {
-            throw new Error('POS sales service is not ready')
-          }
-          await sales.showApp(options)
-        },
-        renderTableGrid: async () => {
-          const sales = context.getService<{ renderTableGrid(): Promise<void> }>('pos-sales')
-          await sales?.renderTableGrid()
-        },
-        renderMenu: () => {
-          const sales = context.getService<{ renderMenu(): void }>('pos-sales')
-          sales?.renderMenu()
-        },
-        renderCart: () => {
-          const sales = context.getService<{ renderCart(): void }>('pos-sales')
-          sales?.renderCart()
-        },
-        renderProductManagement: () => {
-          const admin = context.getService<{ renderProductManagement(): void }>('pos-admin')
-          admin?.renderProductManagement()
-        },
-        showPendingBatchOverlay: () => {
-          const sales = context.getService<{ showPendingBatchOverlay(): void }>('pos-sales')
-          sales?.showPendingBatchOverlay()
-        },
-        closePendingBatchOverlay: () => {
-          const sales = context.getService<{ closePendingBatchOverlay(): void }>('pos-sales')
-          sales?.closePendingBatchOverlay()
-        },
-        authGate,
-      })
-
-      const repository = createRtdbV3Repository({
-        db: kernel.db,
-        state: kernel.state,
-        tables: kernel.tables,
-        helpers: {
-          getCanonicalDraftEntries: kernel.helpers.getCanonicalDraftEntries,
-          normalizeEntryForDisplay: kernel.helpers.normalizeEntryForDisplay,
-        },
-        onLiveStateChange(roots) {
-          emitDataChange(roots)
-          void uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-          if (roots.includes('pendingBatches')) {
-            uiBridge.checkPendingBatches()
-          }
-        },
-      })
-
-      function emitDataChange(roots: string[]) {
-        listeners.forEach((listener) => {
-          listener({ roots })
-        })
+      await withChange(['inventory'], () => repository.updateInventoryBatch(batch))
+    },
+    toggleOptionStock: (_itemId, optionKey, checked) =>
+      withChange(['inventory'], () => repository.updateInventory(optionKey, checked)),
+    async updateItemData(itemId, type, value) {
+      const numericValue = Number.parseInt(value, 10)
+      const safeValue = Number.isFinite(numericValue) ? numericValue : 0
+      if (type === 'cost') {
+        await withChange(['itemCosts'], () => repository.updateItemCost(itemId, safeValue))
+        return
       }
-
-      const attendanceService = createAttendanceService({
-        ensureWindow: async (monthKeys) => {
-          await repository.ensureAttendanceWindow(monthKeys)
-        },
-        ensureFullHistory: async () => {
-          await repository.ensureAttendanceFullHistory()
-        },
-        watchWindow: (monthKeys, onChange) => {
-          return repository.watchAttendanceWindow(monthKeys, () => {
-            onChange()
-          })
-        },
-        watchFullHistory: (onChange) => {
-          return repository.watchAttendanceFullHistory(() => {
-            onChange()
-          })
-        },
-        save: async (updates) => {
-          await repository.saveAttendanceUpdates(updates)
-        },
-        getEmployees: () => kernel.state.attendanceEmployees,
-        getRecords: () => kernel.state.attendanceRecords,
-      })
-
-      const service: PosDataService = {
-        attendance: attendanceService,
-        async startStaffLive() {
-          await repository.startStaffLive()
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-          uiBridge.checkPendingBatches()
-        },
-        async startTableLiveSession(mode, table) {
-          await repository.startTableLiveSession(mode, table)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-        },
-        stopTableLiveSession() {
-          repository.stopTableLiveSession()
-        },
-        async ensureCatalog() {
-          await repository.ensureCatalog()
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-        },
-        async listClosedOrdersForBusinessDay(anchor) {
-          const orders = await repository.listClosedOrdersForBusinessDay(anchor)
-          emitDataChange(['historyOrders'])
-          return orders
-        },
-        async listClosedOrdersByRange(start, endExclusive) {
-          const orders = await repository.listClosedOrdersByRange({ start, endExclusive })
-          emitDataChange(['historyOrders'])
-          return orders
-        },
-        async loadDailySummariesRange(start, endExclusive) {
-          return repository.loadDailySummariesRange(start, endExclusive)
-        },
-        async loadItemStatsRange(start, endExclusive) {
-          return repository.loadItemStatsRange(start, endExclusive)
-        },
-        watchCatalogRevision(listener) {
-          return repository.watchCatalogRevision(listener)
-        },
-        watchClosedOrdersRange(start, endExclusive, listener) {
-          return repository.watchClosedOrdersRange(start, endExclusive, listener)
-        },
-        watchClosedOrdersForBusinessDay(anchor, listener) {
-          return repository.watchClosedOrdersForBusinessDay(anchor, listener)
-        },
-        watchDailySummariesRange(start, endExclusive, listener) {
-          return repository.watchDailySummariesRange(start, endExclusive, listener)
-        },
-        watchItemStatsRange(start, endExclusive, listener) {
-          return repository.watchItemStatsRange(start, endExclusive, listener)
-        },
-        readDailySummariesRange(start, endExclusive) {
-          return repository.readDailySummariesRange(start, endExclusive)
-        },
-        readItemStatsRange(start, endExclusive) {
-          return repository.readItemStatsRange(start, endExclusive)
-        },
-        async saveCustomerDraft(table, entries, customer) {
-          const result = await repository.saveCustomerDraft(table, entries, customer)
-          emitDataChange(['tableDrafts'])
-          await uiBridge.refreshUiAfterDataChange()
-          return result
-        },
-        async updateTableCustomer(table, customer) {
-          const result = await repository.updateTableCustomer(table, customer)
-          emitDataChange(['tableCustomers'])
-          await uiBridge.refreshUiAfterDataChange()
-          return result
-        },
-        async submitCustomerDraft(table, entries, customer) {
-          const batch = await repository.submitCustomerDraft(table, entries, customer)
-          emitDataChange(['tableDrafts', 'pendingBatches'])
-          await uiBridge.refreshUiAfterDataChange()
-          uiBridge.checkPendingBatches()
-          return batch
-        },
-        async discardCustomerDraft(table) {
-          await repository.discardCustomerDraft(table)
-          emitDataChange(['tableDrafts'])
-          await uiBridge.refreshUiAfterDataChange()
-        },
-        async readPendingBatchDetail(table, batchId) {
-          return repository.readPendingBatchDetail(table, batchId)
-        },
-        async acceptPendingBatch(table, batchId) {
-          const batch = await repository.acceptPendingBatch(table, batchId)
-          emitDataChange(['pendingBatches', 'submittedBatches'])
-          await uiBridge.refreshUiAfterDataChange()
-          uiBridge.checkPendingBatches()
-          return batch
-        },
-        async rejectPendingBatch(table, batchId) {
-          await repository.rejectPendingBatch(table, batchId)
-          emitDataChange(['tableDrafts', 'pendingBatches'])
-          await uiBridge.refreshUiAfterDataChange()
-          uiBridge.checkPendingBatches()
-        },
-        async saveStaffDraft(table, entries) {
-          await repository.saveStaffDraft(table, entries)
-          emitDataChange(['staffDrafts'])
-          await uiBridge.refreshUiAfterDataChange()
-        },
-        async createStaffBatch(table, entries, customer) {
-          const batch = await repository.createStaffBatch(table, entries, customer)
-          emitDataChange(['submittedBatches', 'staffDrafts'])
-          await uiBridge.refreshUiAfterDataChange()
-          return batch
-        },
-        async updateSubmittedBatch(table, batchId, entries) {
-          const batch = await repository.updateSubmittedBatch(table, batchId, entries)
-          emitDataChange(['submittedBatches'])
-          await uiBridge.refreshUiAfterDataChange()
-          return batch
-        },
-        async checkoutSubmittedBatches(payload) {
-          const order = await repository.checkoutSubmittedBatches(payload)
-          emitDataChange(['historyOrders', 'tableDrafts', 'pendingBatches', 'submittedBatches'])
-          await uiBridge.refreshUiAfterDataChange()
-          return order
-        },
-        async deleteClosedOrder(order) {
-          await repository.deleteClosedOrder(order)
-          emitDataChange(['historyOrders'])
-          await uiBridge.refreshUiAfterDataChange()
-        },
-        subscribe(listener) {
-          listeners.add(listener)
-          return () => {
-            listeners.delete(listener)
-          }
-        },
-        emitChange(roots) {
-          emitDataChange(roots)
-        },
-        toggleStockStatus: async (itemId, checked) => {
-          const item = kernel.helpers.getItemById(itemId)
-          if (!item) {
-            return
-          }
-          const childKeys = kernel.helpers.getOwnedSelectionInventoryKeys(itemId)
-          const batch = Object.fromEntries([item.inventoryKey, ...childKeys].map((key) => [key, checked]))
-          await repository.updateInventoryBatch(batch)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-        },
-        toggleInventoryBatch: async (batch) => {
-          if (Object.keys(batch).length === 0) {
-            return
-          }
-          await repository.updateInventoryBatch(batch)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-        },
-        toggleOptionStock: async (_itemId, optionKey, checked) => {
-          await repository.updateInventory(optionKey, checked)
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false })
-        },
-        updateItemData: async (itemId, type, value) => {
-          const numericValue = Number.parseInt(value, 10)
-          const safeValue = Number.isFinite(numericValue) ? numericValue : 0
-          if (type === 'cost') {
-            await repository.updateItemCost(itemId, safeValue)
-          } else {
-            await repository.updateItemPrice(itemId, safeValue)
-          }
-          await uiBridge.refreshUiAfterDataChange({ includeAnalytics: false, includeAdmin: false })
-        },
-        checkLogin: uiBridge.checkLogin,
-        checkPendingBatches: uiBridge.checkPendingBatches,
-        downloadSyncLog() {
-          const admin = context.getService<{ downloadSyncLog(): void }>('pos-admin')
-          admin?.downloadSyncLog()
-        },
-        getSyncLog() {
-          return kernel.state.syncLog
-        },
-      }
-
-      context.registerService(POS_DATA_SERVICE_KEY, service)
-      context.registerService(ATTENDANCE_SERVICE_KEY, attendanceService)
-      context.registerService('pos-data', service)
+      await withChange(['itemPrices'], () => repository.updateItemPrice(itemId, safeValue))
+    },
+    getSyncLog() {
+      return kernel.state.syncLog
     },
   }
 }

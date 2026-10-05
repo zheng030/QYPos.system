@@ -115,34 +115,6 @@
 	flex-shrink: 0;
 }
 
-/* ========== 系統設定頁樣式 ========== */
-.settings-card {
-	background: white;
-	border-radius: 15px;
-	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-	margin-bottom: 25px;
-	overflow: hidden;
-}
-.settings-header {
-	background: #f8f9fa;
-	padding: 15px 20px;
-	border-bottom: 3px solid #e2e8f0;
-}
-.settings-header h3 {
-	margin: 0;
-	font-size: 18px;
-	color: #475569;
-}
-.owner-buttons {
-	padding: 25px;
-	display: flex;
-	flex-direction: column;
-	gap: 15px;
-}
-.danger-zone {
-	border: 2px solid #fee2e2;
-}
-
 /* ========== 商品庫存管理 ========== */
 .product-mgmt-quick-panel {
 	display: flex;

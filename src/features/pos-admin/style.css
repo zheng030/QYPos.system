@@ -47,3 +47,158 @@
     margin-top: 20px;
     margin-bottom: 5px;
 }
+
+/* ========== 系統設定 ========== */
+.settings-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    margin-bottom: 25px;
+    overflow: hidden;
+    text-align: left;
+}
+
+.settings-header {
+    background: #f8f9fa;
+    padding: 15px 20px;
+    border-bottom: 3px solid #e2e8f0;
+}
+
+.settings-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #475569;
+}
+
+.settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+    padding: 18px 20px;
+}
+
+.settings-row + .settings-row {
+    border-top: 1px solid #eef2f7;
+}
+
+.settings-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.settings-row-text strong {
+    font-size: 16px;
+    color: var(--text-main);
+}
+
+.settings-row-text span {
+    font-size: 14px;
+    color: var(--text-sub);
+}
+
+.settings-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+}
+
+.settings-volume-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 280px;
+    max-width: 100%;
+    margin-left: auto;
+}
+
+.settings-volume-control input {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+    accent-color: var(--primary-color);
+}
+
+.settings-volume-control output {
+    width: 4ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+}
+
+.settings-action-btn {
+    padding: 10px 18px;
+    border-radius: 10px;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.settings-action-btn:disabled,
+.settings-save-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 0 20px 20px;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #475569;
+}
+
+.settings-field input,
+.settings-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    font: inherit;
+    font-weight: 400;
+    color: var(--text-main);
+    background: #fff;
+}
+
+.settings-field textarea {
+    resize: vertical;
+    line-height: 1.6;
+}
+
+.settings-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.settings-form-hint {
+    margin-right: auto;
+    font-size: 14px;
+    font-weight: 700;
+    color: #b45309;
+}
+
+.settings-save-btn {
+    padding: 10px 26px;
+    border-radius: 10px;
+    background: var(--primary-color);
+    color: white;
+    font-size: 15px;
+    font-weight: 700;
+}

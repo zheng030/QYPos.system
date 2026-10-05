@@ -101,45 +101,6 @@
     text-align: right;
 }
 
-.btn-owner-blue {
-    background: #e0f2fe;
-    color: #007bff;
-}
-.btn-owner-pink {
-    background: #fce7f3;
-    color: #ec4899;
-}
-.btn-owner-orange {
-    background: #ffedd5;
-    color: #f97316;
-}
-
-.danger-header {
-    border-bottom-color: #fecaca;
-}
-.danger-title {
-    color: #dc2626;
-}
-.danger-btn-blue {
-    width: 100%;
-    padding: 15px;
-    font-size: 16px;
-    background: #0ea5e9;
-    color: white;
-    border-radius: 10px;
-    font-weight: bold;
-    margin-bottom: 15px;
-}
-.danger-btn-red {
-    width: 100%;
-    padding: 15px;
-    font-size: 16px;
-    background: #dc2626;
-    color: white;
-    border-radius: 10px;
-    font-weight: bold;
-}
-
 .product-mgmt-box {
     background: white;
     padding: 20px;

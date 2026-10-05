@@ -1,5 +1,6 @@
 import type {
   PosCategoryKey,
+  PosDrinkTemperatureSwitch,
   PosMenuCategory,
   PosMenuItem,
   PosMenuMeta,
@@ -136,10 +137,21 @@ function singleItem(input: MenuItemSeed): PosMenuItem {
   }
 }
 
+// Staff pause a temperature for every drink at once, e.g. hot drinks when the bar is busy.
+export const drinkTemperatureSwitches: PosDrinkTemperatureSwitch[] = [
+  { value: 'ice', label: '冷飲', soldOutKey: 'drink-temperature.ice' },
+  { value: 'hot', label: '熱飲', soldOutKey: 'drink-temperature.hot' },
+]
+
+function drinkTemperatureOption(value: string, label: string): PosSelectionOption {
+  const soldOutKey = drinkTemperatureSwitches.find((candidate) => candidate.value === value)?.soldOutKey
+  return { ...option(value, label), soldOutKey }
+}
+
 const drinkTemperatureRule = singleRule(
   'temperature',
   '飲品溫度',
-  [option('ice', '冰'), option('hot', '熱')],
+  [drinkTemperatureOption('ice', '冰'), drinkTemperatureOption('hot', '熱')],
   true,
   '溫度',
   {

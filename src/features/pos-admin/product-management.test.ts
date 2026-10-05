@@ -1,93 +1,75 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import { menuMeta } from '@/features/pos-kernel/data'
-import { renderProductManagement } from './product-management'
+import { drinkTemperatureSwitches, menuMeta } from '@/features/pos-kernel/data'
+import { buildProductManagementView } from './product-management'
 
-type ElementStub = {
-  id: string
-  innerHTML: string
-  style: { display: string }
-  classList: {
-    contains: (token: string) => boolean
-  }
-  querySelector: (selector: string) => { classList: { contains: (token: string) => boolean } } | null
-  querySelectorAll: (selector: string) => Array<{ classList: { contains: (token: string) => boolean }; id: string }>
+const inventory = {
+  'pasta_risotto.chicken-breast': true,
+  'selection.pasta_risotto.chicken-breast.base.pasta': true,
+  'selection.pasta_risotto.chicken-breast.base.risotto': false,
+  'selection.pasta_risotto.chicken-breast.sauce.cheese': true,
+  'selection.pasta_risotto.chicken-breast.sauce.pesto': false,
 }
-
-function createElementStub(id = ''): ElementStub {
-  return {
-    id,
-    innerHTML: '',
-    style: { display: '' },
-    classList: {
-      contains: () => false,
-    },
-    querySelector: () => null,
-    querySelectorAll: () => [],
-  }
-}
-
-function installDocumentStub() {
-  const elements = new Map<string, ElementStub>()
-  const documentStub = {
-    getElementById: (id: string) => elements.get(id) || null,
-  }
-
-  ;(globalThis as { document?: unknown }).document = documentStub as unknown
-  ;(globalThis as { HTMLElement?: unknown }).HTMLElement = Object as unknown
-
-  return {
-    add(element: ElementStub) {
-      elements.set(element.id, element)
-    },
-    reset() {
-      elements.clear()
-    },
-  }
-}
-
-const dom = installDocumentStub()
-
-afterEach(() => {
-  dom.reset()
-})
 
 describe('product-management', () => {
-  it('renders top-level batch toggles and bundle rule option rows without spec-category or target quick groups', () => {
-    const container = createElementStub('productManagementList')
-    dom.add(container)
+  it('builds top-level batch toggles without spec-category or target quick groups', () => {
+    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, inventory)
 
-    renderProductManagement({
-      inventory: () => ({
-        'pasta_risotto.chicken-breast': true,
-        'selection.pasta_risotto.chicken-breast.base.pasta': true,
-        'selection.pasta_risotto.chicken-breast.base.risotto': false,
-        'selection.pasta_risotto.chicken-breast.sauce.cheese': true,
-        'selection.pasta_risotto.chicken-breast.sauce.pesto': false,
-      }),
-      menuData: menuMeta.categories,
+    expect(view.quickSections.map((section) => section.title)).toEqual(['菜單分類', '口味 / 主食', '飲品溫度'])
+    const [categorySection, selectionSection] = view.quickSections
+    expect(categorySection.rows.map((row) => row.label)).toContain('義大利麵 / 燉飯')
+    expect(categorySection.rows.map((row) => row.label)).toContain('甜點')
+    expect(categorySection.rows.map((row) => row.label)).not.toContain('品類')
+    expect(categorySection.rows.map((row) => row.label)).not.toContain('附加品類')
+
+    const selectionLabels = selectionSection.rows.map((row) => row.label)
+    expect(selectionLabels).toEqual(expect.arrayContaining(['主食 / 義大利麵', '主食 / 通心粉', '口味 / 青醬']))
+    expect(selectionLabels).not.toContain('口感 / 正常')
+    expect(selectionLabels).not.toContain('口感 / 偏軟')
+  })
+
+  it('offers store-wide cold and hot drink switches', () => {
+    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, {
+      'drink-temperature.hot': false,
     })
+    const temperature = view.quickSections.find((section) => section.title === '飲品溫度')
 
-    expect(container.innerHTML).toContain('data-action="toggle-inventory-batch"')
-    expect(container.innerHTML).toContain('data-id="product-quick-panel"')
-    expect(container.innerHTML).toContain('>菜單分類<')
-    expect(container.innerHTML).toContain('>口味 / 主食<')
-    expect(container.innerHTML).toContain('義大利麵 / 燉飯')
-    expect(container.innerHTML).toContain('>義大利麵 / 燉飯<')
-    expect(container.innerHTML).toContain('>甜點<')
-    expect(container.innerHTML).toContain('data-name="dessert.original-basque"')
-    expect(container.innerHTML).toContain('主食 / 義大利麵')
-    expect(container.innerHTML).toContain('主食 / 通心粉')
-    expect(container.innerHTML).toContain('口味 / 青醬')
-    expect(container.innerHTML).not.toContain('口感 / 正常')
-    expect(container.innerHTML).not.toContain('口感 / 偏軟')
-    expect(container.innerHTML).toContain('data-option="selection.pasta_risotto.cheese-macaroni.base.macaroni"')
-    expect(container.innerHTML).not.toContain('data-option="selection.pasta_risotto.chicken-breast.base.macaroni"')
-    expect(container.innerHTML).toContain('data-option="selection.pasta_risotto.chicken-breast.sauce.pesto"')
-    expect(container.innerHTML).not.toContain('>品類<')
-    expect(container.innerHTML).not.toContain('>附加品類<')
-    expect(container.innerHTML).toContain(
-      'id="product-quick-panel" data-product-quick-panel class="accordion-content "'
-    )
+    expect(temperature?.rows.map(({ label, keys, checked, status }) => ({ label, keys, checked, status }))).toEqual([
+      { label: '冷飲', keys: ['drink-temperature.ice'], checked: true, status: 'available' },
+      { label: '熱飲', keys: ['drink-temperature.hot'], checked: false, status: 'sold-out' },
+    ])
+  })
+
+  it('marks batch toggles partial when only some of their keys are available', () => {
+    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, inventory)
+    const pesto = view.quickSections[1].rows.find((row) => row.label === '口味 / 青醬')
+
+    expect(pesto?.keys).toContain('selection.pasta_risotto.chicken-breast.sauce.pesto')
+    expect(pesto).toMatchObject({ checked: false, status: 'partial' })
+
+    const soldOut = buildProductManagementView(
+      menuMeta.categories,
+      drinkTemperatureSwitches,
+      Object.fromEntries((pesto?.keys || []).map((key) => [key, false]))
+    ).quickSections[1].rows.find((row) => row.label === '口味 / 青醬')
+    expect(soldOut).toMatchObject({ checked: false, status: 'sold-out' })
+  })
+
+  it('lists bundle rule options per item without target-backed options', () => {
+    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, inventory)
+    const items = view.categories.flatMap((category) => category.items)
+    const optionKeys = items.flatMap((item) => item.options.map((option) => option.inventoryKey))
+
+    expect(view.categories[0].accordionId).toBe('mgmt-acc-1')
+    expect(items.map((item) => item.id)).toContain('dessert.original-basque')
+    expect(optionKeys).toContain('selection.pasta_risotto.cheese-macaroni.base.macaroni')
+    expect(optionKeys).not.toContain('selection.pasta_risotto.chicken-breast.base.macaroni')
+
+    const chicken = items.find((item) => item.id === 'pasta_risotto.chicken-breast')
+    expect(chicken?.available).toBe(true)
+    expect(chicken?.options.find((option) => option.inventoryKey.endsWith('sauce.pesto'))).toMatchObject({
+      label: '口味 / 青醬',
+      available: false,
+    })
   })
 })

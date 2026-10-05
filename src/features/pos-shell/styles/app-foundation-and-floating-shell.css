@@ -305,7 +305,6 @@ button {
 #reportPage,
 #confidentialPage,
 #settingsPage,
-#pastHistoryPage,
 #productPage,
 #itemStatsPage {
 	display: none;
@@ -538,6 +537,45 @@ button {
 	flex-wrap: wrap;
 	gap: 10px;
 	margin-bottom: 16px;
+}
+
+.drink-temperature-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px 20px;
+	margin-bottom: 16px;
+	padding: 10px 16px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+}
+
+.drink-temperature-title {
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--text-sub);
+}
+
+.drink-temperature-switch {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-weight: 700;
+	color: var(--text-main);
+}
+
+.drink-temperature-switch.paused {
+	color: var(--danger-color);
+}
+
+.drink-temperature-notice {
+	margin: 0 0 16px;
+	padding: 10px 16px;
+	border-radius: 12px;
+	background: #fff1f2;
+	color: #be123c;
+	font-weight: 700;
 }
 
 .entry-list,

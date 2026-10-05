@@ -72,7 +72,21 @@ export type PosSelectionOption = {
   inventoryKey: string
   categoryKey: PosCategoryKey
   station: PosKitchenStation
+  // Store-wide switch shared by every item offering this option; `false` in inventory pauses it.
   soldOutKey?: string
+}
+
+export type PosDrinkTemperatureSwitch = {
+  value: PosSelectionValue
+  label: string
+  soldOutKey: string
+}
+
+// Shop notice customers confirm after scanning a table QR code, before the menu opens.
+export type PosCustomerNotice = {
+  enabled: boolean
+  title: string
+  message: string
 }
 
 export type PosSingleSelectionRule = {
@@ -301,21 +315,6 @@ export type PosBatchListItem = {
   createdAt: number
 }
 
-export type PosMenuFilterState = {
-  activeTab: 'menu' | 'cart' | 'orders'
-  activeCategoryKey: PosMenuCategoryKey
-}
-
-export type PosStaffWorkspaceDiscount = {
-  percent: number
-}
-
-export type PosStaffWorkspaceState = {
-  expanded: boolean
-  serviceFeeEnabled: boolean
-  discount: PosStaffWorkspaceDiscount | null
-}
-
 export type PosOrder = {
   orderId?: string
   bizDateKey?: string
@@ -395,21 +394,6 @@ export type PosSyncRecord = {
   root?: string
 }
 
-export type PosToastOptions = {
-  count?: number
-}
-
-export type PosToastItemState = {
-  count: number
-  el: HTMLElement
-  hideTimer: ReturnType<typeof setTimeout> | null
-  removeTimer: ReturnType<typeof setTimeout> | null
-}
-
-export type PosToastState = {
-  items: Map<string, PosToastItemState>
-}
-
 export type CorePosState = {
   tableTimers: PosTableTimerMap
   tableStatuses: PosTableStatusMap
@@ -430,13 +414,5 @@ export type CorePosState = {
   activePendingBatches: PosOrderBatch[]
   activeSubmittedBatches: PosOrderBatch[]
   tableSplitCounters: Record<string, number | undefined>
-  seatTimerInterval: ReturnType<typeof setInterval> | null
-  currentBuilder: PosBuilderState | null
-  currentPendingBatchId: string | null
-  currentPendingTable: string | null
-  isQrMode: boolean
-  isHistorySimpleMode: boolean
-  menuFilter: PosMenuFilterState
-  staffWorkspace: PosStaffWorkspaceState
   syncLog: SyncLogRecord[]
 }

@@ -1,5 +1,3 @@
-export const ATTENDANCE_SERVICE_KEY = 'attendance'
-
 export type AttendanceEmployee = {
   id: string
   name: string

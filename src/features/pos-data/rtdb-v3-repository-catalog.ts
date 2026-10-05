@@ -306,6 +306,7 @@ export function createRtdbV3RepositoryCatalogModule(ctx: RtdbV3RepositoryContext
   return {
     fetchAttendanceEmployees: ensureAttendanceEmployeesCatalogCache,
     ensureCatalog,
+    ensureInventory: ensureInventorySegment,
     watchCatalogRevision,
     updateInventory,
     updateInventoryBatch,

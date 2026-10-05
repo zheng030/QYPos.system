@@ -12,14 +12,13 @@ import type {
 } from './item-helpers'
 import type {
   CorePosState,
+  PosDrinkTemperatureSwitch,
   PosEntryDisplaySummary,
   PosMenuCategoryKey,
   PosMenuMeta,
   PosOrderEntry,
   PosSystemPasswordConfig,
 } from './types'
-
-export const POS_KERNEL_SERVICE_KEY = 'pos-kernel'
 
 export type PosCatalogHelpers = {
   buildFinanceStatsTemplate: typeof buildFinanceStatsTemplate
@@ -52,6 +51,7 @@ export type PosKernelService = {
   db: DatabaseCompat
   menuData: import('./types').PosMenuData
   menuMeta: PosMenuMeta
+  drinkTemperatureSwitches: PosDrinkTemperatureSwitch[]
   tables: string[]
   categories: PosMenuCategoryKey[]
   systemPassword: PosSystemPasswordConfig

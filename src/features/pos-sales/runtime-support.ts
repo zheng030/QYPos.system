@@ -1,14 +1,9 @@
 import type {
-  PosBatchStatus,
-  PosEntryDisplaySummary,
   PosOrderBatch,
   PosOrderEntry,
-  PosOrderLine,
   PosPendingBatchPreview,
-  PosReceiptData,
   PosTableCustomer,
 } from '@/features/pos-kernel/types'
-import { groupOrderLines } from '@/shared/grouped-order-lines'
 
 type PosOrderMode = 'customer' | 'staff'
 
@@ -28,26 +23,7 @@ type PendingOverlayBatch = {
   batch: PosPendingBatchPreview
 }
 
-type ReceiptGroup = {
-  main: PosOrderLine
-  children: PosOrderLine[]
-}
-
-type BuilderIssueGuideHost = {
-  querySelector?: (selector: string) => BuilderIssueGuideElement | null | undefined
-}
-
-type BuilderIssueGuideElement = {
-  classList?: {
-    add?: (...tokens: string[]) => void
-  }
-  scrollIntoView?: (options?: unknown) => void
-  querySelector?: (selector: string) => BuilderIssueGuideFocusable | null | undefined
-}
-
-type BuilderIssueGuideFocusable = {
-  focus?: () => void
-}
+type BuilderIssueGuideHost = Pick<ParentNode, 'querySelector'>
 
 type PersistCustomerInfoSilentlyParams = {
   mode: PosOrderMode
@@ -83,15 +59,18 @@ type UpdateSubmittedBatchParams = {
   printKitchenTicket: (batch: PosOrderBatch) => Promise<void>
 }
 
+export type FloatingClearAction = 'clear-draft' | 'open-reprint'
+export type FloatingPrimaryAction = 'go-cart' | 'submit-draft' | 'open-payment'
+
 type FloatingBarViewModel = {
   visible: boolean
   label: string
   clearVisible: boolean
   clearText: string
-  clearAction: string
+  clearAction: FloatingClearAction
   primaryVisible: boolean
   primaryText: string
-  primaryAction: string
+  primaryAction: FloatingPrimaryAction
 }
 
 type StaffWorkspaceDraftRow = {
@@ -157,26 +136,10 @@ export type StaffWorkspaceRowAction = {
   kind: 'edit' | 'treat' | 'delete'
   label: string
   tone: 'primary' | 'warning' | 'success' | 'danger'
-  action: string
-  attrs: Record<string, string>
-}
-
-function escapeHtml(value: unknown) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 
 function formatCurrency(value: number) {
   return `$${Math.round(value || 0)}`
-}
-
-function formatQuantity(quantity: number | null | undefined) {
-  const safeQuantity = typeof quantity === 'number' && Number.isFinite(quantity) && quantity > 0 ? quantity : 1
-  return `x${safeQuantity}`
 }
 
 function escapeAttributeValue(value: string) {
@@ -203,29 +166,27 @@ function sumEntryOriginalSubtotals(entries: PosOrderEntry[]) {
   return normalizeAmount(entries.reduce((sum, entry) => sum + getEntryOriginalSubtotal(entry), 0))
 }
 
-function groupReceiptLines(lines: PosOrderLine[]) {
-  return groupOrderLines(lines).map<ReceiptGroup>(({ main, children }) => ({ main, children }))
-}
-
 export function getBuilderGroupSelector(groupId: string) {
   return `[data-builder-group="${escapeAttributeValue(groupId)}"]`
 }
 
+// Scrolls the first unfinished builder group into view and focuses its first enabled control.
 export function guideBuilderIssue(host: BuilderIssueGuideHost | null | undefined, groupId: string) {
-  if (!host?.querySelector || !groupId) {
+  if (!host || !groupId) {
     return false
   }
 
-  const issueCard = host.querySelector(getBuilderGroupSelector(groupId))
+  const issueCard = host.querySelector<HTMLElement>(getBuilderGroupSelector(groupId))
   if (!issueCard) {
     return false
   }
 
-  issueCard.classList?.add?.('issue-target')
-  issueCard.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  issueCard.scrollIntoView({ block: 'center', behavior: 'smooth' })
   issueCard
-    .querySelector?.('input:not([disabled]), button:not([disabled]), textarea:not([disabled]), select:not([disabled])')
-    ?.focus?.()
+    .querySelector<HTMLElement>(
+      'input:not([disabled]), button:not([disabled]), textarea:not([disabled]), select:not([disabled])'
+    )
+    ?.focus()
 
   return true
 }
@@ -362,30 +323,6 @@ export function getStaffWorkspaceTotalDisplay(
   })
 }
 
-export function renderAdjustedAmountHtml(
-  display: AdjustedAmountDisplay,
-  options: {
-    stacked?: boolean
-  } = {}
-) {
-  if (!display.hasAdjustment) {
-    return escapeHtml(display.finalLabel)
-  }
-
-  const toneClass = display.finalTone ? ` price-adjusted-final--${display.finalTone}` : ''
-  const noteHtml = display.noteLabel ? `<span class="price-adjusted-note">${escapeHtml(display.noteLabel)}</span>` : ''
-
-  return `
-    <span class="price-adjusted${options.stacked ? ' price-adjusted--stack' : ''}">
-      <span class="price-adjusted-main">
-        <span class="price-adjusted-original">${escapeHtml(display.originalLabel)}</span>
-        <span class="price-adjusted-final${toneClass}">${escapeHtml(display.finalLabel)}</span>
-      </span>
-      ${noteHtml}
-    </span>
-  `
-}
-
 export function summarizeStaffWorkspace(
   draftEntries: PosOrderEntry[],
   submittedBatches: PosOrderBatch[]
@@ -443,115 +380,12 @@ export function summarizeStaffWorkspace(
   }
 }
 
-export function getStaffWorkspaceRowActions(row: StaffWorkspaceRow, isTreat: boolean): StaffWorkspaceRowAction[] {
-  if (row.kind === 'draft') {
-    return [
-      {
-        kind: 'edit',
-        label: '編輯',
-        tone: 'primary',
-        action: 'edit-draft-entry',
-        attrs: { 'data-entry-id': row.entry.entryId },
-      },
-      {
-        kind: 'treat',
-        label: isTreat ? '取消招待' : '招待',
-        tone: isTreat ? 'success' : 'warning',
-        action: 'toggle-draft-entry-treat',
-        attrs: { 'data-entry-id': row.entry.entryId },
-      },
-      {
-        kind: 'delete',
-        label: '刪除',
-        tone: 'danger',
-        action: 'remove-draft-entry',
-        attrs: { 'data-entry-id': row.entry.entryId },
-      },
-    ]
-  }
-
+export function getStaffWorkspaceRowActions(isTreat: boolean): StaffWorkspaceRowAction[] {
   return [
-    {
-      kind: 'edit',
-      label: '編輯',
-      tone: 'primary',
-      action: 'edit-submitted-entry',
-      attrs: {
-        'data-batch-id': row.batchId,
-        'data-entry-id': row.entry.entryId,
-      },
-    },
-    {
-      kind: 'treat',
-      label: isTreat ? '取消招待' : '招待',
-      tone: isTreat ? 'success' : 'warning',
-      action: 'toggle-submitted-entry-treat',
-      attrs: {
-        'data-batch-id': row.batchId,
-        'data-entry-id': row.entry.entryId,
-      },
-    },
-    {
-      kind: 'delete',
-      label: '刪除',
-      tone: 'danger',
-      action: 'remove-submitted-entry',
-      attrs: {
-        'data-batch-id': row.batchId,
-        'data-entry-id': row.entry.entryId,
-      },
-    },
+    { kind: 'edit', label: '編輯', tone: 'primary' },
+    { kind: 'treat', label: isTreat ? '取消招待' : '招待', tone: isTreat ? 'success' : 'warning' },
+    { kind: 'delete', label: '刪除', tone: 'danger' },
   ]
-}
-
-export function buildReceiptMarkup(data: PosReceiptData, title: string) {
-  const groups = groupReceiptLines(data.lines || [])
-
-  return `
-    <section class="receipt-section">
-      <div class="receipt-header">
-        <h1 class="store-name">QY POS</h1>
-        <strong>${escapeHtml(title)}</strong>
-      </div>
-      <div class="receipt-info">
-        <div>桌號：${escapeHtml(data.table || '')}</div>
-        <div>時間：${escapeHtml(data.time)}</div>
-        <div>單號：${escapeHtml(String(data.seq || ''))}</div>
-      </div>
-      <hr class="dashed-line">
-      <div class="receipt-items">
-        ${groups
-          .map(
-            ({ main, children }) => `
-              <div class="receipt-item">
-                <span>${escapeHtml(main.shortName)} ${formatQuantity(main.quantity)}${main.selectionSummary ? ` (${escapeHtml(main.selectionSummary)})` : ''}</span>
-                <span>${formatCurrency(main.lineTotal)}</span>
-              </div>
-              ${children
-                .map(
-                  (line) => `
-                    <div class="entry-child-line">${escapeHtml(line.shortName)} ${formatQuantity(line.quantity)}${line.selectionSummary ? ` · ${escapeHtml(line.selectionSummary)}` : ''}${line.lineTotal > 0 ? ` ${formatCurrency(line.lineTotal)}` : ''}</div>
-                  `
-                )
-                .join('')}
-            `
-          )
-          .join('')}
-      </div>
-      <hr class="dashed-line">
-      <div class="receipt-footer">
-        <div class="row"><span>原價</span><span>${formatCurrency(data.original || data.total)}</span></div>
-        <div class="row total"><span>總計</span><span>${formatCurrency(data.total)}</span></div>
-      </div>
-    </section>
-  `
-}
-
-export function getEntryDisplaySummary(
-  entry: PosOrderEntry,
-  buildDisplaySummary: (entry: PosOrderEntry) => PosEntryDisplaySummary
-) {
-  return buildDisplaySummary(entry)
 }
 
 export async function persistCustomerInfoSilently({
@@ -569,10 +403,6 @@ export async function persistCustomerInfoSilently({
 
   await saveCustomerDraft(table, entries, customer)
   return true
-}
-
-export function getCustomerBoxDisplay(mode: PosOrderMode) {
-  return mode === 'customer' || mode === 'staff' ? 'flex' : 'none'
 }
 
 export function getStartupAuthIntent(session: PosStartupSession) {
@@ -639,12 +469,6 @@ export async function updateSubmittedBatchAndPrint({
   return updated
 }
 
-export function getBatchStatusChip(status: PosBatchStatus) {
-  return status === 'pending'
-    ? '<span class="batch-chip pending">待接單</span>'
-    : '<span class="batch-chip accepted">已接單</span>'
-}
-
 export function getFloatingBarViewModel(
   mode: PosOrderMode,
   activeTab: 'menu' | 'cart' | 'orders'
@@ -655,10 +479,10 @@ export function getFloatingBarViewModel(
       label: '購物車',
       clearVisible: false,
       clearText: '清空',
-      clearAction: 'floating-clear-action',
+      clearAction: 'clear-draft',
       primaryVisible: true,
       primaryText: '前往購物車',
-      primaryAction: 'go-cart-tab',
+      primaryAction: 'go-cart',
     }
   }
 
@@ -668,10 +492,10 @@ export function getFloatingBarViewModel(
       label: '購物車',
       clearVisible: true,
       clearText: '清空',
-      clearAction: 'floating-clear-action',
+      clearAction: 'clear-draft',
       primaryVisible: true,
       primaryText: '送出',
-      primaryAction: 'floating-primary-action',
+      primaryAction: 'submit-draft',
     }
   }
 
@@ -681,10 +505,10 @@ export function getFloatingBarViewModel(
       label: '訂單紀錄',
       clearVisible: false,
       clearText: '補印',
-      clearAction: 'open-reprint-modal',
+      clearAction: 'open-reprint',
       primaryVisible: false,
       primaryText: '結帳',
-      primaryAction: 'open-payment-modal',
+      primaryAction: 'open-payment',
     }
   }
 
@@ -693,9 +517,9 @@ export function getFloatingBarViewModel(
     label: '訂單紀錄',
     clearVisible: true,
     clearText: '補印',
-    clearAction: 'open-reprint-modal',
+    clearAction: 'open-reprint',
     primaryVisible: true,
     primaryText: '結帳',
-    primaryAction: 'open-payment-modal',
+    primaryAction: 'open-payment',
   }
 }

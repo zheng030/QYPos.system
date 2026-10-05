@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.{ts,js,mjs,json}", "!.github/workflows/*.yml"]
+    "includes": ["src/**/*.{ts,js,mjs,json,vue}", "!.github/workflows/*.yml"]
   },
   "formatter": {
     "enabled": true,
@@ -44,5 +44,8 @@
       "attributePosition": "auto",
       "bracketSpacing": true
     }
+  },
+  "html": {
+    "experimentalFullSupportEnabled": true
   }
 }

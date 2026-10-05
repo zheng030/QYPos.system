@@ -63,6 +63,19 @@
 	text-align: left;
 }
 
+/* Until the scan notice is read, the cover hides the menu instead of dimming it. */
+.customer-notice-modal.is-loading {
+	background: var(--bg-color);
+	backdrop-filter: none;
+}
+
+.customer-notice-message {
+	color: var(--text-main);
+	font-size: 16px;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+
 .discount-input-inline {
 	display: inline-flex;
 	align-items: center;

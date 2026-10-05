@@ -2,21 +2,7 @@ import { authGate } from '@/shared/auth-gate'
 import { toBusinessDate as toSharedBusinessDate } from '@/shared/business-day'
 import { pbkdf2Hash, randomSaltBase64 } from '@/shared/password'
 import { createAttendanceRecordId } from '@/shared/rtdb-entity-id'
-import {
-  AttendanceType,
-  AVATAR_COLORS,
-  bridge,
-  CHECKIN_PAGE_ID,
-  CHECKIN_ROOT_ID,
-  DEFAULT_ADMIN,
-  DEFAULT_ADMIN_PASSWORD_RECORD,
-  EmployeeStatus,
-  ICONS,
-  runtime,
-  setState,
-  state,
-  UserRole,
-} from './store'
+import { AttendanceType, AVATAR_COLORS, type CheckinIconName, EmployeeStatus, UserRole } from './constants'
 import type { AttendanceEmployee, AttendanceEmployeesMap, AttendanceRecord, AttendanceRecordsMap } from './types'
 
 function padMonth(value: number) {
@@ -53,30 +39,12 @@ export function getAuthNotice() {
   return authGate.getDevBypassNotice()
 }
 
-export function icon(name: string, size?: number, className?: string) {
-  const svg = (ICONS as Record<string, string>)[name]
-  if (!svg) return ''
-  const classes = ['checkin-icon']
-  if (className) classes.push(className)
-  const finalSize = size || 18
-  return `<svg class="${classes.join(' ')}" width="${finalSize}" height="${finalSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${svg}</svg>`
-}
-
 export function getAvatarColor(name: string) {
   let hash = 0
   for (let index = 0; index < name.length; index += 1) {
     hash = name.charCodeAt(index) + ((hash << 5) - hash)
   }
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
-}
-
-export function renderAvatar(name: string, className?: string) {
-  const safeName = name || '?'
-  const initial = safeName.charAt(0)
-  const color = getAvatarColor(safeName)
-  const classes = ['checkin-avatar']
-  if (className) classes.push(className)
-  return `<div class="${classes.join(' ')}" style="background:${color}">${initial}</div>`
 }
 
 export function getRoleLabel(role: string) {
@@ -114,11 +82,6 @@ export function getStatusDotVariant(status: string) {
     default:
       return 'checkin-dot--slate'
   }
-}
-
-export function renderStatusBadge(status: string, empId: string, labelOverride?: string) {
-  const label = labelOverride || getStatusLabel(status, empId)
-  return `<span class="checkin-badge ${getStatusClass(status)}">${label}</span>`
 }
 
 export function getRecordMeta(type: string) {
@@ -239,42 +202,33 @@ export function normalizeRecords(data: unknown): AttendanceRecordsMap {
   return data as AttendanceRecordsMap
 }
 
-export function getEmployeesArray() {
-  return Object.values(state.employees || {}).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hant'))
+export function sortEmployees(employees: AttendanceEmployeesMap) {
+  return Object.values(employees).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hant'))
 }
 
-export function getRecordsArray() {
-  return Object.values(state.records || {}).sort(
+export function sortRecords(records: AttendanceRecordsMap) {
+  return Object.values(records).sort(
     (left, right) => (toDate(right.ts)?.getTime() || 0) - (toDate(left.ts)?.getTime() || 0)
   )
 }
 
-export function getEmployeeById(id: string | null) {
-  return id && state.employees[id] ? state.employees[id] : null
-}
-
-export function isAdmin() {
-  const user = getEmployeeById(state.currentUserId)
-  return user && user.role === UserRole.ADMIN
-}
-
-export function hasRecordToday(empId: string) {
+export function hasRecordToday(records: AttendanceRecord[], empId: string) {
   const todayKey = formatDateKey(new Date())
-  return getRecordsArray().some((record) => {
+  return records.some((record) => {
     if (record.eid !== empId) return false
     const date = toDate(record.ts)
     return date && formatDateKey(date) === todayKey
   })
 }
 
-export function getStatusLabel(status: string, empId: string) {
+export function getStatusLabel(status: string, empId: string, records: AttendanceRecord[]) {
   switch (status) {
     case EmployeeStatus.WORKING:
       return '工作中'
     case EmployeeStatus.ON_BREAK:
       return '休息中'
     default:
-      return hasRecordToday(empId) ? '已下班' : '未上班'
+      return hasRecordToday(records, empId) ? '已下班' : '未上班'
   }
 }
 
@@ -317,8 +271,8 @@ export function calculateWorkHours(records: AttendanceRecord[], now?: Date) {
   return Number((totalMs / (1000 * 60 * 60)).toFixed(1))
 }
 
-export function getUserRecords(empId: string) {
-  const all = getRecordsArray().filter((record) => record.eid === empId)
+export function getUserRecords(records: AttendanceRecord[], empId: string) {
+  const all = records.filter((record) => record.eid === empId)
   const todayKey = formatDateKey(new Date())
   const todayRecords = all.filter((record) => {
     const date = toDate(record.ts)
@@ -389,130 +343,151 @@ export function getNextRecordId() {
   return createAttendanceRecordId()
 }
 
-export async function ensureData() {
-  if (!bridge.attendance) {
-    throw new Error('Attendance service is not ready')
+export function getNextEmployeeId(employees: AttendanceEmployeesMap) {
+  let maxId = 0
+  for (const existingId of Object.keys(employees)) {
+    const match = /^emp_(\d+)$/.exec(existingId)
+    if (match) maxId = Math.max(maxId, Number(match[1]))
   }
-  const monthKeys = getWindowMonthKeys(state.calendarDate)
-  await bridge.attendance.ensureWindow(monthKeys)
-  const applySnapshot = () => {
-    const snapshot = bridge.attendance?.getSnapshot()
-    state.employees = normalizeEmployees(snapshot?.employees || {})
-    state.records = normalizeRecords(snapshot?.records || {})
+  return `emp_${maxId + 1}`
+}
+
+export type DailyRecordGroup = ReturnType<typeof groupRecordsByDay>[number]
+
+function averageClockedHours(employees: AttendanceEmployee[], records: AttendanceRecord[], days: number) {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const validRecords = records.filter((record) => {
+    const date = toDate(record.ts)
+    return date && date >= cutoff
+  })
+  let totalMs = 0
+  for (const employee of employees) {
+    const employeeRecords = validRecords
+      .filter((record) => record.eid === employee.id)
+      .sort((left, right) => (toDate(left.ts)?.getTime() || 0) - (toDate(right.ts)?.getTime() || 0))
+    let start: number | null = null
+    for (const record of employeeRecords) {
+      if (record.type === AttendanceType.CLOCK_IN) start = toDate(record.ts)?.getTime() || null
+      if (record.type === AttendanceType.CLOCK_OUT && start !== null) {
+        totalMs += (toDate(record.ts)?.getTime() || 0) - start
+        start = null
+      }
+    }
   }
-  applySnapshot()
-  runtime.stopAttendanceWatch?.()
-  runtime.stopAttendanceWatch = bridge.attendance.watchWindow(monthKeys)
-  bridge.attendance.subscribe(() => {
-    applySnapshot()
-    if (!state.loading) {
-      runtime.render()
+  const employeeDays = new Set<string>()
+  for (const record of validRecords) {
+    const date = toDate(record.ts)
+    if (date) employeeDays.add(`${record.eid}_${formatDateKey(date)}`)
+  }
+  return employeeDays.size > 0 ? (totalMs / (1000 * 60 * 60) / employeeDays.size).toFixed(1) : '0.0'
+}
+
+export type DashboardCard = { label: string; value: string | number; icon: CheckinIconName; variant: string }
+
+export function buildAdminDashboard(employees: AttendanceEmployee[], records: AttendanceRecord[]) {
+  const todayKey = formatDateKey(new Date())
+  const employeesWithRecords = new Set(
+    records
+      .filter((record) => {
+        const date = toDate(record.ts)
+        return date && formatDateKey(date) === todayKey
+      })
+      .map((record) => record.eid)
+  )
+  let working = 0
+  let onBreak = 0
+  let clockedOut = 0
+  let notClockedIn = 0
+  for (const employee of employees) {
+    if (employee.status === EmployeeStatus.WORKING) working += 1
+    else if (employee.status === EmployeeStatus.ON_BREAK) onBreak += 1
+    else if (employeesWithRecords.has(employee.id)) clockedOut += 1
+    else notClockedIn += 1
+  }
+  const statCards: DashboardCard[] = [
+    { label: '總員工數', value: employees.length, icon: 'users', variant: 'blue' },
+    {
+      label: '平均工時 (7天)',
+      value: `${averageClockedHours(employees, records, 7)} hr`,
+      icon: 'clock',
+      variant: 'purple',
+    },
+    {
+      label: '平均工時 (30天)',
+      value: `${averageClockedHours(employees, records, 30)} hr`,
+      icon: 'calendar',
+      variant: 'purple',
+    },
+  ]
+  const statusCards: DashboardCard[] = [
+    { label: '未上班', value: notClockedIn, icon: 'login', variant: 'slate' },
+    { label: '工作中', value: working, icon: 'briefcase', variant: 'green' },
+    { label: '休息中', value: onBreak, icon: 'coffee', variant: 'orange' },
+    { label: '已下班', value: clockedOut, icon: 'logout', variant: 'slate' },
+  ]
+  return { statCards, statusCards, recent: records.slice(0, 10) }
+}
+
+export function buildWorkHoursChart(dailyData: DailyRecordGroup[], chartMode: 'week' | 'month') {
+  const now = new Date()
+  const range = chartMode === 'week' ? 7 : 30
+  const bars = Array.from({ length: range }, (_, offset) => {
+    const date = new Date(now)
+    date.setDate(date.getDate() - (range - 1 - offset))
+    const key = formatDateKey(date)
+    const businessDate = toBusinessDate(date)
+    const found = dailyData.find((item) => formatDateKey(item.date) === key)
+    return {
+      label:
+        chartMode === 'week'
+          ? businessDate.toLocaleDateString('zh-TW', { weekday: 'short' })
+          : `${businessDate.getMonth() + 1}/${businessDate.getDate()}`,
+      hours: found ? found.totalHours : 0,
+      date: businessDate.toLocaleDateString('zh-TW'),
     }
   })
-  if (!state.employees || Object.keys(state.employees).length === 0) await seedDefaultAdmin()
-  state.loading = false
-  runtime.render()
+  const maxHours = Math.max(1, ...bars.map((bar) => bar.hours))
+  return bars.map((bar) => ({ ...bar, heightPercent: (bar.hours / maxHours) * 100 }))
 }
 
-export async function seedDefaultAdmin() {
-  try {
-    const employee = { ...DEFAULT_ADMIN, ...DEFAULT_ADMIN_PASSWORD_RECORD }
-    await bridge.attendance?.save({ [`attendanceEmployees/${employee.id}`]: employee })
-  } catch (error) {
-    console.warn('CheckIn: failed to seed default admin', error)
+export function buildAttendanceCalendar(calendarDate: Date, dailyData: DailyRecordGroup[]) {
+  const year = calendarDate.getFullYear()
+  const month = calendarDate.getMonth()
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const today = toBusinessDate(new Date())
+  return {
+    title: `${year} 年 ${month + 1} 月`,
+    leadingBlanks: firstDay,
+    days: Array.from({ length: daysInMonth }, (_, index) => {
+      const date = new Date(year, month, index + 1)
+      const dayData = dailyData.find((item) => item.date.toDateString() === date.toDateString())
+      return {
+        day: index + 1,
+        isToday: date.toDateString() === today.toDateString(),
+        isWeekend: date.getDay() === 0 || date.getDay() === 6,
+        hours: dayData ? dayData.totalHours : null,
+      }
+    }),
   }
 }
 
-export function ensureContainer(mountId?: string) {
-  const mount = document.getElementById(mountId || 'app-container')
-  if (!mount) return null
-  let page = document.getElementById(CHECKIN_PAGE_ID)
-  if (!page) {
-    page = document.createElement('div')
-    page.id = CHECKIN_PAGE_ID
-    mount.appendChild(page)
-  }
-  if (!(page instanceof HTMLElement)) return null
-
-  page.style.display = page.style.display || 'none'
-  page.classList.add('checkin-page')
-
-  let shell = page.querySelector('.checkin-shell')
-  if (!shell) {
-    shell = document.createElement('div')
-    shell.className = 'checkin-shell'
-    page.prepend(shell)
-  }
-
-  let backButton = shell.querySelector('[data-action="checkin-back"]')
-  if (!backButton) {
-    backButton = document.createElement('button')
-    backButton.className = 'back btn-effect checkin-back-btn'
-    backButton.setAttribute('data-action', 'checkin-back')
-    backButton.textContent = '⬅ 返回主畫面'
-    shell.prepend(backButton)
-  }
-
-  let root = page.querySelector(`#${CHECKIN_ROOT_ID}`)
-  if (!root) {
-    root = document.createElement('div')
-    root.id = CHECKIN_ROOT_ID
-    page.appendChild(root)
-  }
-
-  runtime.pageEl = page as HTMLElement
-  runtime.rootEl = root as HTMLElement
-  return page
-}
-
-export function wrapHideAll() {
-  return
-}
-
-export function startClockTimer() {
-  if (runtime.clockTimer) return
-  runtime.clockTimer = setInterval(() => {
-    const now = new Date()
-    const timeEl = runtime.rootEl?.querySelector('[data-role=checkin-time]') as HTMLElement | null
-    if (timeEl) timeEl.textContent = formatTime(now)
-    const dateEl = runtime.rootEl?.querySelector('[data-role=checkin-date]') as HTMLElement | null
-    if (dateEl) dateEl.textContent = formatDate(now)
-  }, 1000)
-}
-
-export function open() {
-  state.open = true
-  bridge.appShell?.showPage(CHECKIN_PAGE_ID)
-  const page = document.getElementById(CHECKIN_PAGE_ID)
-  if (page) page.style.display = 'block'
-  runtime.render()
-}
-
-export function watchAttendanceWindowScope(date = state.calendarDate) {
-  const monthKeys = getWindowMonthKeys(date)
-  runtime.stopAttendanceWatch?.()
-  runtime.stopAttendanceWatch = bridge.attendance?.watchWindow(monthKeys) || null
-}
-
-export function watchAttendanceFullHistoryScope() {
-  runtime.stopAttendanceWatch?.()
-  runtime.stopAttendanceWatch = bridge.attendance?.watchFullHistory() || null
-}
-
-export function stopAttendanceScopeWatch() {
-  runtime.stopAttendanceWatch?.()
-  runtime.stopAttendanceWatch = null
-}
-
-export function logout() {
-  setState({
-    currentUserId: null,
-    currentView: 'clock',
-    loginEmployeeId: null,
-    loginError: '',
-    passwordError: '',
-    dashboardEmployeeId: null,
-    reportEmployeeId: 'all',
-    employeeSearch: '',
+export function buildAttendanceCsv(records: AttendanceRecord[], employees: AttendanceEmployeesMap) {
+  const header = ['員工', '員工ID', '日期', '時間', '類型', '備註']
+  const rows = records.map((record) => {
+    const employee = employees[record.eid]
+    const date = toDate(record.ts)
+    return [
+      employee ? employee.name : '',
+      record.eid || '',
+      date ? formatBusinessDateOnly(date) : '',
+      date ? formatShortTime(date) : '',
+      getRecordLabel(record.type),
+      record.notes || '',
+    ]
   })
+  return [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n')
 }

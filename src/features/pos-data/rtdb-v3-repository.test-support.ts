@@ -32,21 +32,6 @@ export function createState(): CorePosState {
     activePendingBatches: [],
     activeSubmittedBatches: [],
     tableSplitCounters: {},
-    seatTimerInterval: null,
-    currentBuilder: null,
-    currentPendingBatchId: null,
-    currentPendingTable: null,
-    isQrMode: false,
-    isHistorySimpleMode: false,
-    menuFilter: {
-      activeTab: 'menu',
-      activeCategoryKey: 'pasta_risotto',
-    },
-    staffWorkspace: {
-      expanded: false,
-      serviceFeeEnabled: false,
-      discount: null,
-    },
     syncLog: [],
   }
 }

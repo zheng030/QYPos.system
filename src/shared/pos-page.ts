@@ -6,7 +6,6 @@ export const POS_PAGE_IDS = [
   'reportPage',
   'confidentialPage',
   'settingsPage',
-  'pastHistoryPage',
   'productPage',
   'itemStatsPage',
   'checkinPage',

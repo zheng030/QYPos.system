@@ -427,12 +427,6 @@
 	color: var(--danger-color);
 	font-weight: 700;
 }
-.owner-btn,
-.settings-row {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-}
 .grand-total {
 	font-weight: 800;
 	color: var(--text-main);

@@ -165,14 +165,26 @@ function getSelectedUpgradeOption(item: PosMenuItem, groupId: string, value: str
 }
 
 function isOptionDisabled(
-  option: { inventoryKey: string; targetItemId?: string },
+  option: { inventoryKey: string; targetItemId?: string; soldOutKey?: string },
   rule: PosSelectionRule | PosBundleUpgradeGroup,
   helpers: BuilderHelpers
 ) {
   if ('kind' in rule && ruleHasInventoryTracking(rule) && helpers.isInventoryKeySoldOut(option.inventoryKey)) {
     return true
   }
+  if (option.soldOutKey && helpers.isInventoryKeySoldOut(option.soldOutKey)) {
+    return true
+  }
   return option.targetItemId ? helpers.isItemSoldOut(option.targetItemId) : false
+}
+
+// A single choice blocks the entry when its picked option, or every option of a required rule, is unavailable.
+function isSingleRuleSoldOut(rule: PosSelectionRule, value: string, helpers: BuilderHelpers) {
+  if (rule.kind !== 'single') return false
+  if (value) {
+    return rule.options.some((option) => option.value === value && isOptionDisabled(option, rule, helpers))
+  }
+  return rule.required && rule.options.every((option) => isOptionDisabled(option, rule, helpers))
 }
 
 function isAutoOptionalDrinkGroup(group: PosBundleUpgradeGroup, helpers: BuilderHelpers) {
@@ -322,8 +334,12 @@ function resolveIncludes(item: PosMenuItem, state: PosBuilderState, helpers: Bui
     )
     for (const rule of childItem.selections || []) {
       const value = childSelections[rule.id] || ''
+      const groupId = `${includeRule.id}.${rule.id}`
       if (rule.required && !value.trim()) {
-        missingIssues.push(buildIssue('missing', `${includeRule.id}.${rule.id}`, `${includeRule.label} ${rule.label}`))
+        missingIssues.push(buildIssue('missing', groupId, `${includeRule.label} ${rule.label}`))
+      }
+      if (isSingleRuleSoldOut(rule, value, helpers)) {
+        soldOutIssues.push(buildIssue('sold-out', groupId, `${includeRule.label} ${rule.label}`))
       }
     }
 
@@ -466,11 +482,8 @@ export function buildBuilderPresentation(args: {
     if (rule.required && !value.trim()) {
       missingIssues.push(buildIssue('missing', rule.id, rule.label))
     }
-    if (rule.kind === 'single' && value) {
-      const option = rule.options.find((candidate) => candidate.value === value)
-      if (option?.targetItemId && helpers.isItemSoldOut(option.targetItemId)) {
-        soldOutIssues.push(buildIssue('sold-out', rule.id, rule.label))
-      }
+    if (isSingleRuleSoldOut(rule, value, helpers)) {
+      soldOutIssues.push(buildIssue('sold-out', rule.id, rule.label))
     }
     return buildRuleView(rule, value, helpers)
   })

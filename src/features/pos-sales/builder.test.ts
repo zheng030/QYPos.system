@@ -534,6 +534,66 @@ describe('pos-sales builder', () => {
     expect(textureRule?.options?.every((option) => option.disabled === false)).toBe(true)
   })
 
+  it('pauses a drink temperature for standalone drinks without touching item stock', () => {
+    const helpers = createHelpers({ 'drink-temperature.hot': false })
+    let state = createBuilderState('drink.americano', 'staff-draft')
+
+    const fresh = buildBuilderPresentation({ state, helpers })
+    const temperature = fresh?.mainBlocks
+      .flatMap((block) => block.rows.flat())
+      .find((rule) => rule.id === 'temperature')
+    expect(temperature?.options?.map((option) => [option.label, option.disabled])).toEqual([
+      ['冰', false],
+      ['熱', true],
+    ])
+    expect(helpers.getOwnedSelectionInventoryKeys('drink.americano')).toEqual([])
+
+    // An entry picked as hot before the pause cannot be saved until it switches to iced.
+    state = updateBuilderSelection(state, 'main', 'temperature', 'hot')
+    expect(finalizeBuilderEntry({ state, helpers, source: 'staff', status: 'draft' })).toMatchObject({
+      ok: false,
+      issues: [{ kind: 'sold-out', groupId: 'temperature' }],
+    })
+    state = updateBuilderSelection(state, 'main', 'temperature', 'ice')
+    expect(finalizeBuilderEntry({ state, helpers, source: 'staff', status: 'draft' }).ok).toBe(true)
+  })
+
+  it('pauses the included drink temperature, including its iced default', () => {
+    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
+    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
+    state = updateBuilderSelection(state, 'main', 'sauce', 'pesto')
+    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
+
+    const hotPaused = buildBuilderPresentation({ state, helpers: createHelpers({ 'drink-temperature.hot': false }) })
+    const childTemperature = hotPaused?.childBlocks[0]?.rules.find((rule) => rule.id === 'temperature')
+    expect(childTemperature?.value).toBe('ice')
+    expect(childTemperature?.options?.find((option) => option.value === 'hot')?.disabled).toBe(true)
+    expect(hotPaused?.canConfirm).toBe(true)
+
+    const icePaused = buildBuilderPresentation({ state, helpers: createHelpers({ 'drink-temperature.ice': false }) })
+    expect(icePaused?.soldOutIssues).toEqual([
+      { kind: 'sold-out', groupId: 'included-drink.temperature', label: '附飲 飲品溫度' },
+    ])
+    expect(icePaused?.canConfirm).toBe(false)
+  })
+
+  it('reports a drink as sold out when every temperature is paused', () => {
+    const helpers = createHelpers({ 'drink-temperature.ice': false, 'drink-temperature.hot': false })
+    const presentation = buildBuilderPresentation({ state: createBuilderState('drink.latte', 'staff-draft'), helpers })
+
+    expect(presentation?.soldOutIssues.map((issue) => issue.groupId)).toEqual(['temperature'])
+    expect(presentation?.canConfirm).toBe(false)
+  })
+
+  it('blocks a picked tracked option once its inventory sells out', () => {
+    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
+    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
+    state = updateBuilderSelection(state, 'main', 'sauce', 'pesto')
+    const helpers = createHelpers({ 'selection.pasta_risotto.chicken-breast.sauce.pesto': false })
+
+    expect(buildBuilderPresentation({ state, helpers })?.soldOutIssues.map((issue) => issue.groupId)).toEqual(['sauce'])
+  })
+
   it('hydrates legacy entries by moving main temperature into include selections', () => {
     const legacyState = hydrateBuilderState(
       {

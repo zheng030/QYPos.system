@@ -26,6 +26,11 @@ describe('rtdb-v3 resource registry', () => {
     expect(attendanceMonthIndex.remotePath).toBe('attendance/monthIndex')
     expect(attendanceMonthIndex.revision.path).toBe('attendance/monthIndex')
     expect(rtdbV3StaticResourceRegistry.getByRemotePath('catalog/inventory')?.resourceKey).toBe('catalog:inventory')
+    expect(getStaticDescriptorOrThrow(RTDB_V3_RESOURCE_KEYS.settingsCustomerNotice)).toMatchObject({
+      resourceKey: 'settings:customer-notice',
+      remotePath: 'settings/customerNotice',
+      revision: { path: 'settings/customerNotice' },
+    })
   })
 
   it('maps dynamic live/history/report/attendance descriptors to exact remote paths', () => {

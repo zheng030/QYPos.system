@@ -1,3 +1,4 @@
+import type { PosCustomerNotice } from '@/features/pos-kernel/types'
 import type { AttendanceEmployee, AttendanceRecord } from '@/shared/attendance-service'
 import {
   createIdentityCodec,
@@ -56,6 +57,7 @@ export const RTDB_V3_RESOURCE_KEYS = {
   catalogCosts: 'catalog:costs',
   attendanceEmployees: 'attendance:employees',
   attendanceMonthIndex: 'attendance:month-index',
+  settingsCustomerNotice: 'settings:customer-notice',
   liveTableSummary: (table: string) => liveTableResourceKey(table, 'summary'),
   liveTableDraft: (table: string) => liveTableResourceKey(table, 'draft'),
   liveTablePending: (table: string) => liveTableResourceKey(table, 'pendingBatches'),
@@ -96,6 +98,12 @@ const staticDescriptors = [
     remotePath: 'attendance/monthIndex',
     revision: { path: 'attendance/monthIndex' },
     codec: createIdentityCodec<Record<string, true>>(),
+  }),
+  registerResourceDescriptor({
+    resourceKey: RTDB_V3_RESOURCE_KEYS.settingsCustomerNotice,
+    remotePath: 'settings/customerNotice',
+    revision: { path: 'settings/customerNotice' },
+    codec: createIdentityCodec<PosCustomerNotice | null>(),
   }),
 ] satisfies ResourceDescriptor<unknown, unknown>[]
 

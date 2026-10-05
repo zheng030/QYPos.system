@@ -2,17 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { menuMeta } from '@/features/pos-kernel/data'
 import { buildEntryDisplaySummary as buildKernelEntryDisplaySummary } from '@/features/pos-kernel/item-helpers'
-import type { PosOrderBatch, PosOrderEntry, PosReceiptData } from '@/features/pos-kernel/types'
+import type { PosOrderBatch, PosOrderEntry } from '@/features/pos-kernel/types'
 import {
   acceptPendingBatchAndPrint,
   buildAdjustedAmountDisplay,
-  buildReceiptMarkup,
   calculateSplitCheckoutTotal,
   calculateStaffOrderTotal,
   getBuilderGroupSelector,
-  getCustomerBoxDisplay,
   getEntryAdjustedAmountDisplay,
-  getEntryDisplaySummary,
   getFloatingBarViewModel,
   getStaffWorkspaceRowActions,
   getStaffWorkspaceTotalDisplay,
@@ -20,7 +17,6 @@ import {
   getVisibleOrderBatches,
   guideBuilderIssue,
   persistCustomerInfoSilently,
-  renderAdjustedAmountHtml,
   selectPendingOverlayBatch,
   submitDraftBatch,
   summarizeStaffWorkspace,
@@ -202,7 +198,6 @@ describe('pos-sales runtime-support', () => {
       noteLabel: undefined,
       finalTone: undefined,
     })
-    expect(renderAdjustedAmountHtml(buildAdjustedAmountDisplay(310, 310))).toBe('$310')
   })
 
   it('builds a treat entry adjusted display from original line prices', () => {
@@ -227,12 +222,6 @@ describe('pos-sales runtime-support', () => {
       noteLabel: undefined,
       finalTone: 'success',
     })
-
-    expect(renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(treatEntry))).toContain(
-      'price-adjusted-final--success'
-    )
-    expect(renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(treatEntry))).toContain('$310')
-    expect(renderAdjustedAmountHtml(getEntryAdjustedAmountDisplay(treatEntry))).toContain('$0')
   })
 
   it('builds a workspace total display for discount only', () => {
@@ -283,7 +272,6 @@ describe('pos-sales runtime-support', () => {
       noteLabel: '折數 80% · 含服務費 +$25',
       finalTone: 'danger',
     })
-    expect(renderAdjustedAmountHtml(display, { stacked: true })).toContain('price-adjusted--stack')
   })
 
   it('summarizes draft and submitted totals for the staff floating workspace', () => {
@@ -316,61 +304,21 @@ describe('pos-sales runtime-support', () => {
     ])
   })
 
-  it('builds the same three staff workspace actions for draft and accepted rows', () => {
-    const draftRow = summarizeStaffWorkspace([createEntry({ entryId: 'draft_1' })], []).rows[0]
-    const acceptedRow = summarizeStaffWorkspace([], [createBatch({ batchId: 'batch_9', status: 'accepted' })]).rows[0]
-
-    expect(getStaffWorkspaceRowActions(draftRow, false)).toEqual([
-      {
-        kind: 'edit',
-        label: '編輯',
-        tone: 'primary',
-        action: 'edit-draft-entry',
-        attrs: { 'data-entry-id': 'draft_1' },
-      },
-      {
-        kind: 'treat',
-        label: '招待',
-        tone: 'warning',
-        action: 'toggle-draft-entry-treat',
-        attrs: { 'data-entry-id': 'draft_1' },
-      },
-      {
-        kind: 'delete',
-        label: '刪除',
-        tone: 'danger',
-        action: 'remove-draft-entry',
-        attrs: { 'data-entry-id': 'draft_1' },
-      },
+  it('builds the same three staff workspace actions with a treat toggle label', () => {
+    expect(getStaffWorkspaceRowActions(false)).toEqual([
+      { kind: 'edit', label: '編輯', tone: 'primary' },
+      { kind: 'treat', label: '招待', tone: 'warning' },
+      { kind: 'delete', label: '刪除', tone: 'danger' },
     ])
-
-    expect(getStaffWorkspaceRowActions(acceptedRow, true)).toEqual([
-      {
-        kind: 'edit',
-        label: '編輯',
-        tone: 'primary',
-        action: 'edit-submitted-entry',
-        attrs: { 'data-batch-id': 'batch_9', 'data-entry-id': 'entry_1' },
-      },
-      {
-        kind: 'treat',
-        label: '取消招待',
-        tone: 'success',
-        action: 'toggle-submitted-entry-treat',
-        attrs: { 'data-batch-id': 'batch_9', 'data-entry-id': 'entry_1' },
-      },
-      {
-        kind: 'delete',
-        label: '刪除',
-        tone: 'danger',
-        action: 'remove-submitted-entry',
-        attrs: { 'data-batch-id': 'batch_9', 'data-entry-id': 'entry_1' },
-      },
+    expect(getStaffWorkspaceRowActions(true)).toEqual([
+      { kind: 'edit', label: '編輯', tone: 'primary' },
+      { kind: 'treat', label: '取消招待', tone: 'success' },
+      { kind: 'delete', label: '刪除', tone: 'danger' },
     ])
   })
 
   it('formats main and drink summaries from a finalized entry for shared renders', () => {
-    expect(getEntryDisplaySummary(createEntry(), (entry) => buildKernelEntryDisplaySummary(entry, menuMeta))).toEqual({
+    expect(buildKernelEntryDisplaySummary(createEntry(), menuMeta)).toEqual({
       mainSummary: '主食：義大利麵 / 口味：青醬',
       mainCompact: '義大利麵 · 青醬',
       drinkSummary: '換購：拿鐵 · 溫度：冰',
@@ -399,9 +347,7 @@ describe('pos-sales runtime-support', () => {
       ],
     })
 
-    expect(
-      getEntryDisplaySummary(entry, (candidate) => buildKernelEntryDisplaySummary(candidate, menuMeta))
-    ).toMatchObject({
+    expect(buildKernelEntryDisplaySummary(entry, menuMeta)).toMatchObject({
       drinkSummary: '換購：主廚濃湯',
       drinkCompact: '主廚濃湯',
       expandedSummary: '主食：義大利麵 / 口味：青醬 / 換購：主廚濃湯',
@@ -415,7 +361,7 @@ describe('pos-sales runtime-support', () => {
       clearVisible: false,
       primaryVisible: true,
       primaryText: '前往購物車',
-      primaryAction: 'go-cart-tab',
+      primaryAction: 'go-cart',
     })
     expect(getFloatingBarViewModel('customer', 'cart')).toMatchObject({
       clearVisible: true,
@@ -435,33 +381,12 @@ describe('pos-sales runtime-support', () => {
     })
   })
 
-  it('renders grouped receipt markup with child line indentation', () => {
-    const data: PosReceiptData = {
-      seq: '12-1',
-      table: 'A1',
-      time: '2026/05/30 18:00:00',
-      lines: createEntry().lines,
-      original: 310,
-      total: 310,
-    }
-
-    const html = buildReceiptMarkup(data, 'Kitchen 工作單')
-    expect(html).toContain('Kitchen 工作單')
-    expect(html).toContain('青醬雞胸')
-    expect(html).toContain('x1')
-    expect(html).toContain('(主食：義大利麵 / 口味：青醬)')
-    expect(html).toContain('拿鐵')
-    expect(html).toContain('· 溫度：冰')
-  })
-
-  it('guides the first builder issue to its matching group card and focusable control', () => {
+  it('scrolls to the first builder issue card and focuses its first enabled control', () => {
     const focus = vi.fn()
     const scrollIntoView = vi.fn()
-    const add = vi.fn()
     const querySelector = vi.fn((selector: string) => {
       if (selector === getBuilderGroupSelector('bundle-drink-upgrade')) {
         return {
-          classList: { add },
           scrollIntoView,
           querySelector: (childSelector: string) =>
             childSelector.includes('button:not([disabled])') ? { focus } : null,
@@ -471,7 +396,6 @@ describe('pos-sales runtime-support', () => {
     })
 
     expect(guideBuilderIssue({ querySelector }, 'bundle-drink-upgrade')).toBe(true)
-    expect(add).toHaveBeenCalledWith('issue-target')
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
     expect(focus).toHaveBeenCalledTimes(1)
   })
@@ -510,11 +434,6 @@ describe('pos-sales runtime-support', () => {
     expect(saveCustomerDraft).toHaveBeenCalledTimes(1)
     expect(updateTableCustomer).toHaveBeenCalledTimes(1)
     expect(updateTableCustomer).toHaveBeenCalledWith('A1', { name: '王小明' })
-  })
-
-  it('shows the customer info input box for both customer and staff table sessions', () => {
-    expect(getCustomerBoxDisplay('customer')).toBe('flex')
-    expect(getCustomerBoxDisplay('staff')).toBe('flex')
   })
 
   it('submits customer drafts without printing and prints staff-created batches immediately', async () => {

@@ -1,171 +1,138 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { runtime } from './store'
-import { ensureContainer } from './utils'
+import { AttendanceType, EmployeeStatus, UserRole } from './constants'
+import type { AttendanceEmployee, AttendanceRecord } from './types'
+import {
+  buildAdminDashboard,
+  buildAttendanceCalendar,
+  buildAttendanceCsv,
+  buildWorkHoursChart,
+  getNextEmployeeId,
+  getStatusLabel,
+  groupRecordsByDay,
+  sortEmployees,
+  sortRecords,
+} from './utils'
 
-type ElementStub = {
-  id: string
-  className: string
-  style: { display: string }
-  textContent: string
-  dataset: Record<string, string>
-  children: ElementStub[]
-  parent: ElementStub | null
-  classList: {
-    add: (...tokens: string[]) => void
-    contains: (token: string) => boolean
-  }
-  appendChild: (child: ElementStub) => ElementStub
-  prepend: (child: ElementStub) => ElementStub
-  setAttribute: (name: string, value: string) => void
-  querySelector: (selector: string) => ElementStub | null
+function createEmployee(overrides: Partial<AttendanceEmployee> = {}): AttendanceEmployee {
+  return { id: 'emp_1', name: '小明', role: UserRole.EMPLOYEE, status: EmployeeStatus.OFF_DUTY, ...overrides }
 }
 
-function createElementStub(tagName = 'div'): ElementStub {
-  const element: ElementStub = {
-    id: '',
-    className: '',
-    style: { display: '' },
-    textContent: '',
-    dataset: {},
-    children: [],
-    parent: null,
-    classList: {
-      add: (...tokens: string[]) => {
-        const classNames = new Set(element.className.split(/\s+/).filter(Boolean))
-        for (const token of tokens) {
-          classNames.add(token)
-        }
-        element.className = Array.from(classNames).join(' ')
-      },
-      contains: (token: string) => element.className.split(/\s+/).includes(token),
-    },
-    appendChild: (child: ElementStub) => {
-      child.parent = element
-      element.children.push(child)
-      return child
-    },
-    prepend: (child: ElementStub) => {
-      child.parent = element
-      element.children.unshift(child)
-      return child
-    },
-    setAttribute: (name: string, value: string) => {
-      if (name === 'data-action') {
-        element.dataset.action = value
-      }
-    },
-    querySelector: (selector: string) => querySelector(element, selector),
-  }
-  Object.defineProperty(element, 'innerHTML', {
-    get: () => '',
-    set: () => {},
-    enumerable: true,
-    configurable: true,
-  })
-  Object.defineProperty(element, 'firstChild', {
-    get: () => element.children[0] || null,
-    enumerable: true,
-    configurable: true,
-  })
-  Object.defineProperty(element, 'tagName', {
-    value: tagName.toUpperCase(),
-    enumerable: true,
-  })
-  return element
+function createRecord(overrides: Partial<AttendanceRecord> = {}): AttendanceRecord {
+  return { id: 'rec_1', eid: 'emp_1', type: AttendanceType.CLOCK_IN, ts: Date.now(), ...overrides }
 }
 
-function matchSelector(element: ElementStub, selector: string) {
-  if (selector.startsWith('#')) {
-    return element.id === selector.slice(1)
-  }
-  if (selector.startsWith('.')) {
-    return element.classList.contains(selector.slice(1))
-  }
-  if (selector === '[data-action="checkin-back"]') {
-    return element.dataset.action === 'checkin-back'
-  }
-  return false
-}
+// 2026-05-20 is a Wednesday; noon keeps every record inside one business day.
+const NOW = new Date('2026-05-20T12:00:00+08:00')
 
-function querySelector(root: ElementStub, selector: string): ElementStub | null {
-  for (const child of root.children) {
-    if (matchSelector(child, selector)) {
-      return child
-    }
-    const nested = querySelector(child, selector)
-    if (nested) {
-      return nested
-    }
-  }
-  return null
-}
-
-function installDocumentStub() {
-  const appContainer = createElementStub('div')
-  appContainer.id = 'app-container'
-  const elements = new Map<string, ElementStub>([['app-container', appContainer]])
-  const documentStub = {
-    createElement: (tagName: string) => createElementStub(tagName),
-    getElementById: (id: string) => {
-      if (elements.has(id)) {
-        return elements.get(id) || null
-      }
-      for (const element of elements.values()) {
-        const match = querySelector(element, `#${id}`)
-        if (match) {
-          elements.set(id, match)
-          return match
-        }
-      }
-      return null
-    },
-  }
-
-  ;(globalThis as { document?: unknown }).document = documentStub as unknown
-  ;(globalThis as { HTMLElement?: unknown }).HTMLElement = Object as unknown
-
-  return {
-    appContainer,
-    reset() {
-      appContainer.children.length = 0
-      runtime.pageEl = null
-      runtime.rootEl = null
-    },
-  }
-}
-
-const dom = installDocumentStub()
-
-afterEach(() => {
-  dom.reset()
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(NOW)
 })
 
-describe('checkin ensureContainer', () => {
-  it('creates the full checkin shell when the page is missing', () => {
-    const page = ensureContainer()
+afterEach(() => {
+  vi.useRealTimers()
+})
 
-    expect(page).not.toBeNull()
-    expect(page?.classList.contains('checkin-page')).toBe(true)
-    expect(page?.querySelector('.checkin-shell')).not.toBeNull()
-    expect(page?.querySelector('[data-action="checkin-back"]')?.textContent).toBe('⬅ 返回主畫面')
-    expect(page?.querySelector('#checkin-root')).not.toBeNull()
-    expect(runtime.pageEl).toBe(page)
-    expect(runtime.rootEl).toBe(page?.querySelector('#checkin-root'))
+describe('checkin utils', () => {
+  it('sorts employees by name and records newest first', () => {
+    const employees = sortEmployees({
+      emp_2: createEmployee({ id: 'emp_2', name: 'Bob' }),
+      emp_1: createEmployee({ id: 'emp_1', name: 'Amy' }),
+    })
+    const records = sortRecords({
+      rec_1: createRecord({ id: 'rec_1', ts: NOW.getTime() - 2000 }),
+      rec_2: createRecord({ id: 'rec_2', ts: NOW.getTime() - 1000 }),
+    })
+
+    expect(employees.map((employee) => employee.id)).toEqual(['emp_1', 'emp_2'])
+    expect(records.map((record) => record.id)).toEqual(['rec_2', 'rec_1'])
   })
 
-  it('repairs a malformed existing checkin page in place', () => {
-    const malformedPage = createElementStub('div')
-    malformedPage.id = 'checkinPage'
-    dom.appContainer.appendChild(malformedPage)
+  it('picks the next numeric employee id and ignores foreign ids', () => {
+    expect(getNextEmployeeId({})).toBe('emp_1')
+    expect(
+      getNextEmployeeId({
+        admin: createEmployee({ id: 'admin' }),
+        emp_3: createEmployee({ id: 'emp_3' }),
+        emp_10: createEmployee({ id: 'emp_10' }),
+      })
+    ).toBe('emp_11')
+  })
 
-    const page = ensureContainer()
+  it('labels off-duty employees by whether they clocked today', () => {
+    const records = [createRecord({ eid: 'emp_1' })]
 
-    expect(page).toBe(malformedPage)
-    expect(page?.classList.contains('checkin-page')).toBe(true)
-    expect(page?.querySelector('.checkin-shell')).not.toBeNull()
-    expect(page?.querySelector('[data-action="checkin-back"]')).not.toBeNull()
-    expect(page?.querySelector('#checkin-root')).not.toBeNull()
-    expect(runtime.rootEl).toBe(page?.querySelector('#checkin-root'))
+    expect(getStatusLabel(EmployeeStatus.WORKING, 'emp_1', records)).toBe('工作中')
+    expect(getStatusLabel(EmployeeStatus.ON_BREAK, 'emp_1', records)).toBe('休息中')
+    expect(getStatusLabel(EmployeeStatus.OFF_DUTY, 'emp_1', records)).toBe('已下班')
+    expect(getStatusLabel(EmployeeStatus.OFF_DUTY, 'emp_2', records)).toBe('未上班')
+  })
+
+  it('counts dashboard statuses and keeps the ten newest records', () => {
+    const employees = [
+      createEmployee({ id: 'emp_1', status: EmployeeStatus.WORKING }),
+      createEmployee({ id: 'emp_2', status: EmployeeStatus.ON_BREAK }),
+      createEmployee({ id: 'emp_3' }),
+      createEmployee({ id: 'emp_4' }),
+    ]
+    const records = Array.from({ length: 12 }, (_, index) =>
+      createRecord({ id: `rec_${index}`, eid: 'emp_3', ts: NOW.getTime() - index * 1000 })
+    )
+
+    const dashboard = buildAdminDashboard(employees, records)
+
+    expect(dashboard.statCards[0]).toMatchObject({ label: '總員工數', value: 4 })
+    expect(dashboard.statusCards.map((card) => [card.label, card.value])).toEqual([
+      ['未上班', 1],
+      ['工作中', 1],
+      ['休息中', 1],
+      ['已下班', 1],
+    ])
+    expect(dashboard.recent.map((record) => record.id)).toEqual(records.slice(0, 10).map((record) => record.id))
+  })
+
+  it('builds week chart bars scaled to the busiest day', () => {
+    const daily = groupRecordsByDay([
+      createRecord({ id: 'in', type: AttendanceType.CLOCK_IN, ts: NOW.getTime() - 90 * 60_000 }),
+      createRecord({ id: 'out', type: AttendanceType.CLOCK_OUT, ts: NOW.getTime() - 30 * 60_000 }),
+    ])
+
+    const bars = buildWorkHoursChart(daily, 'week')
+
+    expect(bars).toHaveLength(7)
+    expect(bars[6]).toMatchObject({ hours: 1, heightPercent: 100, label: '週三' })
+    expect(bars[5]).toMatchObject({ hours: 0, heightPercent: 0 })
+    expect(buildWorkHoursChart(daily, 'month')[29].label).toBe('5/20')
+  })
+
+  it('builds the month calendar with leading blanks, weekends, and worked hours', () => {
+    const daily = groupRecordsByDay([
+      createRecord({ id: 'in', type: AttendanceType.CLOCK_IN, ts: NOW.getTime() - 3 * 3600_000 }),
+      createRecord({ id: 'out', type: AttendanceType.CLOCK_OUT, ts: NOW.getTime() - 3600_000 }),
+    ])
+
+    const calendar = buildAttendanceCalendar(NOW, daily)
+
+    expect(calendar.title).toBe('2026 年 5 月')
+    expect(calendar.leadingBlanks).toBe(5)
+    expect(calendar.days).toHaveLength(31)
+    expect(calendar.days[19]).toEqual({ day: 20, isToday: true, isWeekend: false, hours: 2 })
+    expect(calendar.days[22]).toMatchObject({ isWeekend: true, hours: null })
+  })
+
+  it('exports CSV rows with quoted cells and employee names', () => {
+    const csv = buildAttendanceCsv(
+      [
+        createRecord({ eid: 'emp_1', type: AttendanceType.BREAK_START, notes: '說 "嗨"' }),
+        createRecord({ eid: 'gone' }),
+      ],
+      { emp_1: createEmployee() }
+    )
+
+    const [header, first, second] = csv.split('\n')
+    expect(header).toBe('"員工","員工ID","日期","時間","類型","備註"')
+    expect(first).toBe('"小明","emp_1","2026/5/20","12:00:00","開始休息","說 ""嗨"""')
+    expect(second).toBe('"","gone","2026/5/20","12:00:00","上班",""')
   })
 })

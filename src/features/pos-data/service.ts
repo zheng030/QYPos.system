@@ -1,4 +1,5 @@
 import type {
+  PosCustomerNotice,
   PosOrder,
   PosOrderBatch,
   PosOrderEntry,
@@ -15,8 +16,6 @@ import type {
   V3ItemStatsRangeEvent,
 } from './rtdb-v3-types'
 
-export const POS_DATA_SERVICE_KEY = 'pos-data'
-
 export type PosDataChangeEvent = {
   roots: string[]
 }
@@ -27,6 +26,7 @@ export type PosDataService = {
   startTableLiveSession(mode: 'staff' | 'customer', table: string): Promise<void>
   stopTableLiveSession(): void
   ensureCatalog(): Promise<void>
+  ensureInventory(): Promise<void>
   listClosedOrdersForBusinessDay(anchor: Date): Promise<PosOrder[]>
   listClosedOrdersByRange(start: Date, endExclusive: Date): Promise<PosOrder[]>
   loadDailySummariesRange(start: Date, endExclusive: Date): Promise<Record<string, V3DailySummary>>
@@ -65,14 +65,13 @@ export type PosDataService = {
     originalTotal: number
   }): Promise<PosOrder>
   deleteClosedOrder(order: PosOrder): Promise<void>
+  readCustomerNotice(): Promise<PosCustomerNotice | null>
+  saveCustomerNotice(notice: PosCustomerNotice): Promise<void>
   subscribe(listener: (event: PosDataChangeEvent) => void): () => void
   emitChange(roots: string[]): void
   toggleStockStatus(itemId: string, checked: boolean): Promise<void>
   toggleInventoryBatch(batch: Record<string, boolean>): Promise<void>
   toggleOptionStock(itemId: string, option: string, checked: boolean): Promise<void>
   updateItemData(itemId: string, type: string, value: string): Promise<void>
-  checkLogin(): Promise<void>
-  checkPendingBatches(): void
-  downloadSyncLog(): void
   getSyncLog(): SyncLogRecord[]
 }

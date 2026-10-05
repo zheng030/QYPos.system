@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { renderItemImageButton, resolvePublicAssetUrl } from './runtime-utils'
+import type { PosMenuItem, PosOrderEntry } from '@/features/pos-kernel/types'
+
+import { getEntryMenuItem, resolvePublicAssetUrl } from './runtime-utils'
 
 describe('pos-sales runtime-utils', () => {
   it('resolves public asset URLs against the Vite base path', () => {
@@ -26,17 +28,25 @@ describe('pos-sales runtime-utils', () => {
     )
   })
 
-  it('renders image controls with resolved src and preview URL', () => {
-    const html = renderItemImageButton(
-      {
-        imageUrl: '/menu-img/brunch/garden-breakfast.jpg',
-        imageAlt: '花園早餐（無肉）',
-        name: '花園早餐',
-      },
-      'menu-card-image'
-    )
+  it('finds the menu item of an entry by item id, catalog key, then main line catalog key', () => {
+    const items = new Map([
+      ['item.a', { id: 'item.a' }],
+      ['catalog.b', { id: 'catalog.b' }],
+      ['line.c', { id: 'line.c' }],
+    ]) as unknown as Map<string, PosMenuItem>
+    const getItemById = (itemId: string) => items.get(itemId) || null
+    const entry = (itemId: string, catalogKey: string) =>
+      ({
+        itemId,
+        catalogKey,
+        lines: [
+          { lineId: 'child', parentLineId: 'main', catalogKey: 'item.a' },
+          { lineId: 'main', catalogKey: 'line.c' },
+        ],
+      }) as unknown as PosOrderEntry
 
-    expect(html).toContain('src="/menu-img/brunch/garden-breakfast.jpg"')
-    expect(html).toContain('data-image-url="/menu-img/brunch/garden-breakfast.jpg"')
+    expect(getEntryMenuItem(entry('item.a', 'catalog.b'), getItemById)?.id).toBe('item.a')
+    expect(getEntryMenuItem(entry('missing', 'catalog.b'), getItemById)?.id).toBe('catalog.b')
+    expect(getEntryMenuItem(entry('missing', 'missing'), getItemById)?.id).toBe('line.c')
   })
 })

@@ -5,15 +5,6 @@ export function formatCurrency(value: number) {
   return `$${Math.round(value || 0)}`
 }
 
-export function escapeHtml(value: unknown) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
 export function formatDateTime(value: number) {
   return new Date(value).toLocaleString('zh-TW', { hour12: false })
 }
@@ -51,6 +42,11 @@ export function getStaffCategoryLabel(categoryKey: PosCategoryKey) {
   return POS_CATEGORY_LABELS[categoryKey] || POS_CATEGORY_LABELS.other
 }
 
+export function getEntryMenuItem(entry: PosOrderEntry, getItemById: (itemId: string) => PosMenuItem | null) {
+  const mainLine = entry.lines.find((line) => !line.parentLineId) || entry.lines[0]
+  return getItemById(entry.itemId) || getItemById(entry.catalogKey) || getItemById(mainLine?.catalogKey || '')
+}
+
 export function getItemImageAlt(item: Pick<PosMenuItem, 'imageAlt' | 'name'>) {
   return item.imageAlt || item.name
 }
@@ -66,33 +62,6 @@ export function resolvePublicAssetUrl(path: string, baseUrl = import.meta.env.BA
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
   const normalizedPath = value.replace(/^\/+/, '').replace(/^\.\//, '')
   return `${normalizedBase}${normalizedPath}`
-}
-
-export function renderItemImageButton(
-  item: Pick<PosMenuItem, 'imageUrl' | 'imageAlt' | 'imageObjectPosition' | 'name'> | null | undefined,
-  className: string,
-  options: { fallback?: boolean } = {}
-) {
-  if (!item?.imageUrl) {
-    return options.fallback ? `<div class="${className} menu-image-fallback" aria-hidden="true">無圖</div>` : ''
-  }
-  const alt = getItemImageAlt(item)
-  const imageUrl = resolvePublicAssetUrl(item.imageUrl)
-  const imageStyle = item.imageObjectPosition
-    ? ` style="object-position: ${escapeHtml(item.imageObjectPosition)};"`
-    : ''
-  return `
-    <button
-      class="${className} menu-image-button"
-      type="button"
-      data-action="open-image-preview"
-      data-image-url="${escapeHtml(imageUrl)}"
-      data-image-alt="${escapeHtml(alt)}"
-      aria-label="查看${escapeHtml(alt)}大圖"
-    >
-      <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" loading="lazy"${imageStyle}>
-    </button>
-  `
 }
 
 export function flattenBatchLines(batch: PosOrderBatch, normalizeEntry: (entry: PosOrderEntry) => PosOrderEntry) {

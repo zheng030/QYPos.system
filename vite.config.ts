@@ -1,11 +1,22 @@
 import path from 'node:path'
+import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/QYPos.system/' : '/',
+  plugins: [vue()],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [{ name: 'firebase', test: /node_modules[\\/](?:@firebase|firebase)[\\/]/ }],
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
-    allowedHosts: true
+    allowedHosts: true,
   },
   resolve: {
     alias: [
