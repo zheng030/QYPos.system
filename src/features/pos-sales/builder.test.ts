@@ -209,7 +209,6 @@ describe('pos-sales builder', () => {
         expect(includeRule.categoryKey).toBeTruthy()
       })
       item.selections?.forEach((rule) => {
-        if (rule.kind !== 'single') return
         rule.options.forEach((option) => {
           expect(option.optionKey).toBeTruthy()
           expect(option.inventoryKey).toBeTruthy()
@@ -477,8 +476,7 @@ describe('pos-sales builder', () => {
 
     const presentation = buildBuilderPresentation({ state, helpers })
     expect(presentation?.childBlocks[0]?.itemId).toBe('soup.chef')
-    expect(presentation?.childBlocks[0]?.rules.map((rule) => rule.id)).not.toContain('temperature')
-    expect(presentation?.childBlocks[0]?.rules.map((rule) => rule.id)).toContain('note')
+    expect(presentation?.childBlocks[0]?.rules).toEqual([])
   })
 
   it('treats free-drink selection as optional when black tea and green tea are both sold out', () => {

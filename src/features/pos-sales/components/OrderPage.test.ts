@@ -99,25 +99,6 @@ describe('OrderPage', () => {
     expect(findByText('#builderHost .builder-section', '附飲 / 換購')).toBeTruthy()
   })
 
-  it('keeps the builder text input focused while typing', async () => {
-    await openStaffOrder()
-    await clickText('#menuCategoryChips button', '義大利麵 / 燉飯')
-    await clickText('#menuGrid .item', '雞胸')
-
-    const input = builderGroup('note')?.querySelector<HTMLInputElement>('input.builder-input')
-    if (!input) throw new Error('Missing note input')
-    input.focus()
-    for (const value of ['少', '少冰']) {
-      input.value = value
-      input.dispatchEvent(new Event('input'))
-      await flushPromises()
-    }
-
-    expect(builderGroup('note')?.querySelector('input.builder-input')).toBe(input)
-    expect(document.activeElement).toBe(input)
-    expect(input.value).toBe('少冰')
-  })
-
   it('lets staff pause hot drinks from the drink menu for every drink', async () => {
     const { runtime } = await openStaffOrder()
     await clickText('#menuCategoryChips button', '甜點')

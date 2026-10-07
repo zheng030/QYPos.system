@@ -374,16 +374,16 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     renderBuilder()
   }
 
-  function selectBuilderMain(ruleId: string, value: string, render = true) {
+  function selectBuilderMain(ruleId: string, value: string) {
     if (!builderDraft) return
     builderDraft = updateBuilderSelection(builderDraft, 'main', ruleId, value)
-    if (render) renderBuilder()
+    renderBuilder()
   }
 
-  function selectBuilderInclude(includeId: string, ruleId: string, value: string, render = true) {
+  function selectBuilderInclude(includeId: string, ruleId: string, value: string) {
     if (!builderDraft) return
     builderDraft = updateBuilderSelection(builderDraft, 'include', includeId, value, ruleId)
-    if (render) renderBuilder()
+    renderBuilder()
   }
 
   function selectBuilderUpgrade(groupId: string, value: string) {

@@ -42,26 +42,16 @@ function buildSummaryPartsFromSelections(
 ) {
   return (rules || [])
     .map((rule) => {
-      if (rule.kind === 'single' && rule.visibleWhenRuleId && !values?.[rule.visibleWhenRuleId]?.trim()) {
+      if (rule.visibleWhenRuleId && !values?.[rule.visibleWhenRuleId]?.trim()) {
         return ''
       }
       const raw = values?.[rule.id] || ''
       if (!raw.trim()) return ''
       const label = rule.summaryLabel || rule.label
-      if (rule.kind === 'text') {
-        return `${label}：${raw.trim()}`
-      }
       const option = rule.options.find((candidate) => candidate.value === raw)
       return `${label}：${option?.label || raw}`
     })
     .filter(Boolean)
-}
-
-function sanitizeLegacyMainParts(parts: string[]) {
-  return parts.filter((part) => {
-    const { label } = parseSummaryPart(part)
-    return !['附飲', '換購', '飲品', '溫度'].includes(label)
-  })
 }
 
 function buildCompactSummary(parts: string[]) {
@@ -84,28 +74,29 @@ function resolveItem(menuMeta: PosMenuMeta, catalogKey: string) {
 }
 
 function buildLineSummaryParts(line: PosOrderLine, item: PosMenuItem | null) {
-  const structured = buildSummaryPartsFromSelections(line.selections, item?.selections)
-  if (structured.length > 0) {
-    return structured
+  const stored = splitStoredSummary(line.selectionSummary)
+  if (stored.length > 0) {
+    return stored
   }
-  return splitStoredSummary(line.selectionSummary || '')
+  return buildSummaryPartsFromSelections(line.selections, item?.selections)
 }
 
 function buildMainSummaryParts(entry: PosOrderEntry, menuMeta: PosMenuMeta) {
-  const item = resolveItem(menuMeta, entry.itemId || entry.catalogKey)
-  const structured = buildSummaryPartsFromSelections(entry.selections, item?.selections)
-  if (structured.length > 0) {
-    return structured
+  // Saved summaries describe the order at purchase time, even after menu rules change.
+  const stored = splitStoredSummary(entry.summary.subtitle)
+  if (stored.length > 0) {
+    return stored
   }
 
   const mainLine = getMainLine(entry)
   const lineItem = resolveItem(menuMeta, mainLine?.catalogKey || '')
   const lineParts = mainLine ? buildLineSummaryParts(mainLine, lineItem) : []
   if (lineParts.length > 0) {
-    return sanitizeLegacyMainParts(lineParts)
+    return lineParts
   }
 
-  return sanitizeLegacyMainParts(splitStoredSummary(entry.summary.subtitle || ''))
+  const item = resolveItem(menuMeta, entry.itemId || entry.catalogKey)
+  return buildSummaryPartsFromSelections(entry.selections, item?.selections)
 }
 
 function buildDrinkDisplay(entry: PosOrderEntry, menuMeta: PosMenuMeta) {
@@ -152,9 +143,6 @@ export function buildEntryDisplaySummary(entry: PosOrderEntry, menuMeta: PosMenu
 
 export function normalizeEntryForDisplay(entry: PosOrderEntry, menuMeta: PosMenuMeta): PosOrderEntry {
   const mainLine = getMainLine(entry)
-  const mainItem = mainLine
-    ? resolveItem(menuMeta, mainLine.catalogKey)
-    : resolveItem(menuMeta, entry.itemId || entry.catalogKey)
   const mainSummaryParts = buildMainSummaryParts(entry, menuMeta)
   const normalizedLines = entry.lines.map((line) => {
     const item = resolveItem(menuMeta, line.catalogKey)
@@ -164,7 +152,7 @@ export function normalizeEntryForDisplay(entry: PosOrderEntry, menuMeta: PosMenu
       selectionSummary: parts.join(' / '),
     }
   })
-  const normalizedEntry = {
+  return {
     ...entry,
     lines: normalizedLines,
     summary: {
@@ -172,10 +160,4 @@ export function normalizeEntryForDisplay(entry: PosOrderEntry, menuMeta: PosMenu
       subtitle: mainSummaryParts.join(' / '),
     },
   }
-
-  if (!mainLine && mainItem) {
-    return normalizedEntry
-  }
-
-  return normalizedEntry
 }

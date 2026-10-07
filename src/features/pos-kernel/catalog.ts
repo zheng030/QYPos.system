@@ -14,7 +14,6 @@ import type {
   PosOrderLine,
   PosRevenueDetails,
   PosSelectionRule,
-  PosSingleSelectionRule,
 } from './types'
 
 type CatalogHelpersDeps = {
@@ -33,8 +32,8 @@ function stableStringify(value: unknown): string {
     .join(',')}}`
 }
 
-function isTrackedInventoryRule(rule: PosSelectionRule): rule is PosSingleSelectionRule {
-  return rule.kind === 'single' && rule.tracksInventory
+function isTrackedInventoryRule(rule: PosSelectionRule) {
+  return rule.tracksInventory
 }
 
 export function getBusinessDate(dateObj: Date | string | number) {
@@ -141,12 +140,8 @@ export function buildSelectionSummary(
     const value = resolvedSelections[rule.id] || ''
     if (!value) return
     const summaryLabel = rule.summaryLabel || rule.label
-    if (rule.kind === 'single') {
-      const option = rule.options.find((candidate) => candidate.value === value)
-      if (option) parts.push(`${summaryLabel}：${option.label}`)
-      return
-    }
-    parts.push(`${summaryLabel}：${value}`)
+    const option = rule.options.find((candidate) => candidate.value === value)
+    if (option) parts.push(`${summaryLabel}：${option.label}`)
   })
 
   Object.entries(includeSelections || {}).forEach(([includeId, includeValues]) => {
@@ -259,7 +254,7 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
         errors.push(rule.id)
         return
       }
-      if (rule.kind === 'single' && value && !rule.options.some((option) => option.value === value)) {
+      if (value && !rule.options.some((option) => option.value === value)) {
         errors.push(rule.id)
       }
     })
@@ -270,7 +265,6 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
     const item = getItemById(itemId)
     const rule = item?.selections?.find((candidate) => candidate.id === ruleId)
     if (!rule) return value
-    if (rule.kind === 'text') return value
     return rule.options.find((option) => option.value === value)?.label || value
   }
 

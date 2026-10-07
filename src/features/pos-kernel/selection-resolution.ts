@@ -1,7 +1,7 @@
 import type { PosBuilderSelectionMap, PosSelectionRule } from './types'
 
 export function isSelectionRuleVisible(rule: PosSelectionRule, selections: PosBuilderSelectionMap | undefined) {
-  if (rule.kind !== 'single' || !rule.visibleWhenRuleId) {
+  if (!rule.visibleWhenRuleId) {
     return true
   }
   return Boolean(selections?.[rule.visibleWhenRuleId]?.trim())
@@ -21,10 +21,7 @@ export function getResolvedSelectionMap(
 
     const explicitValue = explicitSelections?.[rule.id] || ''
     const fallbackValue = fallbackSelections?.[rule.id] || ''
-    const value =
-      rule.kind === 'single'
-        ? explicitValue || fallbackValue || rule.defaultValue || ''
-        : explicitValue || fallbackValue || ''
+    const value = explicitValue || fallbackValue || rule.defaultValue || ''
 
     if (value.trim()) {
       resolved[rule.id] = value

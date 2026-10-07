@@ -103,16 +103,7 @@ export type PosSingleSelectionRule = {
   options: PosSelectionOption[]
 }
 
-export type PosSelectionRule =
-  | PosSingleSelectionRule
-  | {
-      id: string
-      kind: 'text'
-      label: string
-      required: boolean
-      summaryLabel?: string
-      placeholder?: string
-    }
+export type PosSelectionRule = PosSingleSelectionRule
 
 export type PosBundleIncludeRule = {
   id: string

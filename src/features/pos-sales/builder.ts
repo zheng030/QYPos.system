@@ -8,7 +8,6 @@ import type {
   PosOrderEntry,
   PosOrderLine,
   PosSelectionRule,
-  PosSingleSelectionRule,
 } from '@/features/pos-kernel/types'
 import { createChildLineId, createEntryId, createMainLineId } from '@/shared/rtdb-entity-id'
 
@@ -42,13 +41,11 @@ export type BuilderRuleView = {
   id: string
   label: string
   summaryLabel?: string
-  kind: 'single' | 'text'
   required: boolean
   value: string
   builderBlockId?: string
   builderRow?: number
-  placeholder?: string
-  options?: BuilderOptionView[]
+  options: BuilderOptionView[]
 }
 
 export type BuilderMainBlockView = {
@@ -147,12 +144,7 @@ function buildIssue(kind: BuilderIssue['kind'], groupId: string, label: string):
 
 function resolveSingleOptionLabel(rule: PosSelectionRule | undefined, value: string) {
   if (!rule || !value) return ''
-  if (rule.kind === 'text') return value.trim()
   return rule.options.find((option) => option.value === value)?.label || value
-}
-
-function ruleHasInventoryTracking(rule: PosSelectionRule): rule is PosSingleSelectionRule {
-  return rule.kind === 'single' && rule.tracksInventory
 }
 
 function getPersistedSelectionMap(rules: PosSelectionRule[] | undefined, values: PosBuilderSelectionMap | undefined) {
@@ -169,7 +161,7 @@ function isOptionDisabled(
   rule: PosSelectionRule | PosBundleUpgradeGroup,
   helpers: BuilderHelpers
 ) {
-  if ('kind' in rule && ruleHasInventoryTracking(rule) && helpers.isInventoryKeySoldOut(option.inventoryKey)) {
+  if ('kind' in rule && rule.tracksInventory && helpers.isInventoryKeySoldOut(option.inventoryKey)) {
     return true
   }
   if (option.soldOutKey && helpers.isInventoryKeySoldOut(option.soldOutKey)) {
@@ -180,7 +172,6 @@ function isOptionDisabled(
 
 // A single choice blocks the entry when its picked option, or every option of a required rule, is unavailable.
 function isSingleRuleSoldOut(rule: PosSelectionRule, value: string, helpers: BuilderHelpers) {
-  if (rule.kind !== 'single') return false
   if (value) {
     return rule.options.some((option) => option.value === value && isOptionDisabled(option, rule, helpers))
   }
@@ -204,25 +195,10 @@ function getResolvedIncludeSelections(
 }
 
 function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHelpers): BuilderRuleView {
-  if (rule.kind === 'text') {
-    return {
-      id: rule.id,
-      label: rule.label,
-      summaryLabel: rule.summaryLabel,
-      kind: 'text',
-      required: rule.required,
-      value,
-      builderBlockId: undefined,
-      builderRow: undefined,
-      placeholder: rule.placeholder,
-    }
-  }
-
   return {
     id: rule.id,
     label: rule.label,
     summaryLabel: rule.summaryLabel,
-    kind: 'single',
     required: rule.required,
     value,
     builderBlockId: rule.builderBlockId,
@@ -638,12 +614,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
     priceDelta: 0,
     lineTotal: helpers.getItemDisplayPrice(item.id) * quantity,
     selections: resolvedMainSelections,
-    selectionSummary: summary
-      .split('/')
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => part.split('：')[1]?.trim() || part)
-      .join(' / '),
+    selectionSummary: summary,
     isTreat: false,
     sourceEntryId: resolvedEntryId,
   })
@@ -674,7 +645,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
           const value = resolution.childSelections[rule.id] || ''
           if (!value.trim()) return ''
           const displayValue = resolveSingleOptionLabel(rule, value)
-          return displayValue || ''
+          return displayValue ? `${rule.summaryLabel || rule.label}：${displayValue}` : ''
         })
         .filter(Boolean)
         .join(' / '),

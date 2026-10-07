@@ -109,10 +109,6 @@ function singleRule(
   }
 }
 
-function textRule(id: string, label: string, required = false, summaryLabel?: string): PosSelectionRule {
-  return { id, kind: 'text', label, required, summaryLabel }
-}
-
 type MenuItemSeed = Omit<PosMenuItem, 'kind' | 'station' | 'productKey' | 'inventoryKey'>
 
 function bundleItem(input: MenuItemSeed): PosMenuItem {
@@ -229,10 +225,6 @@ function buildBundleUpgradeGroups() {
   ]
 }
 
-function buildBundleSelections(extraRules: PosSelectionRule[] = []) {
-  return [...extraRules, textRule('note', '備註')]
-}
-
 function buildPastaSelections({
   baseOptions = pastaBaseOptions.pastaAndRisotto,
   defaultBase,
@@ -243,7 +235,7 @@ function buildPastaSelections({
   extraRules?: PosSelectionRule[]
 } = {}) {
   const resolvedDefaultBase = defaultBase || (baseOptions.length === 1 ? baseOptions[0]?.value : undefined)
-  return buildBundleSelections([pastaBaseRule(baseOptions, resolvedDefaultBase), pastaTextureRule, ...extraRules])
+  return [pastaBaseRule(baseOptions, resolvedDefaultBase), pastaTextureRule, ...extraRules]
 }
 
 function pastaSauceRule(options: PosSelectionOption[]) {
@@ -456,7 +448,6 @@ const categories: PosMenuCategory[] = [
             basePrice: 150,
             imageUrl: 'menu-img/brunch/garden-breakfast.jpg',
             imageAlt: '花園早餐（無肉）',
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -468,7 +459,6 @@ const categories: PosMenuCategory[] = [
             basePrice: 220,
             imageUrl: 'menu-img/brunch/garden-chicken-leg.jpg',
             imageAlt: '花園雞腿',
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -480,7 +470,6 @@ const categories: PosMenuCategory[] = [
             basePrice: 260,
             imageUrl: 'menu-img/brunch/garden-shrimp.jpg',
             imageAlt: '花園鮮蝦',
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -492,7 +481,6 @@ const categories: PosMenuCategory[] = [
             basePrice: 280,
             imageUrl: 'menu-img/brunch/garden-bone-in-beef.jpg',
             imageAlt: '花園帶骨牛',
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -504,7 +492,6 @@ const categories: PosMenuCategory[] = [
             basePrice: 240,
             imageUrl: 'menu-img/brunch/garden-seabass.jpg',
             imageAlt: '花園嫩鱸魚',
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -514,7 +501,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'brunch',
             courseKind: 'food',
             basePrice: 280,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -524,7 +510,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'brunch',
             courseKind: 'food',
             basePrice: 380,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -548,7 +533,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'bread_set',
             courseKind: 'food',
             basePrice: 150,
-            selections: [textRule('note', '備註')],
           }),
           bundleItem({
             id: 'bread_set.creamy-chicken-leg',
@@ -557,7 +541,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'bread_set',
             courseKind: 'food',
             basePrice: 330,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -568,7 +551,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'bread_set',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -593,7 +575,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'salad',
             courseKind: 'food',
             basePrice: 280,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -603,7 +584,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'salad',
             courseKind: 'food',
             basePrice: 250,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -613,7 +593,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'salad',
             courseKind: 'food',
             basePrice: 330,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -623,7 +602,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'salad',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -648,7 +626,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'plated_main',
             courseKind: 'food',
             basePrice: 360,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -659,7 +636,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'plated_main',
             courseKind: 'food',
             basePrice: 400,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -670,7 +646,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'plated_main',
             courseKind: 'food',
             basePrice: 450,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -681,7 +656,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'plated_main',
             courseKind: 'food',
             basePrice: 480,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -692,7 +666,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'plated_main',
             courseKind: 'food',
             basePrice: 420,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -703,7 +676,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'plated_main',
             courseKind: 'food',
             basePrice: 450,
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -715,7 +687,6 @@ const categories: PosMenuCategory[] = [
             courseKind: 'food',
             basePrice: 700,
             tags: ['需預訂'],
-            selections: buildBundleSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -738,7 +709,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 150,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'a_la_carte.cheese-fries',
@@ -746,7 +716,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 150,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'a_la_carte.truffle-fries',
@@ -754,7 +723,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 180,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'a_la_carte.balsamic-mushroom',
@@ -762,7 +730,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 180,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'a_la_carte.mashed-potato',
@@ -770,7 +737,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 150,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'a_la_carte.european-bread',
@@ -778,7 +744,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'a_la_carte',
             courseKind: 'addon',
             basePrice: 280,
-            selections: [textRule('note', '備註')],
           }),
         ],
       },
@@ -799,7 +764,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'soup',
             courseKind: 'addon',
             basePrice: 150,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'soup.puff',
@@ -807,7 +771,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'soup',
             courseKind: 'addon',
             basePrice: 180,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'soup.pumpkin',
@@ -815,7 +778,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'soup',
             courseKind: 'addon',
             basePrice: 180,
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'soup.seafood',
@@ -823,7 +785,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'soup',
             courseKind: 'addon',
             basePrice: 230,
-            selections: [textRule('note', '備註')],
           }),
         ],
       },
@@ -847,7 +808,6 @@ const categories: PosMenuCategory[] = [
             imageUrl: 'menu-img/dessert/original-basque.jpg',
             imageAlt: '原味巴斯克',
             imageObjectPosition: 'center 100%',
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'dessert.earl-grey-basque',
@@ -858,7 +818,6 @@ const categories: PosMenuCategory[] = [
             imageUrl: 'menu-img/dessert/earl-grey-basque.jpg',
             imageAlt: '伯爵茶巴斯克',
             imageObjectPosition: 'center 60%',
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'dessert.tiramisu',
@@ -869,7 +828,6 @@ const categories: PosMenuCategory[] = [
             imageUrl: 'menu-img/dessert/tiramisu.jpg',
             imageAlt: '義式提拉米蘇',
             imageObjectPosition: 'center 60%',
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'dessert.creme-brulee',
@@ -880,7 +838,6 @@ const categories: PosMenuCategory[] = [
             imageUrl: 'menu-img/dessert/creme-brulee.jpg',
             imageAlt: '焦糖烤布蕾',
             imageObjectPosition: 'center 60%',
-            selections: [textRule('note', '備註')],
           }),
           singleItem({
             id: 'dessert.lemon-tart',
@@ -890,7 +847,6 @@ const categories: PosMenuCategory[] = [
             basePrice: 150,
             imageUrl: 'menu-img/dessert/lemon-tart.jpg',
             imageAlt: '檸檬塔',
-            selections: [textRule('note', '備註')],
           }),
         ],
       },
@@ -912,7 +868,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 90,
-            selections: [drinkTemperatureRule, textRule('note', '備註')],
+            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.americano',
@@ -920,7 +876,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 110,
-            selections: [drinkTemperatureRule, textRule('note', '備註')],
+            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.latte',
@@ -929,7 +885,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 150,
-            selections: [drinkTemperatureRule, textRule('note', '備註')],
+            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.milk-tea',
@@ -937,7 +893,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 80,
-            selections: [drinkTemperatureRule, textRule('note', '備註')],
+            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.apple-juice',
@@ -945,7 +901,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 80,
-            selections: [drinkTemperatureRule, textRule('note', '備註')],
+            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.orange-juice',
@@ -953,7 +909,7 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 80,
-            selections: [drinkTemperatureRule, textRule('note', '備註')],
+            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.black-tea',
@@ -984,32 +940,28 @@ function normalizeMenuItem(item: PosMenuItem): PosMenuItem {
     ...item,
     productKey: item.productKey || item.id,
     inventoryKey: item.inventoryKey || item.soldOutKey || item.id,
-    selections: item.selections?.map((rule) =>
-      rule.kind === 'single'
-        ? {
-            ...rule,
-            defaultValue: rule.defaultValue,
-            tracksInventory: rule.tracksInventory ?? false,
-            visibleWhenRuleId: rule.visibleWhenRuleId,
-            builderBlockId: rule.builderBlockId,
-            builderRow: rule.builderRow,
-            options: rule.options.map((selectionOption) => ({
-              ...selectionOption,
-              optionKey: selectionOption.optionKey || selectionOption.value,
-              priceDelta: Number(selectionOption.priceDelta || 0),
-              inventoryKey: selectionOption.targetItemId
-                ? selectionOption.inventoryKey || selectionOption.targetItemId || selectionOption.value
-                : buildSelectionInventoryKey(item.id, rule.id, selectionOption.value),
-              categoryKey:
-                selectionOption.categoryKey ||
-                (selectionOption.targetItemId
-                  ? inferCategoryKeyFromCatalogKey(selectionOption.targetItemId || selectionOption.value)
-                  : item.categoryKey),
-              station: 'kitchen',
-            })),
-          }
-        : rule
-    ),
+    selections: item.selections?.map((rule) => ({
+      ...rule,
+      defaultValue: rule.defaultValue,
+      tracksInventory: rule.tracksInventory ?? false,
+      visibleWhenRuleId: rule.visibleWhenRuleId,
+      builderBlockId: rule.builderBlockId,
+      builderRow: rule.builderRow,
+      options: rule.options.map((selectionOption) => ({
+        ...selectionOption,
+        optionKey: selectionOption.optionKey || selectionOption.value,
+        priceDelta: Number(selectionOption.priceDelta || 0),
+        inventoryKey: selectionOption.targetItemId
+          ? selectionOption.inventoryKey || selectionOption.targetItemId || selectionOption.value
+          : buildSelectionInventoryKey(item.id, rule.id, selectionOption.value),
+        categoryKey:
+          selectionOption.categoryKey ||
+          (selectionOption.targetItemId
+            ? inferCategoryKeyFromCatalogKey(selectionOption.targetItemId || selectionOption.value)
+            : item.categoryKey),
+        station: 'kitchen',
+      })),
+    })),
     includes: item.includes?.map((includeRule) => ({
       ...includeRule,
       inventoryKey: includeRule.inventoryKey || includeRule.itemId,

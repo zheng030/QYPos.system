@@ -24,10 +24,6 @@ watch(
   { flush: 'post' }
 )
 
-function ruleText(rule: BuilderRuleView) {
-  return rule.kind === 'single' ? undefined : { value: rule.value || '', placeholder: rule.placeholder }
-}
-
 function isMissing(rule: BuilderRuleView) {
   return Boolean(rule.required && !rule.value)
 }
@@ -60,7 +56,7 @@ function onQuantityChange(event: Event) {
           <div class="builder-price">{{ formatCurrency(builder.presentation.subtotal) }}</div>
         </div>
 
-        <div class="builder-section">
+        <div v-if="builder.presentation.mainBlocks.length > 0" class="builder-section">
           <h4>主商品設定</h4>
           <div class="builder-rule-list">
             <div
@@ -80,9 +76,7 @@ function onQuantityChange(event: Event) {
                     :missing="isMissing(rule)"
                     :issue-group-id="builder.issueGroupId"
                     :options="rule.options"
-                    :text="ruleText(rule)"
                     @select="sales.selectBuilderMain(rule.id, $event)"
-                    @input="sales.selectBuilderMain(rule.id, $event, false)"
                   />
                 </div>
               </div>
@@ -127,9 +121,7 @@ function onQuantityChange(event: Event) {
                   :missing="isMissing(rule)"
                   :issue-group-id="builder.issueGroupId"
                   :options="rule.options"
-                  :text="ruleText(rule)"
                   @select="sales.selectBuilderInclude(block.includeId, rule.id, $event)"
-                  @input="sales.selectBuilderInclude(block.includeId, rule.id, $event, false)"
                 />
               </div>
             </div>

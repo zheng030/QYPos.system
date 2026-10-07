@@ -740,15 +740,6 @@
 	opacity: 0.45;
 }
 
-.builder-input {
-	width: 100%;
-	box-sizing: border-box;
-	border: 1px solid #dbe2ea;
-	border-radius: 12px;
-	padding: 12px 14px;
-	font-size: 15px;
-}
-
 .builder-footer {
 	display: flex;
 	justify-content: space-between;

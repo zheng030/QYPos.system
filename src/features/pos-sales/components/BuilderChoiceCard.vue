@@ -8,15 +8,10 @@ defineProps<{
   required: boolean
   missing: boolean
   issueGroupId: string | null
-  options?: BuilderOptionView[]
-  text?: { value: string; placeholder?: string }
+  options: BuilderOptionView[]
 }>()
 
-const emit = defineEmits<{ select: [value: string]; input: [value: string] }>()
-
-function onInput(event: Event) {
-  emit('input', (event.target as HTMLInputElement).value)
-}
+const emit = defineEmits<{ select: [value: string] }>()
 </script>
 
 <template>
@@ -28,15 +23,7 @@ function onInput(event: Event) {
     <div class="builder-rule-head">
       <strong>{{ label }}<span v-if="required" class="builder-required">必填</span></strong>
     </div>
-    <input
-      v-if="text"
-      class="builder-input"
-      type="text"
-      :value="text.value"
-      :placeholder="text.placeholder || '請輸入'"
-      @input="onInput"
-    >
-    <div v-else class="builder-option-grid">
+    <div class="builder-option-grid">
       <button type="button"
         v-for="option in options"
         :key="option.value"
