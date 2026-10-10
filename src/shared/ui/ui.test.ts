@@ -51,7 +51,7 @@ const RECEIPT: PosReceiptData = {
       unitPrice: 60,
       priceDelta: 60,
       lineTotal: 60,
-      selectionSummary: '溫度：冰',
+      selectionSummary: '',
     },
   ],
   original: 330,
@@ -187,7 +187,7 @@ describe('receipt printer', () => {
     expect(wrapper.get('.receipt-header strong').text()).toBe('Kitchen 工作單')
     expect(wrapper.get('.receipt-info').text()).toContain('單號：12-1')
     expect(wrapper.get('.receipt-item').text()).toBe('青醬雞胸 x1 (主食：義大利麵 / 口味：青醬)$250')
-    expect(wrapper.get('.entry-child-line').text()).toBe('拿鐵 x1 · 溫度：冰 $60')
+    expect(wrapper.get('.entry-child-line').text()).toBe('拿鐵 x1 $60')
     expect(wrapper.findAll('.receipt-footer .row').map((row) => row.text())).toEqual(['原價$330', '總計$310'])
   })
 })

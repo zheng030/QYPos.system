@@ -72,14 +72,6 @@ export type PosSelectionOption = {
   inventoryKey: string
   categoryKey: PosCategoryKey
   station: PosKitchenStation
-  // Store-wide switch shared by every item offering this option; `false` in inventory pauses it.
-  soldOutKey?: string
-}
-
-export type PosDrinkTemperatureSwitch = {
-  value: PosSelectionValue
-  label: string
-  soldOutKey: string
 }
 
 // Shop notice customers confirm after scanning a table QR code, before the menu opens.
@@ -112,7 +104,6 @@ export type PosBundleIncludeRule = {
   inventoryKey: string
   categoryKey: PosCategoryKey
   upgradeGroupId?: string
-  defaultSelections?: Record<string, PosSelectionValue>
 }
 
 export type PosBundleUpgradeGroup = {
@@ -175,7 +166,6 @@ export type PosBuilderState = {
   itemId: PosItemId
   quantity: number
   selections: PosBuilderSelectionMap
-  includeSelections: Record<string, PosBuilderSelectionMap>
   upgradeSelections: Record<string, PosSelectionValue>
   editingEntryId: string | null
   target: 'customer-draft' | 'staff-draft' | 'submitted-batch'
@@ -235,7 +225,6 @@ export type PosOrderGroup = {
   createdAt: number
   updatedAt: number
   selections: PosBuilderSelectionMap
-  includeSelections: Record<string, PosBuilderSelectionMap>
   upgradeSelections: Record<string, PosSelectionValue>
   lines: PosOrderLine[]
   subtotal: number

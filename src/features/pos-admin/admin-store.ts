@@ -30,9 +30,7 @@ export function createAdminStore({ kernel, data, live, router, toast }: AdminSto
   // Accordion open state survives re-renders and page visits.
   const openPanels = reactive(new Set<string>())
 
-  const productView = computed(() =>
-    buildProductManagementView(kernel.menuData, kernel.drinkTemperatureSwitches, live.state().inventory)
-  )
+  const productView = computed(() => buildProductManagementView(kernel.menuData, live.state().inventory))
 
   function toggleAccordion(id: string) {
     if (!openPanels.delete(id)) {

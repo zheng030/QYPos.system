@@ -232,18 +232,6 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     })
   })
 
-  const drinkTemperatures = computed(() => {
-    live.state()
-    return kernel.drinkTemperatureSwitches.map((option) => ({
-      ...option,
-      available: !kernel.helpers.isInventoryKeySoldOut(option.soldOutKey),
-    }))
-  })
-
-  function setDrinkTemperatureAvailable(soldOutKey: string, available: boolean) {
-    return data.toggleInventoryBatch({ [soldOutKey]: available })
-  }
-
   const staffSummary = computed(() => {
     const state = live.state()
     void mode.value
@@ -377,12 +365,6 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
   function selectBuilderMain(ruleId: string, value: string) {
     if (!builderDraft) return
     builderDraft = updateBuilderSelection(builderDraft, 'main', ruleId, value)
-    renderBuilder()
-  }
-
-  function selectBuilderInclude(includeId: string, ruleId: string, value: string) {
-    if (!builderDraft) return
-    builderDraft = updateBuilderSelection(builderDraft, 'include', includeId, value, ruleId)
     renderBuilder()
   }
 
@@ -1023,7 +1005,6 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     tableButtons,
     menuCategories,
     menuSections,
-    drinkTemperatures,
     staffSummary,
     builder,
     confirmDialog,
@@ -1041,7 +1022,6 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     openTableSelect,
     openOrderPage,
     selectCategory,
-    setDrinkTemperatureAvailable,
     setOrderTab,
     toggleQrMode,
     closeQrModal,
@@ -1050,7 +1030,6 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     adjustBuilderQuantity,
     setBuilderQuantity,
     selectBuilderMain,
-    selectBuilderInclude,
     selectBuilderUpgrade,
     commitBuilder,
     editDraftEntry,

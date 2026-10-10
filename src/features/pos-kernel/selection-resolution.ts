@@ -9,8 +9,7 @@ export function isSelectionRuleVisible(rule: PosSelectionRule, selections: PosBu
 
 export function getResolvedSelectionMap(
   rules: PosSelectionRule[] | undefined,
-  explicitSelections: PosBuilderSelectionMap | undefined,
-  fallbackSelections: PosBuilderSelectionMap | undefined = undefined
+  explicitSelections: PosBuilderSelectionMap | undefined
 ) {
   const resolved: PosBuilderSelectionMap = {}
 
@@ -19,9 +18,7 @@ export function getResolvedSelectionMap(
       continue
     }
 
-    const explicitValue = explicitSelections?.[rule.id] || ''
-    const fallbackValue = fallbackSelections?.[rule.id] || ''
-    const value = explicitValue || fallbackValue || rule.defaultValue || ''
+    const value = explicitSelections?.[rule.id] || rule.defaultValue || ''
 
     if (value.trim()) {
       resolved[rule.id] = value

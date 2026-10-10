@@ -291,7 +291,6 @@ describe('rtdb-v3-repository', () => {
       createdAt: 1,
       updatedAt: 1,
       selections: { base: 'pasta', sauce: 'pesto' },
-      includeSelections: { 'included-drink': { temperature: 'ice' } },
       upgradeSelections: { 'bundle-drink-upgrade': 'espresso' },
       lines: {
         entry_food_main: {
@@ -330,8 +329,7 @@ describe('rtdb-v3-repository', () => {
           unitPrice: 60,
           priceDelta: 60,
           lineTotal: 60,
-          selections: { temperature: 'ice' },
-          selectionSummary: '溫度：冰',
+          selectionSummary: '',
           isTreat: false,
           sourceEntryId: 'entry_food',
         },
@@ -385,9 +383,7 @@ describe('rtdb-v3-repository', () => {
             ...entry,
             summary: { ...entry.summary, subtitle: '主食：義大利麵 / 口味：青醬' },
             lines: entry.lines.map((line) =>
-              line.parentLineId
-                ? { ...line, selectionSummary: '溫度：冰' }
-                : { ...line, selectionSummary: '主食：義大利麵 / 口味：青醬' }
+              line.parentLineId ? line : { ...line, selectionSummary: '主食：義大利麵 / 口味：青醬' }
             ),
           }
         },
@@ -399,7 +395,6 @@ describe('rtdb-v3-repository', () => {
 
     const orders = await repository.listClosedOrdersForBusinessDay(new Date('2026-05-30T12:00:00+08:00'))
     expect(orders[0]?.entries?.[0]?.summary.subtitle).toBe('主食：義大利麵 / 口味：青醬')
-    expect(orders[0]?.lines?.find((line) => line.parentLineId)?.selectionSummary).toBe('溫度：冰')
   })
 
   it('maps early-morning anchors to the previous business day when listing closed orders', async () => {
@@ -439,7 +434,6 @@ describe('rtdb-v3-repository', () => {
                       createdAt: 1,
                       updatedAt: 1,
                       selections: {},
-                      includeSelections: {},
                       upgradeSelections: {},
                       lines: {
                         entry_food_main: {

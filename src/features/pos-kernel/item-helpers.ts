@@ -2,7 +2,6 @@ export { groupOrderLines } from '@/shared/grouped-order-lines'
 export {
   buildFinanceStatsTemplate,
   buildRevenueDetailsTemplate,
-  buildSelectionSummary,
   createCatalogHelpers,
   getBusinessDate,
   getCanonicalDraftEntries,

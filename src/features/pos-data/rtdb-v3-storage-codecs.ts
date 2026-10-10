@@ -162,7 +162,6 @@ export type V3StoredOrderEntry = {
   a?: number
   u?: number
   x?: StringMap
-  j?: Record<string, StringMap>
   z?: StringMap
   l?: Record<string, V3StoredOrderLine>
   t?: number
@@ -238,10 +237,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function cloneStringMap(value: Record<string, string> | null | undefined) {
   return { ...(value || {}) }
-}
-
-function cloneNestedStringMap(value: Record<string, Record<string, string>> | null | undefined) {
-  return Object.fromEntries(Object.entries(value || {}).map(([key, entry]) => [key, cloneStringMap(entry)]))
 }
 
 function cloneNumberMap(value: Record<string, number> | null | undefined) {
@@ -490,8 +485,6 @@ function encodeOrderEntryValue(value: V3OrderEntry): V3StoredOrderEntry {
     a: value.createdAt,
     u: value.updatedAt,
     x: Object.keys(value.selections || {}).length > 0 ? cloneStringMap(value.selections) : undefined,
-    j:
-      Object.keys(value.includeSelections || {}).length > 0 ? cloneNestedStringMap(value.includeSelections) : undefined,
     z: Object.keys(value.upgradeSelections || {}).length > 0 ? cloneStringMap(value.upgradeSelections) : undefined,
     l: encodeOrderLineMap(value.lines || {}, encodeOrderLine),
     t: value.subtotal,
@@ -517,9 +510,6 @@ function decodeOrderEntryValue(value: unknown): V3OrderEntry {
     updatedAt: toNumber(raw.u ?? raw.updatedAt),
     selections: isRecord(raw.x ?? raw.selections)
       ? cloneStringMap((raw.x ?? raw.selections) as Record<string, string>)
-      : {},
-    includeSelections: isRecord(raw.j ?? raw.includeSelections)
-      ? cloneNestedStringMap((raw.j ?? raw.includeSelections) as Record<string, Record<string, string>>)
       : {},
     upgradeSelections: isRecord(raw.z ?? raw.upgradeSelections)
       ? cloneStringMap((raw.z ?? raw.upgradeSelections) as Record<string, string>)

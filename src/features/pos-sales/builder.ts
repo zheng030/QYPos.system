@@ -21,8 +21,6 @@ type BuilderHelpers = Pick<
   | 'sumLines'
 >
 
-type SelectionRuleValue = string
-
 export type BuilderIssue = {
   kind: 'missing' | 'sold-out'
   groupId: string
@@ -83,7 +81,6 @@ export type BuilderChildBlockView = {
   priceDelta: number
   categoryKey: PosMenuItem['categoryKey']
   optionGroup?: BuilderUpgradeGroupView
-  rules: BuilderRuleView[]
 }
 
 export type BuilderPresentation = {
@@ -127,15 +124,10 @@ type IncludeResolution = {
   label: string
   item: PosMenuItem | null
   priceDelta: number
-  childSelections: PosBuilderSelectionMap
 }
 
 function cloneSelections(input: PosBuilderSelectionMap | undefined): PosBuilderSelectionMap {
   return { ...(input || {}) }
-}
-
-function cloneIncludeSelections(input: Record<string, PosBuilderSelectionMap> | undefined) {
-  return Object.fromEntries(Object.entries(input || {}).map(([key, value]) => [key, cloneSelections(value)]))
 }
 
 function buildIssue(kind: BuilderIssue['kind'], groupId: string, label: string): BuilderIssue {
@@ -157,14 +149,11 @@ function getSelectedUpgradeOption(item: PosMenuItem, groupId: string, value: str
 }
 
 function isOptionDisabled(
-  option: { inventoryKey: string; targetItemId?: string; soldOutKey?: string },
+  option: { inventoryKey: string; targetItemId?: string },
   rule: PosSelectionRule | PosBundleUpgradeGroup,
   helpers: BuilderHelpers
 ) {
   if ('kind' in rule && rule.tracksInventory && helpers.isInventoryKeySoldOut(option.inventoryKey)) {
-    return true
-  }
-  if (option.soldOutKey && helpers.isInventoryKeySoldOut(option.soldOutKey)) {
     return true
   }
   return option.targetItemId ? helpers.isItemSoldOut(option.targetItemId) : false
@@ -182,16 +171,6 @@ function isAutoOptionalDrinkGroup(group: PosBundleUpgradeGroup, helpers: Builder
   if (group.summaryLabel !== '附飲') return false
   const freeDrinkOptions = group.options.filter((option) => option.priceDelta === 0)
   return freeDrinkOptions.length > 0 && freeDrinkOptions.every((option) => isOptionDisabled(option, group, helpers))
-}
-
-function getResolvedIncludeSelections(
-  includeId: string,
-  childItem: PosMenuItem,
-  state: PosBuilderState,
-  defaultSelections: PosBuilderSelectionMap | undefined
-) {
-  const fromInclude = cloneSelections(state.includeSelections[includeId])
-  return getResolvedSelectionMap(childItem.selections, fromInclude, defaultSelections)
 }
 
 function buildRuleView(rule: PosSelectionRule, value: string, helpers: BuilderHelpers): BuilderRuleView {
@@ -268,7 +247,6 @@ function buildMainBlocks(ruleViews: BuilderRuleView[]) {
 function resolveIncludes(item: PosMenuItem, state: PosBuilderState, helpers: BuilderHelpers) {
   const resolutions: IncludeResolution[] = []
   const soldOutIssues: BuilderIssue[] = []
-  const missingIssues: BuilderIssue[] = []
 
   for (const includeRule of item.includes || []) {
     let targetItemId = includeRule.itemId
@@ -282,7 +260,6 @@ function resolveIncludes(item: PosMenuItem, state: PosBuilderState, helpers: Bui
           label: includeRule.label,
           item: null,
           priceDelta: 0,
-          childSelections: cloneSelections(state.includeSelections[includeRule.id]),
         })
         continue
       }
@@ -302,33 +279,15 @@ function resolveIncludes(item: PosMenuItem, state: PosBuilderState, helpers: Bui
       soldOutIssues.push(buildIssue('sold-out', includeRule.id, includeRule.label))
     }
 
-    const childSelections = getResolvedIncludeSelections(
-      includeRule.id,
-      childItem,
-      state,
-      includeRule.defaultSelections
-    )
-    for (const rule of childItem.selections || []) {
-      const value = childSelections[rule.id] || ''
-      const groupId = `${includeRule.id}.${rule.id}`
-      if (rule.required && !value.trim()) {
-        missingIssues.push(buildIssue('missing', groupId, `${includeRule.label} ${rule.label}`))
-      }
-      if (isSingleRuleSoldOut(rule, value, helpers)) {
-        soldOutIssues.push(buildIssue('sold-out', groupId, `${includeRule.label} ${rule.label}`))
-      }
-    }
-
     resolutions.push({
       includeId: includeRule.id,
       label: includeRule.label,
       item: childItem,
       priceDelta,
-      childSelections,
     })
   }
 
-  return { resolutions, soldOutIssues, missingIssues }
+  return { resolutions, soldOutIssues }
 }
 
 function calculateSubtotal(item: PosMenuItem, quantity: number, state: PosBuilderState, helpers: BuilderHelpers) {
@@ -352,7 +311,6 @@ export function createBuilderState(
     itemId,
     quantity: 1,
     selections: {},
-    includeSelections: {},
     upgradeSelections: {},
     editingEntryId: null,
     target,
@@ -365,22 +323,10 @@ export function hydrateBuilderState(
   target: PosBuilderState['target'],
   batchId?: string
 ): PosBuilderState {
-  const selections = cloneSelections(entry.selections)
-  const includeSelections = cloneIncludeSelections(entry.includeSelections)
-  const legacyTemperature = selections.temperature
-  if (legacyTemperature && !includeSelections['included-drink']?.temperature) {
-    includeSelections['included-drink'] = {
-      ...(includeSelections['included-drink'] || {}),
-      temperature: legacyTemperature,
-    }
-    delete selections.temperature
-  }
-
   return {
     itemId: entry.itemId,
     quantity: entry.quantity,
-    selections,
-    includeSelections,
+    selections: cloneSelections(entry.selections),
     upgradeSelections: { ...(entry.upgradeSelections || {}) },
     editingEntryId: entry.entryId,
     target,
@@ -397,10 +343,9 @@ export function updateBuilderQuantity(state: PosBuilderState, quantity: number):
 
 export function updateBuilderSelection(
   state: PosBuilderState,
-  scope: 'main' | 'include' | 'upgrade',
+  scope: 'main' | 'upgrade',
   key: string,
-  value: string,
-  nestedKey?: string
+  value: string
 ): PosBuilderState {
   if (scope === 'main') {
     return {
@@ -412,28 +357,11 @@ export function updateBuilderSelection(
     }
   }
 
-  if (scope === 'upgrade') {
-    return {
-      ...state,
-      upgradeSelections: {
-        ...state.upgradeSelections,
-        [key]: value,
-      },
-    }
-  }
-
-  if (!nestedKey) {
-    return state
-  }
-
   return {
     ...state,
-    includeSelections: {
-      ...state.includeSelections,
-      [key]: {
-        ...(state.includeSelections[key] || {}),
-        [nestedKey]: value,
-      },
+    upgradeSelections: {
+      ...state.upgradeSelections,
+      [key]: value,
     },
   }
 }
@@ -502,7 +430,6 @@ export function buildBuilderPresentation(args: {
 
   const includeResolution = resolveIncludes(item, state, helpers)
   soldOutIssues.push(...includeResolution.soldOutIssues)
-  missingIssues.push(...includeResolution.missingIssues)
   const childBlocks = includeResolution.resolutions.map((resolution) => {
     const optionGroup = (item.upgradeGroups || []).find(
       (group) => group.id === item.includes?.find((candidate) => candidate.id === resolution.includeId)?.upgradeGroupId
@@ -532,9 +459,6 @@ export function buildBuilderPresentation(args: {
             })),
           }
         : undefined,
-      rules: (resolution.item?.selections || []).map((rule) =>
-        buildRuleView(rule, resolution.childSelections[rule.id] || '', helpers)
-      ),
     } satisfies BuilderChildBlockView
   })
 
@@ -592,11 +516,6 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
   const resolvedMainSelections = getPersistedSelectionMap(item.selections, state.selections)
   const summary = buildSummary(item, state)
   const includeResolution = resolveIncludes(item, state, helpers)
-  const resolvedIncludeSelections = Object.fromEntries(
-    includeResolution.resolutions
-      .filter((resolution) => resolution.item)
-      .map((resolution) => [resolution.includeId, cloneSelections(resolution.childSelections)])
-  )
 
   lines.push({
     lineId: mainLineId,
@@ -639,16 +558,7 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
       unitPrice: resolution.priceDelta,
       priceDelta: resolution.priceDelta,
       lineTotal: resolution.priceDelta * quantity,
-      selections: resolution.childSelections,
-      selectionSummary: (resolution.item.selections || [])
-        .map((rule) => {
-          const value = resolution.childSelections[rule.id] || ''
-          if (!value.trim()) return ''
-          const displayValue = resolveSingleOptionLabel(rule, value)
-          return displayValue ? `${rule.summaryLabel || rule.label}：${displayValue}` : ''
-        })
-        .filter(Boolean)
-        .join(' / '),
+      selectionSummary: '',
       isTreat: false,
       sourceEntryId: resolvedEntryId,
     })
@@ -671,7 +581,6 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
     createdAt: createdAt ?? now,
     updatedAt: now,
     selections: resolvedMainSelections,
-    includeSelections: resolvedIncludeSelections,
     upgradeSelections: { ...(state.upgradeSelections || {}) },
     lines,
     subtotal,
@@ -691,22 +600,4 @@ export function finalizeBuilderEntry(params: FinalizeParams): BuilderFinalizeRes
 
 export function getFirstBuilderIssue(issues: BuilderIssue[]) {
   return issues[0] || null
-}
-
-export function getBuilderSelectionValue(
-  state: PosBuilderState,
-  scope: 'main' | 'include' | 'upgrade',
-  key: string,
-  nestedKey?: string
-): SelectionRuleValue {
-  if (scope === 'main') {
-    return state.selections[key] || ''
-  }
-  if (scope === 'upgrade') {
-    return state.upgradeSelections[key] || ''
-  }
-  if (!nestedKey) {
-    return ''
-  }
-  return state.includeSelections[key]?.[nestedKey] || ''
 }

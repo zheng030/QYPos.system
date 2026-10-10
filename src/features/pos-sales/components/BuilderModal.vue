@@ -91,10 +91,7 @@ function onQuantityChange(event: Event) {
               v-for="block in builder.presentation.childBlocks"
               :key="block.includeId"
               class="builder-include-card"
-              :class="{
-                missing: block.rules.some(isMissing),
-                'issue-target': builder.issueGroupId === block.includeId,
-              }"
+              :class="{ 'issue-target': builder.issueGroupId === block.includeId }"
               :data-builder-group="block.includeId"
             >
               <div class="builder-include-head">
@@ -111,17 +108,6 @@ function onQuantityChange(event: Event) {
                   :issue-group-id="builder.issueGroupId"
                   :options="block.optionGroup.options"
                   @select="sales.selectBuilderUpgrade(block.optionGroup.id, $event)"
-                />
-                <BuilderChoiceCard
-                  v-for="rule in block.rules"
-                  :key="rule.id"
-                  :group-id="`${block.includeId}.${rule.id}`"
-                  :label="rule.label"
-                  :required="rule.required"
-                  :missing="isMissing(rule)"
-                  :issue-group-id="builder.issueGroupId"
-                  :options="rule.options"
-                  @select="sales.selectBuilderInclude(block.includeId, rule.id, $event)"
                 />
               </div>
             </div>

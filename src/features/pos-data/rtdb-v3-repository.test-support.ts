@@ -307,7 +307,6 @@ export function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEnt
     createdAt: overrides.createdAt || 1,
     updatedAt: overrides.updatedAt || 1,
     selections: overrides.selections || {},
-    includeSelections: overrides.includeSelections || {},
     upgradeSelections: overrides.upgradeSelections || {},
     lines,
     subtotal: overrides.subtotal || 150,

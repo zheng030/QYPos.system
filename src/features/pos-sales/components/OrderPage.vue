@@ -23,7 +23,6 @@ const {
   floatingBar,
   menuCategories,
   menuSections,
-  drinkTemperatures,
   workspace,
 } = sales
 const { seatTimer } = shell
@@ -35,17 +34,6 @@ const tabs: Array<{ id: OrderTab; label: string }> = [
 ]
 
 const draftTotal = computed(() => draftEntries.value.reduce((sum, entry) => sum + entry.subtotal, 0))
-
-const pausedTemperatures = computed(() =>
-  drinkTemperatures.value
-    .filter((option) => !option.available)
-    .map((option) => option.label)
-    .join('、')
-)
-
-function checkedOf(event: Event) {
-  return (event.target as HTMLInputElement).checked
-}
 
 function onCustomerInput(field: 'name' | 'phone', event: Event) {
   void sales.setCustomerField(field, (event.target as HTMLInputElement).value)
@@ -110,29 +98,6 @@ function onCustomerInput(field: 'name' | 'phone', event: Event) {
                 {{ category.label }}
               </button>
             </div>
-            <div v-if="activeCategory === 'drink' && mode === 'staff'" id="drinkTemperatureBar" class="drink-temperature-bar">
-              <span class="drink-temperature-title">快速開關</span>
-              <div
-                v-for="option in drinkTemperatures"
-                :key="option.value"
-                class="drink-temperature-switch"
-                :class="{ paused: !option.available }"
-              >
-                <span>{{ option.available ? option.label : `${option.label}暫停` }}</span>
-                <label class="toggle-switch">
-                  <input
-                    type="checkbox"
-                    :aria-label="option.label"
-                    :checked="option.available"
-                    @change="sales.setDrinkTemperatureAvailable(option.soldOutKey, checkedOf($event))"
-                  >
-                  <span class="slider" />
-                </label>
-              </div>
-            </div>
-            <p v-else-if="activeCategory === 'drink' && pausedTemperatures" id="drinkTemperatureNotice" class="drink-temperature-notice">
-              目前暫停供應{{ pausedTemperatures }}
-            </p>
             <div id="menuGrid" class="order-menu-grid">
               <div v-if="!menuSections" class="entry-card">目前沒有分類資料</div>
               <template v-for="section in menuSections || []" :key="section.label">

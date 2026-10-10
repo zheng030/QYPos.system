@@ -1,4 +1,4 @@
-import type { PosDrinkTemperatureSwitch, PosMenuData, PosMenuItem, PosSelectionRule } from '@/features/pos-kernel/types'
+import type { PosMenuData, PosMenuItem, PosSelectionRule } from '@/features/pos-kernel/types'
 
 type Inventory = Record<string, boolean | undefined>
 
@@ -54,10 +54,7 @@ function dedupeSortedKeys(keys: string[]) {
   return [...new Set(keys)].sort((left, right) => left.localeCompare(right))
 }
 
-export function buildBatchGroups(
-  menuData: PosMenuData,
-  drinkTemperatureSwitches: PosDrinkTemperatureSwitch[]
-): InventoryToggleSection[] {
+export function buildBatchGroups(menuData: PosMenuData): InventoryToggleSection[] {
   const categories = Object.values(menuData).filter(Boolean)
   const categoryGroups: InventoryToggleGroup[] = categories
     .map((category) => ({
@@ -86,25 +83,14 @@ export function buildBatchGroups(
     .map((group) => ({ ...group, keys: dedupeSortedKeys(group.keys) }))
     .sort((left, right) => left.label.localeCompare(right.label, 'zh-Hant'))
 
-  const temperatureGroups = drinkTemperatureSwitches.map((option) => ({
-    id: option.soldOutKey,
-    label: option.label,
-    keys: [option.soldOutKey],
-  }))
-
   return [
     { id: 'category', title: '菜單分類', groups: categoryGroups },
     { id: 'selection', title: '口味 / 主食', groups: sortedSelectionGroups },
-    { id: 'drink-temperature', title: '飲品溫度', groups: temperatureGroups },
   ].filter((section) => section.groups.length > 0)
 }
 
-export function buildProductManagementView(
-  menuData: PosMenuData,
-  drinkTemperatureSwitches: PosDrinkTemperatureSwitch[],
-  inventory: Inventory
-): ProductManagementView {
-  const quickSections = buildBatchGroups(menuData, drinkTemperatureSwitches).map((section) => ({
+export function buildProductManagementView(menuData: PosMenuData, inventory: Inventory): ProductManagementView {
+  const quickSections = buildBatchGroups(menuData).map((section) => ({
     id: section.id,
     title: section.title,
     rows: section.groups.map((group) => ({

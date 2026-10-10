@@ -2,7 +2,7 @@
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { clickText, findByText, mountApp, mountLoggedInApp } from '@/app/app.test-support'
+import { clickText, findByText, mountLoggedInApp } from '@/app/app.test-support'
 
 vi.mock('@/shared/firebase-compat', () => import('@/app/firebase-compat.test-support'))
 
@@ -97,83 +97,5 @@ describe('OrderPage', () => {
     await clickText('#builderHost [data-builder-group="base"] .builder-option-btn', '義大利麵')
     expect(builderGroup('texture')).not.toBeNull()
     expect(findByText('#builderHost .builder-section', '附飲 / 換購')).toBeTruthy()
-  })
-
-  it('lets staff pause hot drinks from the drink menu for every drink', async () => {
-    const { runtime } = await openStaffOrder()
-    await clickText('#menuCategoryChips button', '甜點')
-    expect(document.getElementById('drinkTemperatureBar')).toBeNull()
-
-    await clickText('#menuCategoryChips button', '飲品')
-    const hotSwitch = document.querySelector<HTMLInputElement>('#drinkTemperatureBar input[aria-label="熱飲"]')
-    expect(hotSwitch?.checked).toBe(true)
-    hotSwitch?.click()
-    await flushPromises()
-
-    expect(runtime.kernel.state.inventory['drink-temperature.hot']).toBe(false)
-    expect(findByText('#drinkTemperatureBar .drink-temperature-switch', '熱飲').className).toContain('paused')
-    expect(findByText('#drinkTemperatureBar .drink-temperature-switch', '熱飲').textContent).toContain('熱飲暫停')
-
-    await clickText('#menuGrid .item', '美式咖啡')
-    const temperatureOptions = [
-      ...document.querySelectorAll<HTMLButtonElement>(
-        '#builderHost [data-builder-group="temperature"] .builder-option-btn'
-      ),
-    ].map((button) => [button.textContent?.trim(), button.disabled])
-    expect(temperatureOptions).toEqual([
-      ['冰', false],
-      ['熱', true],
-    ])
-    await clickText('#builderHost .builder-cancel-btn', '取消')
-
-    document.querySelector<HTMLInputElement>('#drinkTemperatureBar input[aria-label="熱飲"]')?.click()
-    await flushPromises()
-    expect(runtime.kernel.state.inventory['drink-temperature.hot']).toBe(true)
-  })
-
-  it('tells customers which drink temperature is paused without offering the switch', async () => {
-    history.replaceState(null, '', '/?table=01%E6%A1%8C')
-    try {
-      const { runtime } = await mountApp()
-      await runtime.data.toggleInventoryBatch({ 'drink-temperature.hot': false })
-      await clickText('#menuCategoryChips button', '飲品')
-
-      expect(document.getElementById('drinkTemperatureBar')).toBeNull()
-      expect(document.getElementById('drinkTemperatureNotice')?.textContent?.trim()).toBe('目前暫停供應熱飲')
-    } finally {
-      history.replaceState(null, '', '/')
-    }
-  })
-
-  it.each([
-    ['customer', false],
-    ['staff', false],
-    ['staff', true],
-  ] as const)('preserves a paused drink in the %s cart (save and exit: %s)', async (mode, saveAndExit) => {
-    const { runtime } = await mountApp()
-    vi.stubGlobal('print', vi.fn())
-    await runtime.sales.openOrderPage('01桌', { mode })
-    runtime.sales.selectMenuItem('drink.latte')
-    runtime.sales.selectBuilderMain('temperature', 'hot')
-    await runtime.sales.commitBuilder()
-    const snapshot = structuredClone(
-      mode === 'customer' ? runtime.kernel.state.activeDraftEntries : runtime.kernel.state.staffDrafts['01桌']
-    )
-    await runtime.data.toggleInventoryBatch({ 'drink-temperature.hot': false })
-    runtime.sales.setOrderTab('menu')
-    if (saveAndExit) await runtime.sales.saveAndExitStaffOrder()
-    else {
-      runtime.sales.runFloatingPrimary('submit-draft')
-      await runtime.sales.runConfirmedAction()
-    }
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('拿鐵（熱飲）'))
-    expect(
-      mode === 'customer' ? runtime.kernel.state.activeDraftEntries : runtime.kernel.state.staffDrafts['01桌']
-    ).toEqual(snapshot)
-    expect(runtime.router.activePage.value).toBe('orderPage')
-    if (mode === 'customer') expect(runtime.sales.activeTab.value).toBe('cart')
-    expect(runtime.kernel.state.activePendingBatches).toHaveLength(0)
-    expect(runtime.kernel.state.activeSubmittedBatches).toHaveLength(0)
-    expect(window.print).not.toHaveBeenCalled()
   })
 })

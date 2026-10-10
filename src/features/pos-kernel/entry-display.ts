@@ -26,16 +26,6 @@ function parseSummaryPart(part: string) {
   }
 }
 
-function normalizeTemperatureValue(value: string) {
-  const normalized = String(value || '')
-    .trim()
-    .replace(/^溫度：/, '')
-  if (!normalized) return ''
-  if (normalized === 'ice') return '冰'
-  if (normalized === 'hot') return '熱'
-  return normalized
-}
-
 function buildSummaryPartsFromSelections(
   values: PosBuilderSelectionMap | undefined,
   rules: PosSelectionRule[] | undefined
@@ -99,39 +89,24 @@ function buildMainSummaryParts(entry: PosOrderEntry, menuMeta: PosMenuMeta) {
   return buildSummaryPartsFromSelections(entry.selections, item?.selections)
 }
 
-function buildDrinkDisplay(entry: PosOrderEntry, menuMeta: PosMenuMeta) {
+function buildDrinkDisplay(entry: PosOrderEntry) {
   const attachedMealLine = getAttachedMealLine(entry)
   if (!attachedMealLine) {
     return { drinkSummary: '', drinkCompact: '' }
   }
 
-  const drinkItem = resolveItem(menuMeta, attachedMealLine.catalogKey)
-  const drinkParts = buildLineSummaryParts(attachedMealLine, drinkItem).map(parseSummaryPart)
-  const temperature = normalizeTemperatureValue(drinkParts.find((part) => part.label === '溫度')?.value || '')
-  const extraParts = drinkParts
-    .filter((part) => part.label && part.label !== '溫度')
-    .map((part) => `${part.label}：${part.value}`)
   const prefix = attachedMealLine.role === 'upgrade' ? '換購' : '附飲'
-  const drinkSummary = `${prefix}：${attachedMealLine.shortName}${temperature ? ` · 溫度：${temperature}` : ''}${
-    extraParts.length > 0 ? ` / ${extraParts.join(' / ')}` : ''
-  }`
-  const drinkCompact = `${attachedMealLine.shortName}${temperature ? `(${temperature})` : ''}${
-    extraParts.length > 0
-      ? ` · ${extraParts
-          .map((part) => parseSummaryPart(part).value)
-          .filter(Boolean)
-          .join(' · ')}`
-      : ''
-  }`
-
-  return { drinkSummary, drinkCompact }
+  return {
+    drinkSummary: `${prefix}：${attachedMealLine.shortName}`,
+    drinkCompact: attachedMealLine.shortName,
+  }
 }
 
 export function buildEntryDisplaySummary(entry: PosOrderEntry, menuMeta: PosMenuMeta): PosEntryDisplaySummary {
   const mainParts = buildMainSummaryParts(entry, menuMeta)
   const mainSummary = mainParts.join(' / ')
   const mainCompact = buildCompactSummary(mainParts)
-  const { drinkSummary, drinkCompact } = buildDrinkDisplay(entry, menuMeta)
+  const { drinkSummary, drinkCompact } = buildDrinkDisplay(entry)
   return {
     mainSummary,
     mainCompact,

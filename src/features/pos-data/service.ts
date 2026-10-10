@@ -26,7 +26,6 @@ export type PosDataService = {
   startTableLiveSession(mode: 'staff' | 'customer', table: string): Promise<void>
   stopTableLiveSession(): void
   ensureCatalog(): Promise<void>
-  ensureInventory(): Promise<void>
   listClosedOrdersForBusinessDay(anchor: Date): Promise<PosOrder[]>
   listClosedOrdersByRange(start: Date, endExclusive: Date): Promise<PosOrder[]>
   loadDailySummariesRange(start: Date, endExclusive: Date): Promise<Record<string, V3DailySummary>>

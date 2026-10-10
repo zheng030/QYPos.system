@@ -47,7 +47,6 @@ export type V3OrderEntry = {
   createdAt: number
   updatedAt: number
   selections: Record<string, string>
-  includeSelections: Record<string, Record<string, string>>
   upgradeSelections: Record<string, string>
   lines: Record<string, V3OrderLine>
   subtotal: number

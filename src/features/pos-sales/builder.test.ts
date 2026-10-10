@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { menuMeta } from '@/features/pos-kernel/data'
 import { createCatalogHelpers } from '@/features/pos-kernel/item-helpers'
-import {
-  buildBuilderPresentation,
-  createBuilderState,
-  finalizeBuilderEntry,
-  hydrateBuilderState,
-  updateBuilderSelection,
-} from './builder'
+import { buildBuilderPresentation, createBuilderState, finalizeBuilderEntry, updateBuilderSelection } from './builder'
 
 function createHelpers(inventory: Record<string, boolean | undefined> = {}) {
   return createCatalogHelpers({
@@ -89,7 +83,6 @@ describe('pos-sales builder', () => {
     )
 
     state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
-    state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
     presentation = buildBuilderPresentation({ state, helpers })
 
     expect(presentation?.canConfirm).toBe(true)
@@ -121,7 +114,7 @@ describe('pos-sales builder', () => {
       categoryKey: 'drink',
       unitPrice: 70,
       lineTotal: 70,
-      selectionSummary: '溫度：熱',
+      selectionSummary: '',
     })
     expect(result.entry.subtotal).toBe(290)
   })
@@ -291,7 +284,6 @@ describe('pos-sales builder', () => {
     expect(presentation?.subtitle).toBe('主食：通心粉 / 口感：正常')
 
     state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
-    state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
     presentation = buildBuilderPresentation({ state, helpers })
     expect(presentation?.canConfirm).toBe(true)
 
@@ -375,7 +367,6 @@ describe('pos-sales builder', () => {
     state = updateBuilderSelection(state, 'main', 'base', 'pasta')
     state = updateBuilderSelection(state, 'main', 'sauce', 'pesto')
     state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
-    state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
 
     const presentation = buildBuilderPresentation({ state, helpers })
     expect(presentation?.canConfirm).toBe(true)
@@ -419,7 +410,7 @@ describe('pos-sales builder', () => {
       categoryKey: 'drink',
       unitPrice: 70,
       lineTotal: 70,
-      selectionSummary: '溫度：熱',
+      selectionSummary: '',
     })
     expect(result.entry.subtotal).toBe(370)
   })
@@ -430,7 +421,6 @@ describe('pos-sales builder', () => {
     state = updateBuilderSelection(state, 'main', 'base', 'pasta')
     state = updateBuilderSelection(state, 'main', 'sauce', 'cheese')
     state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
-    state = updateBuilderSelection(state, 'include', 'included-drink', 'hot', 'temperature')
 
     const result = finalizeBuilderEntry({
       state,
@@ -449,34 +439,6 @@ describe('pos-sales builder', () => {
     expect(result.entry.entryId).toMatch(/^e_[a-z0-9]{8}$/)
     expect(result.entry.groupId).toBe(result.entry.entryId)
     expect(result.entry.lines.map((line) => line.lineId)).toEqual(['m', 'c00'])
-  })
-
-  it('shows child temperature only after selecting a drink item with that spec', () => {
-    const helpers = createHelpers()
-    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
-    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
-    state = updateBuilderSelection(state, 'main', 'sauce', 'pesto')
-
-    const beforeUpgrade = buildBuilderPresentation({ state, helpers })
-    expect(beforeUpgrade?.childBlocks[0]?.optionGroup?.id).toBe('bundle-drink-upgrade')
-    expect(beforeUpgrade?.childBlocks[0]?.rules).toHaveLength(0)
-
-    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
-    const afterLatte = buildBuilderPresentation({ state, helpers })
-    expect(afterLatte?.childBlocks[0]?.itemId).toBe('drink.latte')
-    expect(afterLatte?.childBlocks[0]?.rules.map((rule) => rule.id)).toContain('temperature')
-  })
-
-  it('omits temperature when the selected child item does not define that spec', () => {
-    const helpers = createHelpers()
-    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
-    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
-    state = updateBuilderSelection(state, 'main', 'sauce', 'pesto')
-    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'chef-soup')
-
-    const presentation = buildBuilderPresentation({ state, helpers })
-    expect(presentation?.childBlocks[0]?.itemId).toBe('soup.chef')
-    expect(presentation?.childBlocks[0]?.rules).toEqual([])
   })
 
   it('treats free-drink selection as optional when black tea and green tea are both sold out', () => {
@@ -532,57 +494,6 @@ describe('pos-sales builder', () => {
     expect(textureRule?.options?.every((option) => option.disabled === false)).toBe(true)
   })
 
-  it('pauses a drink temperature for standalone drinks without touching item stock', () => {
-    const helpers = createHelpers({ 'drink-temperature.hot': false })
-    let state = createBuilderState('drink.americano', 'staff-draft')
-
-    const fresh = buildBuilderPresentation({ state, helpers })
-    const temperature = fresh?.mainBlocks
-      .flatMap((block) => block.rows.flat())
-      .find((rule) => rule.id === 'temperature')
-    expect(temperature?.options?.map((option) => [option.label, option.disabled])).toEqual([
-      ['冰', false],
-      ['熱', true],
-    ])
-    expect(helpers.getOwnedSelectionInventoryKeys('drink.americano')).toEqual([])
-
-    // An entry picked as hot before the pause cannot be saved until it switches to iced.
-    state = updateBuilderSelection(state, 'main', 'temperature', 'hot')
-    expect(finalizeBuilderEntry({ state, helpers, source: 'staff', status: 'draft' })).toMatchObject({
-      ok: false,
-      issues: [{ kind: 'sold-out', groupId: 'temperature' }],
-    })
-    state = updateBuilderSelection(state, 'main', 'temperature', 'ice')
-    expect(finalizeBuilderEntry({ state, helpers, source: 'staff', status: 'draft' }).ok).toBe(true)
-  })
-
-  it('pauses the included drink temperature, including its iced default', () => {
-    let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
-    state = updateBuilderSelection(state, 'main', 'base', 'pasta')
-    state = updateBuilderSelection(state, 'main', 'sauce', 'pesto')
-    state = updateBuilderSelection(state, 'upgrade', 'bundle-drink-upgrade', 'latte')
-
-    const hotPaused = buildBuilderPresentation({ state, helpers: createHelpers({ 'drink-temperature.hot': false }) })
-    const childTemperature = hotPaused?.childBlocks[0]?.rules.find((rule) => rule.id === 'temperature')
-    expect(childTemperature?.value).toBe('ice')
-    expect(childTemperature?.options?.find((option) => option.value === 'hot')?.disabled).toBe(true)
-    expect(hotPaused?.canConfirm).toBe(true)
-
-    const icePaused = buildBuilderPresentation({ state, helpers: createHelpers({ 'drink-temperature.ice': false }) })
-    expect(icePaused?.soldOutIssues).toEqual([
-      { kind: 'sold-out', groupId: 'included-drink.temperature', label: '附飲 飲品溫度' },
-    ])
-    expect(icePaused?.canConfirm).toBe(false)
-  })
-
-  it('reports a drink as sold out when every temperature is paused', () => {
-    const helpers = createHelpers({ 'drink-temperature.ice': false, 'drink-temperature.hot': false })
-    const presentation = buildBuilderPresentation({ state: createBuilderState('drink.latte', 'staff-draft'), helpers })
-
-    expect(presentation?.soldOutIssues.map((issue) => issue.groupId)).toEqual(['temperature'])
-    expect(presentation?.canConfirm).toBe(false)
-  })
-
   it('blocks a picked tracked option once its inventory sells out', () => {
     let state = createBuilderState('pasta_risotto.chicken-breast', 'customer-draft')
     state = updateBuilderSelection(state, 'main', 'base', 'pasta')
@@ -590,45 +501,5 @@ describe('pos-sales builder', () => {
     const helpers = createHelpers({ 'selection.pasta_risotto.chicken-breast.sauce.pesto': false })
 
     expect(buildBuilderPresentation({ state, helpers })?.soldOutIssues.map((issue) => issue.groupId)).toEqual(['sauce'])
-  })
-
-  it('hydrates legacy entries by moving main temperature into include selections', () => {
-    const legacyState = hydrateBuilderState(
-      {
-        entryId: 'entry_1',
-        groupId: 'entry_1',
-        itemId: 'pasta_risotto.chicken-breast',
-        catalogKey: 'pasta_risotto.chicken-breast',
-        inventoryKey: 'pasta_risotto.chicken-breast',
-        itemName: '雞胸',
-        shortName: '雞胸',
-        categoryKey: 'pasta_risotto',
-        quantity: 1,
-        status: 'draft',
-        source: 'customer',
-        createdAt: 1,
-        updatedAt: 1,
-        selections: {
-          temperature: 'hot',
-          base: 'pasta',
-        },
-        includeSelections: {},
-        upgradeSelections: {
-          'bundle-drink-upgrade': 'latte',
-        },
-        lines: [],
-        subtotal: 0,
-        summary: {
-          title: '雞胸',
-          subtitle: '',
-          quantityLabel: '1 份',
-          totalLabel: '$0',
-        },
-      },
-      'customer-draft'
-    )
-
-    expect(legacyState.selections.temperature).toBeUndefined()
-    expect(legacyState.includeSelections['included-drink']).toMatchObject({ temperature: 'hot' })
   })
 })

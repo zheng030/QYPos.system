@@ -3,7 +3,6 @@ import type { PosGroupedOrderLine } from '@/shared/grouped-order-lines'
 import type {
   buildFinanceStatsTemplate,
   buildRevenueDetailsTemplate,
-  buildSelectionSummary,
   getBusinessDate,
   getCanonicalDraftEntries,
   getDateFromOrder,
@@ -12,7 +11,6 @@ import type {
 } from './item-helpers'
 import type {
   CorePosState,
-  PosDrinkTemperatureSwitch,
   PosEntryDisplaySummary,
   PosMenuCategoryKey,
   PosMenuMeta,
@@ -24,7 +22,6 @@ export type PosCatalogHelpers = {
   buildFinanceStatsTemplate: typeof buildFinanceStatsTemplate
   buildRevenueDetailsTemplate: typeof buildRevenueDetailsTemplate
   buildEntryDisplaySummary(entry: PosOrderEntry): PosEntryDisplaySummary
-  buildSelectionSummary: typeof buildSelectionSummary
   getCanonicalDraftEntries: typeof getCanonicalDraftEntries
   flattenEntryLines(entry: import('./types').PosOrderEntry): import('./types').PosOrderLine[]
   groupOrderLines(lines: import('./types').PosOrderLine[] | undefined): PosGroupedOrderLine[]
@@ -51,7 +48,6 @@ export type PosKernelService = {
   db: DatabaseCompat
   menuData: import('./types').PosMenuData
   menuMeta: PosMenuMeta
-  drinkTemperatureSwitches: PosDrinkTemperatureSwitch[]
   tables: string[]
   categories: PosMenuCategoryKey[]
   systemPassword: PosSystemPasswordConfig

@@ -59,7 +59,6 @@ export function getEntrySignature(entry: PosOrderEntry): string {
     entry.itemId,
     entry.quantity,
     stableStringify(entry.selections),
-    stableStringify(entry.includeSelections),
     stableStringify(entry.upgradeSelections),
     entry.status,
     entry.source,
@@ -93,7 +92,6 @@ export function getMergedEntries(entries: PosOrderEntry[]) {
     const key = [
       entry.itemId,
       stableStringify(entry.selections),
-      stableStringify(entry.includeSelections),
       stableStringify(entry.upgradeSelections),
       entry.status,
       entry.source,
@@ -124,42 +122,6 @@ export function getCanonicalDraftEntries(entries: PosOrderEntry[]) {
   return getMergedEntries(entries).sort(
     (left, right) => left.createdAt - right.createdAt || left.entryId.localeCompare(right.entryId)
   )
-}
-
-export function buildSelectionSummary(
-  selections: PosBuilderSelectionMap,
-  selectionRules: PosSelectionRule[] | undefined,
-  includeSelections: Record<string, PosBuilderSelectionMap>,
-  upgradeSelections: Record<string, string>
-) {
-  const parts: string[] = []
-  const resolvedSelections = getResolvedSelectionMap(selectionRules, selections)
-
-  ;(selectionRules || []).forEach((rule) => {
-    if (!isSelectionRuleVisible(rule, resolvedSelections)) return
-    const value = resolvedSelections[rule.id] || ''
-    if (!value) return
-    const summaryLabel = rule.summaryLabel || rule.label
-    const option = rule.options.find((candidate) => candidate.value === value)
-    if (option) parts.push(`${summaryLabel}：${option.label}`)
-  })
-
-  Object.entries(includeSelections || {}).forEach(([includeId, includeValues]) => {
-    Object.entries(includeValues || {}).forEach(([ruleId, value]) => {
-      if (!value) return
-      parts.push(`${includeId}：${value}`)
-      if (ruleId === 'temperature') {
-        parts[parts.length - 1] = `${includeId}：${value === 'ice' ? '冰' : '熱'}`
-      }
-    })
-  })
-
-  Object.entries(upgradeSelections || {}).forEach(([groupId, value]) => {
-    if (!value) return
-    parts.push(`${groupId}：${value}`)
-  })
-
-  return parts.join(' / ')
 }
 
 export function buildRevenueDetailsTemplate(categoryKeys: PosCategoryKey[]): PosRevenueDetails {
@@ -284,7 +246,6 @@ export function createCatalogHelpers({ getInventory, getItemCosts, getItemPrices
     buildFinanceStatsTemplate,
     buildRevenueDetailsTemplate,
     buildEntryDisplaySummary: (entry: PosOrderEntry) => buildEntryDisplaySummary(entry, menuMeta),
-    buildSelectionSummary,
     getCanonicalDraftEntries,
     flattenEntryLines,
     groupOrderLines,

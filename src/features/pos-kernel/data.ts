@@ -1,6 +1,5 @@
 import type {
   PosCategoryKey,
-  PosDrinkTemperatureSwitch,
   PosMenuCategory,
   PosMenuItem,
   PosMenuMeta,
@@ -133,28 +132,6 @@ function singleItem(input: MenuItemSeed): PosMenuItem {
   }
 }
 
-// Staff pause a temperature for every drink at once, e.g. hot drinks when the bar is busy.
-export const drinkTemperatureSwitches: PosDrinkTemperatureSwitch[] = [
-  { value: 'ice', label: '冷飲', soldOutKey: 'drink-temperature.ice' },
-  { value: 'hot', label: '熱飲', soldOutKey: 'drink-temperature.hot' },
-]
-
-function drinkTemperatureOption(value: string, label: string): PosSelectionOption {
-  const soldOutKey = drinkTemperatureSwitches.find((candidate) => candidate.value === value)?.soldOutKey
-  return { ...option(value, label), soldOutKey }
-}
-
-const drinkTemperatureRule = singleRule(
-  'temperature',
-  '飲品溫度',
-  [drinkTemperatureOption('ice', '冰'), drinkTemperatureOption('hot', '熱')],
-  true,
-  '溫度',
-  {
-    tracksInventory: false,
-  }
-)
-
 const pastaBaseOptions = {
   pastaAndRisotto: [option('pasta', '義大利麵'), option('risotto', '燉飯')],
   pastaOnly: [option('pasta', '義大利麵')],
@@ -208,7 +185,6 @@ function buildBundleIncludes() {
       inventoryKey: 'drink.black-tea',
       categoryKey: 'drink',
       upgradeGroupId: 'bundle-drink-upgrade',
-      defaultSelections: { temperature: 'ice' },
     },
   ] as const satisfies PosMenuItem['includes']
 }
@@ -422,6 +398,26 @@ const categories: PosMenuCategory[] = [
               baseOptions: pastaBaseOptions.pastaOnly,
               defaultBase: 'pasta',
             }),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.spicy-honey-cream-diced-beef',
+            name: '辣奶油蜂蜜骰子牛',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 280,
+            selections: buildPastaSelections(),
+            includes: buildBundleIncludes(),
+            upgradeGroups: buildBundleUpgradeGroups(),
+          }),
+          bundleItem({
+            id: 'pasta_risotto.aged-grape-bone-in-beef',
+            name: '歐式陳年葡萄帶骨牛',
+            categoryKey: 'pasta_risotto',
+            courseKind: 'food',
+            basePrice: 380,
+            selections: buildPastaSelections(),
             includes: buildBundleIncludes(),
             upgradeGroups: buildBundleUpgradeGroups(),
           }),
@@ -866,7 +862,6 @@ const categories: PosMenuCategory[] = [
     key: 'drink',
     label: '飲品',
     shortLabel: '飲品',
-    description: '可選冰 / 熱',
     sections: [
       {
         id: 'drink-main',
@@ -878,7 +873,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 90,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.americano',
@@ -886,7 +880,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 110,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.latte',
@@ -895,7 +888,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 150,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.milk-tea',
@@ -903,7 +895,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 80,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.apple-juice',
@@ -911,7 +902,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 80,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.orange-juice',
@@ -919,7 +909,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 80,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.black-tea',
@@ -927,7 +916,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 50,
-            selections: [drinkTemperatureRule],
           }),
           singleItem({
             id: 'drink.green-tea',
@@ -935,7 +923,6 @@ const categories: PosMenuCategory[] = [
             categoryKey: 'drink',
             courseKind: 'drink',
             basePrice: 50,
-            selections: [drinkTemperatureRule],
           }),
         ],
       },

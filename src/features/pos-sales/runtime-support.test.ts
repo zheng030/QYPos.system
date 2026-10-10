@@ -39,7 +39,6 @@ function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
     createdAt: 1,
     updatedAt: 1,
     selections: {},
-    includeSelections: {},
     upgradeSelections: {},
     lines: [
       {
@@ -77,7 +76,7 @@ function createEntry(overrides: Partial<PosOrderEntry> = {}): PosOrderEntry {
         unitPrice: 60,
         priceDelta: 60,
         lineTotal: 60,
-        selectionSummary: '溫度：冰',
+        selectionSummary: '',
         isTreat: false,
         sourceEntryId: 'entry_1',
       },
@@ -321,9 +320,9 @@ describe('pos-sales runtime-support', () => {
     expect(buildKernelEntryDisplaySummary(createEntry(), menuMeta)).toEqual({
       mainSummary: '主食：義大利麵 / 口味：青醬',
       mainCompact: '義大利麵 · 青醬',
-      drinkSummary: '換購：拿鐵 · 溫度：冰',
-      drinkCompact: '拿鐵(冰)',
-      expandedSummary: '主食：義大利麵 / 口味：青醬 / 換購：拿鐵 · 溫度：冰',
+      drinkSummary: '換購：拿鐵',
+      drinkCompact: '拿鐵',
+      expandedSummary: '主食：義大利麵 / 口味：青醬 / 換購：拿鐵',
     })
   })
 

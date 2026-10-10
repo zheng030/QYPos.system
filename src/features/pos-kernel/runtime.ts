@@ -1,6 +1,6 @@
 import { createDatabaseCompat } from '@/shared/firebase-compat'
 
-import { drinkTemperatureSwitches, firebaseConfig, menuMeta, SYSTEM_PASSWORD, tables } from './data'
+import { firebaseConfig, menuMeta, SYSTEM_PASSWORD, tables } from './data'
 import {
   createCatalogHelpers,
   getBusinessDate,
@@ -26,7 +26,6 @@ export function createPosKernel(): PosKernelService {
     db: createDatabaseCompat(firebaseConfig),
     menuData: menuMeta.categories,
     menuMeta,
-    drinkTemperatureSwitches,
     tables: [...tables],
     categories: [...menuMeta.orderedCategoryKeys],
     systemPassword: SYSTEM_PASSWORD,

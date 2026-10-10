@@ -676,8 +676,7 @@
 	border: 1px solid #e2e8f0;
 }
 
-.builder-rule-card.missing,
-.builder-include-card.missing {
+.builder-rule-card.missing {
 	border-color: #fca5a5;
 	background: #fff5f5;
 }

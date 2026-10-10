@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { drinkTemperatureSwitches, menuMeta } from '@/features/pos-kernel/data'
+import { menuMeta } from '@/features/pos-kernel/data'
 import { buildProductManagementView } from './product-management'
 
 const inventory = {
@@ -13,9 +13,9 @@ const inventory = {
 
 describe('product-management', () => {
   it('builds top-level batch toggles without spec-category or target quick groups', () => {
-    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, inventory)
+    const view = buildProductManagementView(menuMeta.categories, inventory)
 
-    expect(view.quickSections.map((section) => section.title)).toEqual(['菜單分類', '口味 / 主食', '飲品溫度'])
+    expect(view.quickSections.map((section) => section.title)).toEqual(['菜單分類', '口味 / 主食'])
     const [categorySection, selectionSection] = view.quickSections
     expect(categorySection.rows.map((row) => row.label)).toContain('義大利麵 / 燉飯')
     expect(categorySection.rows.map((row) => row.label)).toContain('甜點')
@@ -28,20 +28,8 @@ describe('product-management', () => {
     expect(selectionLabels).not.toContain('口感 / 偏軟')
   })
 
-  it('offers store-wide cold and hot drink switches', () => {
-    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, {
-      'drink-temperature.hot': false,
-    })
-    const temperature = view.quickSections.find((section) => section.title === '飲品溫度')
-
-    expect(temperature?.rows.map(({ label, keys, checked, status }) => ({ label, keys, checked, status }))).toEqual([
-      { label: '冷飲', keys: ['drink-temperature.ice'], checked: true, status: 'available' },
-      { label: '熱飲', keys: ['drink-temperature.hot'], checked: false, status: 'sold-out' },
-    ])
-  })
-
   it('marks batch toggles partial when only some of their keys are available', () => {
-    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, inventory)
+    const view = buildProductManagementView(menuMeta.categories, inventory)
     const pesto = view.quickSections[1].rows.find((row) => row.label === '口味 / 青醬')
 
     expect(pesto?.keys).toContain('selection.pasta_risotto.chicken-breast.sauce.pesto')
@@ -49,14 +37,13 @@ describe('product-management', () => {
 
     const soldOut = buildProductManagementView(
       menuMeta.categories,
-      drinkTemperatureSwitches,
       Object.fromEntries((pesto?.keys || []).map((key) => [key, false]))
     ).quickSections[1].rows.find((row) => row.label === '口味 / 青醬')
     expect(soldOut).toMatchObject({ checked: false, status: 'sold-out' })
   })
 
   it('lists bundle rule options per item without target-backed options', () => {
-    const view = buildProductManagementView(menuMeta.categories, drinkTemperatureSwitches, inventory)
+    const view = buildProductManagementView(menuMeta.categories, inventory)
     const items = view.categories.flatMap((category) => category.items)
     const optionKeys = items.flatMap((item) => item.options.map((option) => option.inventoryKey))
 
