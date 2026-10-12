@@ -18,7 +18,7 @@ describe('product-management', () => {
     expect(view.quickSections.map((section) => section.title)).toEqual(['菜單分類', '口味 / 主食'])
     const [categorySection, selectionSection] = view.quickSections
     expect(categorySection.rows.map((row) => row.label)).toContain('義大利麵 / 燉飯')
-    expect(categorySection.rows.map((row) => row.label)).toContain('甜點')
+    expect(categorySection.rows.map((row) => row.label)).toContain('單品')
     expect(categorySection.rows.map((row) => row.label)).not.toContain('品類')
     expect(categorySection.rows.map((row) => row.label)).not.toContain('附加品類')
 
@@ -48,7 +48,7 @@ describe('product-management', () => {
     const optionKeys = items.flatMap((item) => item.options.map((option) => option.inventoryKey))
 
     expect(view.categories[0].accordionId).toBe('mgmt-acc-1')
-    expect(items.map((item) => item.id)).toContain('dessert.original-basque')
+    expect(items.map((item) => item.id)).toContain('a_la_carte.spicy-honey-cream-diced-beef')
     expect(optionKeys).toContain('selection.pasta_risotto.cheese-macaroni.base.macaroni')
     expect(optionKeys).not.toContain('selection.pasta_risotto.chicken-breast.base.macaroni')
 

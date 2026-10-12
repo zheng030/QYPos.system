@@ -166,12 +166,12 @@ describe('owner-finance', () => {
     ])
   })
 
-  it('uses the dessert category label in revenue detail modal', async () => {
+  it('uses the category label in revenue detail modal', async () => {
     const { finance } = createFinance()
 
-    await finance.openRevenueModal('dessert')
+    await finance.openRevenueModal('soup')
 
-    expect(finance.revenueModal.title).toBe('甜點')
+    expect(finance.revenueModal.title).toBe('湯品')
     expect(finance.revenueModal.open).toBe(true)
     finance.closeRevenueModal()
     expect(finance.revenueModal.open).toBe(false)

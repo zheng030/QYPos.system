@@ -184,7 +184,6 @@ describe('reporting store', () => {
         main: createItemStat('香煎雞腿排', 4, 'plated_main', 1200),
         aLaCarte: createItemStat('炸物拼盤', 5, 'a_la_carte', 500),
         soup: createItemStat('主廚濃湯', 2, 'soup', 180),
-        dessert: createItemStat('原味巴斯克', 2, 'dessert', 220),
         drink: createItemStat('拿鐵', 6, 'drink', 360),
         treat: createItemStat('拿鐵 (招待)', 1, 'drink', 0),
         other: createItemStat('神秘品項', 1, 'other', 50),
@@ -208,7 +207,6 @@ describe('reporting store', () => {
       '排餐',
       '單品',
       '湯品',
-      '甜點',
       '飲品',
       '其他 / 未知',
     ])
@@ -216,7 +214,6 @@ describe('reporting store', () => {
       { name: '拿鐵', count: 7, categoryKey: 'drink' },
       { name: '炸物拼盤', count: 5, categoryKey: 'a_la_carte' },
     ])
-    expect(columns.find((column) => column.key === 'dessert')?.rows.map((row) => row.name)).toEqual(['原味巴斯克'])
     expect(columns.find((column) => column.key === 'other')?.rows.map((row) => row.name)).toEqual(['神秘品項'])
     expect(reporting.itemStatsActive.value).toBeNull()
     expect(reporting.customStatsVisible.value).toBe(false)

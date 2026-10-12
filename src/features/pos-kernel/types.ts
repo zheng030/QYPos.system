@@ -10,7 +10,6 @@ export const MENU_CATEGORY_KEYS = [
   'plated_main',
   'a_la_carte',
   'soup',
-  'dessert',
   'drink',
 ] as const
 export const POS_CATEGORY_KEYS = [...MENU_CATEGORY_KEYS, 'other', 'extra'] as const
@@ -24,7 +23,6 @@ export const POS_CATEGORY_LABELS: Record<PosCategoryKey, string> = {
   plated_main: '排餐',
   a_la_carte: '單品',
   soup: '湯品',
-  dessert: '甜點',
   drink: '飲品',
   other: '其他 / 未知',
   extra: '整單調整',
