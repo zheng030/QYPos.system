@@ -4,7 +4,6 @@ repo使用firebase RTDB，只算流量、儲存
 - 只訂閱所需path
 - 允許小寫index/metadata換取減少大讀
 - 歷史訂單因為菜單可能刪除，所以統一以當下價格、名稱儲存
-- code在src/，不碰legacy的frontend/
 - 所有讀、寫操作必須合理，至少確保是local best
 - KISS原則，要的是合理、結構性設計，不因此做得過於複雜
 

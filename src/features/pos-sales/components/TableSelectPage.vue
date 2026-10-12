@@ -23,6 +23,7 @@ const { tableButtons } = sales
         @click="sales.openOrderPage(button.table, { mode: 'staff' })"
       >
         <b>{{ button.table }}</b>
+        <span v-if="button.unprinted" class="batch-chip pending">未印</span>
       </div>
     </div>
   </div>

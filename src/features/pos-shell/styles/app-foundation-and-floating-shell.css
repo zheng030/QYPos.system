@@ -410,6 +410,34 @@ button {
 .customer-input-box input:focus {
 	border-color: var(--primary-color);
 }
+.empty-table-reset-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 6px 0 12px;
+	padding: 8px 14px;
+	border-radius: 12px;
+	background: #fff7ed;
+	color: #9a3412;
+	font-size: 13px;
+}
+.empty-table-reset-btn {
+	padding: 8px 14px;
+	border: 1px solid #fdba74;
+	border-radius: 10px;
+	background: #fff;
+	color: #9a3412;
+	font-weight: 700;
+	white-space: nowrap;
+	cursor: pointer;
+}
+@media (max-width: 680px) {
+	.empty-table-reset-row {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+}
 
 .order-page-shell {
 	display: flex;

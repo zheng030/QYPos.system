@@ -24,6 +24,7 @@ const {
   menuCategories,
   menuSections,
   workspace,
+  canResetEmptyTable,
 } = sales
 const { seatTimer } = shell
 
@@ -64,6 +65,12 @@ function onCustomerInput(field: 'name' | 'phone', event: Event) {
           :value="customerInfo.phone"
           @input="onCustomerInput('phone', $event)"
         >
+      </div>
+      <div v-if="canResetEmptyTable" class="empty-table-reset-row">
+        <span>此桌目前沒有訂單</span>
+        <button id="resetEmptyTableBtn" type="button" class="btn-effect empty-table-reset-btn" @click="sales.resetEmptyTable()">
+          清除桌位資料
+        </button>
       </div>
 
       <div id="orderPageBody" class="order-page-body">

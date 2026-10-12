@@ -98,4 +98,27 @@ describe('OrderPage', () => {
     expect(builderGroup('texture')).not.toBeNull()
     expect(findByText('#builderHost .builder-section', '附飲 / 換購')).toBeTruthy()
   })
+
+  it('lets staff clear customer info and timer of a table without orders', async () => {
+    const { runtime } = await openStaffOrder()
+    await runtime.sales.setCustomerField('name', '舊客人')
+    await runtime.sales.setCustomerField('phone', '0900')
+    await flushPromises()
+    await clickText('#resetEmptyTableBtn', '清除桌位資料')
+    await runtime.sales.runConfirmedAction()
+    await flushPromises()
+    expect(runtime.kernel.state.tableCustomers['01桌']).toBeUndefined()
+    expect(runtime.kernel.state.tableTimers['01桌']).toBeUndefined()
+    expect(document.querySelector<HTMLInputElement>('#custName')?.value).toBe('')
+    expect(document.getElementById('resetEmptyTableBtn')).toBeNull()
+  })
+
+  it('lets staff clear a customer name by emptying its input', async () => {
+    const { runtime } = await openStaffOrder()
+    await runtime.sales.setCustomerField('name', 'A')
+    await runtime.sales.setCustomerField('name', '')
+    await flushPromises()
+    expect(runtime.kernel.state.tableCustomers['01桌']?.name).toBe('')
+    expect(document.querySelector<HTMLInputElement>('#custName')?.value).toBe('')
+  })
 })

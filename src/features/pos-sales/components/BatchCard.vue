@@ -25,6 +25,7 @@ function childLines(entry: PosOrderEntry) {
       <div>
         <div class="batch-card-title">
           {{ batch.requestLabel }} <span class="batch-chip" :class="pending ? 'pending' : 'accepted'">{{ pending ? '待接單' : '已接單' }}</span>
+          <span v-if="editable && batch.printPending" class="batch-chip pending">未印</span>
         </div>
         <div class="batch-card-subtitle">
           {{ `${batch.customer?.name || ''}${batch.customer?.phone ? ` · ${batch.customer.phone}` : ''}` }}

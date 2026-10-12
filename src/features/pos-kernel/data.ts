@@ -505,6 +505,7 @@ const categories: PosMenuCategory[] = [
           singleItem({
             id: 'bread_set.garlic-bread',
             name: '蒜香義式麵包片',
+            kitchenName: '蒜香義式麵包片',
             categoryKey: 'bread_set',
             courseKind: 'food',
             basePrice: 150,
@@ -557,6 +558,7 @@ const categories: PosMenuCategory[] = [
             id: 'salad.salami-mozzarella',
             name: '義式臘腸 佐 莫札瑞拉起司',
             shortName: '義式臘腸',
+            kitchenName: '臘腸起司沙拉',
             categoryKey: 'salad',
             courseKind: 'food',
             basePrice: 280,
@@ -575,6 +577,7 @@ const categories: PosMenuCategory[] = [
           bundleItem({
             id: 'salad.beef-short-rib',
             name: '香煎牛小排',
+            kitchenName: '牛小排沙拉',
             categoryKey: 'salad',
             courseKind: 'food',
             basePrice: 330,

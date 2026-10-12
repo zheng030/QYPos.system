@@ -67,6 +67,7 @@ export type V3OrderBatch = {
   createdAt: number
   updatedAt: number
   acceptedAt?: number
+  printPending?: boolean
   requestSeq?: number
   requestLabel: string
   entries: Record<string, V3OrderEntry>

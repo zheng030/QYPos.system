@@ -77,9 +77,12 @@ export function createPosDataService(kernel: PosKernelService): PosDataService {
     submitCustomerDraft: (table, entries, customer) =>
       withChange(['tableDrafts', 'pendingBatches'], () => repository.submitCustomerDraft(table, entries, customer)),
     discardCustomerDraft: (table) => withChange(['tableDrafts'], () => repository.discardCustomerDraft(table)),
+    resetEmptyTable: (table) => withChange(['tableSummaries', 'tableDrafts'], () => repository.resetEmptyTable(table)),
     readPendingBatchDetail: (table, batchId) => repository.readPendingBatchDetail(table, batchId),
-    acceptPendingBatch: (table, batchId) =>
-      withChange(['pendingBatches', 'submittedBatches'], () => repository.acceptPendingBatch(table, batchId)),
+    acceptPendingBatch: (table, batchId, options) =>
+      withChange(['pendingBatches', 'submittedBatches'], () => repository.acceptPendingBatch(table, batchId, options)),
+    markBatchesPrinted: (table, batchIds) =>
+      withChange(['submittedBatches'], () => repository.markBatchesPrinted(table, batchIds)),
     rejectPendingBatch: (table, batchId) =>
       withChange(['tableDrafts', 'pendingBatches'], () => repository.rejectPendingBatch(table, batchId)),
     saveStaffDraft: (table, entries) => withChange(['staffDrafts'], () => repository.saveStaffDraft(table, entries)),

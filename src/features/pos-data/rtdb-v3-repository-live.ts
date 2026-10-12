@@ -2,6 +2,7 @@ import type { PosOrderBatch, PosOrderEntry, PosTableCustomer } from '@/features/
 import {
   buildLiveTable,
   buildTableSummary,
+  getBizDateKey,
   mapBatchToStored,
   mapStoredBatch,
   orderRecordToPosOrder,
@@ -309,6 +310,30 @@ export function createRtdbV3RepositoryLiveModule(
     applyLocalLivePatch(table, patch.normalizedNext)
   }
 
+  function hasOrders(liveTable: V3LiveTable) {
+    return Object.keys(liveTable.pendingBatches).length > 0 || Object.keys(liveTable.submittedBatches).length > 0
+  }
+
+  // An order-free table whose last activity belongs to an earlier business day holds a previous
+  // customer's leftovers; keeping them would hand that day's display seq to the next customer.
+  function isStaleIdleTable(liveTable: V3LiveTable) {
+    const { summary } = liveTable
+    return summary !== null && !hasOrders(liveTable) && getBizDateKey(summary.updatedAt) < getBizDateKey(Date.now())
+  }
+
+  // Clears customer info, timer, display seq and any unsubmitted QR cart of an order-free table.
+  function clearIdleTable(table: string, liveTable: V3LiveTable) {
+    return commitLivePatch(table, { summary: liveTable.summary, draft: liveTable.draft }, { summary: null, draft: {} })
+  }
+
+  async function resetEmptyTable(table: string) {
+    const liveTable = await ctx.readLiveTable(table)
+    if (hasOrders(liveTable)) {
+      throw new Error('桌位仍有訂單，無法清除。')
+    }
+    await clearIdleTable(table, liveTable)
+  }
+
   async function saveCustomerDraft(table: string, entries: PosOrderEntry[], customerInput: PosTableCustomer) {
     const displaySeqBase = await ctx.ensureDisplaySeqBase(table, customerInput)
     const customer = cloneCustomer(customerInput)
@@ -496,7 +521,11 @@ export function createRtdbV3RepositoryLiveModule(
     return ctx.functionReadPendingBatchDetail(table, batchId)
   }
 
-  async function acceptPendingBatch(table: string, batchId: string): Promise<PosOrderBatch | null> {
+  async function acceptPendingBatch(
+    table: string,
+    batchId: string,
+    options: { printPending?: boolean } = {}
+  ): Promise<PosOrderBatch | null> {
     const [summary, pendingBatches, submittedBatches] = await Promise.all([
       readShard(table, 'summary'),
       readShard(table, 'pendingBatches'),
@@ -511,6 +540,7 @@ export function createRtdbV3RepositoryLiveModule(
     acceptedBatch.status = 'accepted'
     acceptedBatch.acceptedAt = Date.now()
     acceptedBatch.updatedAt = acceptedBatch.acceptedAt
+    if (options.printPending) acceptedBatch.printPending = true
     acceptedBatch.entries = acceptedBatch.entries.map((entry) => ({
       ...entry,
       status: 'accepted',
@@ -549,6 +579,18 @@ export function createRtdbV3RepositoryLiveModule(
     )
     const accepted = acceptedBatch
     return accepted
+  }
+
+  async function markBatchesPrinted(table: string, batchIds: string[]) {
+    const submittedBatches = await readShard(table, 'submittedBatches')
+    const nextSubmittedBatches = { ...submittedBatches }
+    for (const batchId of batchIds) {
+      const key = encodeBatchMapKey(batchId)
+      if (nextSubmittedBatches[key]) {
+        nextSubmittedBatches[key] = { ...nextSubmittedBatches[key], printPending: undefined }
+      }
+    }
+    await commitLivePatch(table, { submittedBatches }, { submittedBatches: nextSubmittedBatches })
   }
 
   async function rejectPendingBatch(table: string, batchId: string) {
@@ -965,7 +1007,11 @@ export function createRtdbV3RepositoryLiveModule(
     ctx.currentTableSession = { table, mode }
     ctx.state.selectedTable = table
     ctx.state.currentMode = mode
-    const liveTable = await ctx.readLiveTable(table)
+    let liveTable = await ctx.readLiveTable(table)
+    if (isStaleIdleTable(liveTable)) {
+      await clearIdleTable(table, liveTable)
+      liveTable = ctx.getCachedLiveTable(table)
+    }
     ctx.applyLiveTable(table, liveTable, mode)
 
     function subscribeShardRevision<K extends LiveShard>(
@@ -1045,10 +1091,12 @@ export function createRtdbV3RepositoryLiveModule(
   return {
     readPendingBatchDetail,
     saveCustomerDraft,
+    resetEmptyTable,
     updateTableCustomer,
     discardCustomerDraft,
     submitCustomerDraft,
     acceptPendingBatch,
+    markBatchesPrinted,
     rejectPendingBatch,
     saveStaffDraft,
     createStaffBatch,

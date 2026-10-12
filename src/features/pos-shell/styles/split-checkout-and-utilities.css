@@ -72,6 +72,15 @@
 .reprint-modal {
 	max-width: 520px;
 }
+.reprint-merge-hint {
+	color: #475569;
+	font-size: 13px;
+	line-height: 1.5;
+	margin: 0 0 10px;
+}
+.reprint-modal .modal-actions {
+	flex-wrap: wrap;
+}
 .reprint-select-all {
 	display: flex;
 	align-items: center;

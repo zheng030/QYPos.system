@@ -4,7 +4,7 @@ import type { PosReceiptData } from '@/features/pos-kernel/types'
 
 export type ReceiptJob = {
   data: PosReceiptData
-  title: string
+  isTicket: boolean
 }
 
 const PRINT_FALLBACK_MS = 2000
@@ -28,7 +28,7 @@ export function createReceiptPrinter() {
 
   async function print(data: PosReceiptData, isTicket = false) {
     reset()
-    job.value = { data, title: isTicket ? 'Kitchen 工作單' : '結帳明細' }
+    job.value = { data, isTicket }
     await nextTick()
 
     await new Promise<void>((resolve, reject) => {

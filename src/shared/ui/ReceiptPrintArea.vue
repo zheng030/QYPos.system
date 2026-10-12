@@ -10,6 +10,10 @@ defineProps<{ printer: ReceiptPrinter }>()
     id="receipt-print-area"
     :class="printer.job.value ? 'print-area-active' : 'print-area-hidden'"
   >
-    <ReceiptView v-if="printer.job.value" :data="printer.job.value.data" :title="printer.job.value.title" />
+    <ReceiptView
+      v-if="printer.job.value"
+      :data="printer.job.value.data"
+      :is-ticket="printer.job.value.isTicket"
+    />
   </div>
 </template>

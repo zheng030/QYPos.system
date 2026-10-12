@@ -186,6 +186,7 @@ export type V3StoredOrderBatch = {
   a?: number
   u?: number
   x?: number
+  k?: boolean
   q?: number
   l?: string
   e?: Record<string, V3StoredOrderEntry>
@@ -546,6 +547,8 @@ function encodeOrderBatchValue(value: V3OrderBatch): V3StoredOrderBatch {
     a: value.createdAt,
     u: value.updatedAt,
     x: value.acceptedAt,
+    // Stored only while set, so printed batches carry no extra bytes.
+    k: value.printPending || undefined,
     q: value.requestSeq,
     l: value.requestLabel,
     e: Object.fromEntries(
@@ -566,6 +569,7 @@ function decodeOrderBatchValue(value: unknown): V3OrderBatch {
     createdAt: toNumber(raw.a ?? raw.createdAt),
     updatedAt: toNumber(raw.u ?? raw.updatedAt),
     acceptedAt: toNullableNumber(raw.x ?? raw.acceptedAt) ?? undefined,
+    printPending: toBoolean(raw.k) || undefined,
     requestSeq: toNullableNumber(raw.q ?? raw.requestSeq) ?? undefined,
     requestLabel: toStringValue(raw.l ?? raw.requestLabel),
     entries: Object.fromEntries(

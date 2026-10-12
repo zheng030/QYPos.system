@@ -4,9 +4,10 @@ import { computed } from 'vue'
 import type { PosReceiptData } from '@/features/pos-kernel/types'
 import { groupOrderLines } from '@/shared/grouped-order-lines'
 
-const props = defineProps<{ data: PosReceiptData; title: string }>()
+const props = defineProps<{ data: PosReceiptData; isTicket: boolean }>()
 
 const groups = computed(() => groupOrderLines(props.data.lines || []))
+const title = computed(() => (props.isTicket ? 'Kitchen 工作單' : '結帳明細'))
 
 function formatCurrency(value: number) {
   return `$${Math.round(value || 0)}`
@@ -18,7 +19,7 @@ function formatQuantity(quantity: number | null | undefined) {
 </script>
 
 <template>
-  <section class="receipt-section">
+  <section class="receipt-section" :class="{ 'receipt-section--kitchen': isTicket }">
     <div class="receipt-header">
       <h1 class="store-name">QY POS</h1>
       <strong>{{ title }}</strong>
@@ -27,6 +28,7 @@ function formatQuantity(quantity: number | null | undefined) {
       <div>桌號：{{ data.table || '' }}</div>
       <div>時間：{{ data.time }}</div>
       <div>單號：{{ String(data.seq || '') }}</div>
+      <div v-if="data.sourceLabels?.length" class="receipt-source-labels">來源單號：{{ data.sourceLabels.join('、') }}</div>
     </div>
     <hr class="dashed-line">
     <div class="receipt-items">

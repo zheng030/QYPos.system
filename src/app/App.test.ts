@@ -170,7 +170,7 @@ describe('App', () => {
     expect(play).toHaveBeenCalledTimes(1)
     expect((play.mock.contexts[0] as HTMLAudioElement).src).toContain('sounds/new-order.mp3')
 
-    await clickText('#pendingBatchOverlay button', '接單')
+    await clickText('#pendingBatchOverlay button', '接單並列印')
     expect(document.getElementById('pendingBatchOverlay')?.classList.contains('show')).toBe(false)
     expect(play).toHaveBeenCalledTimes(1)
 
@@ -184,6 +184,37 @@ describe('App', () => {
 
     await clickText('#settingsPage button', '試聽')
     expect(play).toHaveBeenCalledTimes(2)
+  })
+
+  it('prints an order accepted for later together with the next order accepted at its table', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    const tickets: string[] = []
+    vi.stubGlobal(
+      'print',
+      vi.fn(() => {
+        tickets.push(document.getElementById('receipt-print-area')?.textContent || '')
+        window.dispatchEvent(new Event('afterprint'))
+      })
+    )
+    const { runtime } = await mountLoggedInApp()
+
+    await runtime.data.submitCustomerDraft('01桌', [createEntry()], {})
+    await flushPromises()
+    await clickText('#pendingBatchOverlay button', '接單・稍後合印')
+    expect(tickets).toHaveLength(0)
+    expect(runtime.kernel.state.submittedBatches['01桌']?.map((batch) => batch.printPending)).toEqual([true])
+
+    await runtime.data.submitCustomerDraft('01桌', [createEntry({ entryId: 'e_2' })], {})
+    await flushPromises()
+    await clickText('#pendingBatchOverlay button', '接單並列印')
+    await vi.waitFor(() =>
+      expect(runtime.kernel.state.submittedBatches['01桌']?.map((batch) => batch.printPending)).toEqual([
+        undefined,
+        undefined,
+      ])
+    )
+    expect(tickets).toHaveLength(1)
+    expect(tickets[0]).toContain('合併 2 筆')
   })
 
   it('keeps the customer phone silent when it submits its own order', async () => {

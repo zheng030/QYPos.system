@@ -17,6 +17,8 @@ const {
   splitModal,
   splitEntries,
   reprintModal,
+  reprintBatches,
+  reprintAllChecked,
   discountModal,
   discountPreview,
   qrModal,
@@ -139,25 +141,27 @@ function inputChecked(event: Event) {
         <label class="reprint-select-all"><input
           id="toggleAllReprint"
           type="checkbox"
-          :checked="reprintModal.allChecked"
+          :checked="reprintAllChecked"
           @change="sales.toggleAllReprint(inputChecked($event))"
         > 全選</label>
+        <p class="reprint-merge-hint">勾選同桌訂單後，可選擇各自補印或合併成一張廚房單；原始訂單與結帳資料不會合併。</p>
         <div id="reprintSelectionList" class="reprint-list">
-          <div v-if="reprintModal.batches.length === 0" class="entry-card">目前沒有可補印的訂單紀錄</div>
-          <label v-for="batch in reprintModal.batches" :key="batch.batchId" class="cart-item-row">
+          <div v-if="reprintBatches.length === 0" class="entry-card">目前沒有可補印的訂單紀錄</div>
+          <label v-for="batch in reprintBatches" :key="batch.batchId" class="cart-item-row">
             <span><input
               class="reprint-checkbox"
               type="checkbox"
               :checked="reprintModal.selected.has(batch.batchId)"
               @change="sales.setReprintSelected(batch.batchId, inputChecked($event))"
-            > {{ batch.requestLabel }}</span>
+            > {{ batch.requestLabel }}<span v-if="batch.printPending" class="batch-chip pending">未印</span></span>
             <span class="cart-item-price">{{ formatCurrency(batch.subtotal) }}</span>
           </label>
         </div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-effect cancel" @click="sales.closeReprintModal()">取消</button>
-        <button type="button" class="btn-effect confirm-success" @click="sales.confirmReprintSelection()">補印</button>
+        <button type="button" class="btn-effect confirm-primary" @click="sales.confirmReprintSelection()">逐張補印</button>
+        <button type="button" class="btn-effect confirm-success" @click="sales.confirmReprintSelection({ merge: true })">合併列印（1 張）</button>
       </div>
     </div>
   </div>
@@ -262,7 +266,8 @@ function inputChecked(event: Event) {
         <button v-if="bellPlaying" type="button" class="btn-effect cancel" @click="bell.stop()">停止鈴聲</button>
         <button v-else-if="bellBlocked && bellEnabled" type="button" class="btn-effect cancel" @click="bell.preview()">啟用鈴聲</button>
         <button type="button" class="btn-effect cancel" @click="sales.rejectPendingBatch()">拒絕</button>
-        <button type="button" class="btn-effect confirm-success" @click="sales.acceptPendingBatch()">接單</button>
+        <button type="button" class="btn-effect confirm-primary" @click="sales.acceptPendingBatchWithoutPrint()">接單・稍後合印</button>
+        <button type="button" class="btn-effect confirm-success" @click="sales.acceptPendingBatch()">接單並列印</button>
       </div>
     </div>
   </div>

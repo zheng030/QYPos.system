@@ -152,7 +152,7 @@ describe('receipt printer', () => {
     const done = printer.print(RECEIPT, true)
     await nextTick()
     expect(print).toHaveBeenCalledTimes(1)
-    expect(printer.job.value).toEqual({ data: RECEIPT, title: 'Kitchen 工作單' })
+    expect(printer.job.value).toEqual({ data: RECEIPT, isTicket: true })
 
     window.dispatchEvent(new Event('afterprint'))
     await done
@@ -166,7 +166,7 @@ describe('receipt printer', () => {
 
     const done = printer.print(RECEIPT)
     await nextTick()
-    expect(printer.job.value?.title).toBe('結帳明細')
+    expect(printer.job.value?.isTicket).toBe(false)
     vi.advanceTimersByTime(2000)
     await done
     expect(printer.job.value).toBeNull()
@@ -182,7 +182,7 @@ describe('receipt printer', () => {
   })
 
   it('renders grouped receipt lines with child indentation', () => {
-    const wrapper = mount(ReceiptView, { props: { data: RECEIPT, title: 'Kitchen 工作單' } })
+    const wrapper = mount(ReceiptView, { props: { data: RECEIPT, isTicket: true } })
 
     expect(wrapper.get('.receipt-header strong').text()).toBe('Kitchen 工作單')
     expect(wrapper.get('.receipt-info').text()).toContain('單號：12-1')

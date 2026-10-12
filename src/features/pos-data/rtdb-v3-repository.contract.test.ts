@@ -1412,7 +1412,7 @@ describe('rtdb-v3 repository contract', () => {
                 displaySeqBase: 5,
                 batchCount: 0,
                 customer: { name: 'A', phone: '' },
-                updatedAt: 1,
+                updatedAt: Date.now(),
               },
               draft: {
                 [entry.entryId]: {
@@ -1460,7 +1460,7 @@ describe('rtdb-v3 repository contract', () => {
                 displaySeqBase: 5,
                 batchCount: 0,
                 customer: { name: 'A', phone: '' },
-                updatedAt: 1,
+                updatedAt: Date.now(),
               },
               draft: {},
               pendingBatches: {

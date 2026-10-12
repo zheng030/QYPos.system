@@ -49,8 +49,14 @@ export type PosDataService = {
   updateTableCustomer(table: string, customer: PosTableCustomer): Promise<{ displaySeqBase: number }>
   submitCustomerDraft(table: string, entries: PosOrderEntry[], customer: PosTableCustomer): Promise<PosOrderBatch>
   discardCustomerDraft(table: string): Promise<void>
+  resetEmptyTable(table: string): Promise<void>
   readPendingBatchDetail(table: string, batchId: string): Promise<PosOrderBatch | null>
-  acceptPendingBatch(table: string, batchId: string): Promise<PosOrderBatch | null>
+  acceptPendingBatch(
+    table: string,
+    batchId: string,
+    options?: { printPending?: boolean }
+  ): Promise<PosOrderBatch | null>
+  markBatchesPrinted(table: string, batchIds: string[]): Promise<void>
   rejectPendingBatch(table: string, batchId: string): Promise<void>
   saveStaffDraft(table: string, entries: PosOrderEntry[]): Promise<void>
   createStaffBatch(table: string, entries: PosOrderEntry[], customer?: PosTableCustomer): Promise<PosOrderBatch>

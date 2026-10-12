@@ -118,6 +118,8 @@ export type PosMenuItem = {
   inventoryKey: string
   name: string
   shortName?: string
+  // Printed verbatim on kitchen tickets instead of the name derived from category and base.
+  kitchenName?: string
   categoryKey: PosCategoryKey
   kind: PosItemKind
   basePrice: PosPrice
@@ -240,6 +242,8 @@ export type PosOrderBatch = {
   createdAt: number
   updatedAt: number
   acceptedAt?: number
+  // Accepted without printing; cleared once the batch appears on a printed kitchen ticket.
+  printPending?: boolean
   requestSeq: number
   requestLabel: string
   entries: PosOrderEntry[]
@@ -267,6 +271,8 @@ export type PosReceiptData = {
   lines: PosOrderLine[]
   original: number
   total: number
+  /** Original request numbers when multiple same-table batches share a kitchen printout. */
+  sourceLabels?: string[]
 }
 
 export type PosTableCustomer = {

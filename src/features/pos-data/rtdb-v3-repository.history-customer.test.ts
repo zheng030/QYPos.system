@@ -673,4 +673,20 @@ describe('rtdb-v3-repository', () => {
     expect(readAtPath(db.data, `v3/live/tables/A1/pendingBatches/${batch2.batchId}`)).toBeUndefined()
     expect(readAtPath(db.data, 'v3/live/tables/A1/draft')).toBeTruthy()
   })
+
+  it('keeps the deferred-print flag of an accepted batch until it is marked printed', async () => {
+    const db = createDbStub({})
+    const repository = createRtdbV3Repository({ db: db as never, state: createState() })
+    const batch = await repository.submitCustomerDraft('A1', [createEntry()], { name: '', phone: '' })
+    await repository.acceptPendingBatch('A1', batch.batchId, { printPending: true })
+    const flagPath = `v3/live/tables/A1/submittedBatches/${batch.batchId}/k`
+    expect(readAtPath(db.data, flagPath)).toBe(true)
+
+    const otherDevice = createState()
+    await createRtdbV3Repository({ db: db as never, state: otherDevice }).startTableLiveSession('staff', 'A1')
+    expect(otherDevice.activeSubmittedBatches.map((accepted) => accepted.printPending)).toEqual([true])
+
+    await repository.markBatchesPrinted('A1', [batch.batchId])
+    expect(readAtPath(db.data, flagPath)).toBeUndefined()
+  })
 })

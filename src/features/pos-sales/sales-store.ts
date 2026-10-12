@@ -27,6 +27,7 @@ import {
   updateBuilderSelection,
 } from './builder'
 import { createCustomerNoticeGate } from './customer-notice-gate'
+import { buildKitchenTicket } from './kitchen-ticket'
 import type { NewOrderBell } from './new-order-bell'
 import {
   acceptPendingBatchAndPrint,
@@ -43,7 +44,7 @@ import {
   summarizeStaffWorkspace,
   updateSubmittedBatchAndPrint,
 } from './runtime-support'
-import { cloneEntryWithTreatState, flattenBatchLines, formatCurrency, formatDateTime } from './runtime-utils'
+import { cloneEntryWithTreatState, formatCurrency } from './runtime-utils'
 
 export type OrderTab = 'menu' | 'cart' | 'orders'
 export type OrderMode = 'staff' | 'customer'
@@ -153,8 +154,7 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     workspace.discountPercent = 0
   }
 
-  function syncCustomerInputs() {
-    const table = kernel.state.selectedTable
+  function syncCustomerInputs(table = kernel.state.selectedTable) {
     const info = table ? kernel.state.tableCustomers[table] || {} : {}
     customerInfo.name = String(info.name || '')
     customerInfo.phone = String(info.phone || '')
@@ -163,6 +163,11 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
   function readCustomerInfo() {
     const table = kernel.state.selectedTable
     const stored = table ? kernel.state.tableCustomers[table] || {} : {}
+    // Staff inputs are re-synced from stored data on every change, so an empty one is an explicit clear.
+    // Customer inputs are not, so they fall back to what staff may have entered meanwhile.
+    if (!isCustomerMode()) {
+      return { name: customerInfo.name.trim(), phone: customerInfo.phone.trim(), orderId: stored.orderId }
+    }
     return {
       name: customerInfo.name.trim() || String(stored.name || ''),
       phone: customerInfo.phone.trim() || String(stored.phone || ''),
@@ -203,7 +208,11 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     const state = live.state()
     return kernel.tables.map((table) => {
       const status = state.tableStatuses[table]
-      return { table, statusClass: status === 'yellow' || status === 'red' ? `status-${status}` : 'status-white' }
+      return {
+        table,
+        statusClass: status === 'yellow' || status === 'red' ? `status-${status}` : 'status-white',
+        unprinted: (state.submittedBatches[table] || []).some((batch) => batch.printPending),
+      }
     })
   })
 
@@ -231,6 +240,33 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
       return items.length > 0 ? [{ label: section.label, items }] : []
     })
   })
+
+  const canResetEmptyTable = computed(() => {
+    const state = live.state()
+    const table = state.selectedTable
+    if (!table || mode.value !== 'staff') return false
+    if ((state.staffDrafts[table] || []).length) return false
+    if ((state.pendingBatches[table] || []).length || (state.submittedBatches[table] || []).length) return false
+    const customer = state.tableCustomers[table]
+    return Boolean(state.tableTimers[table] || customer?.name || customer?.phone || state.tableDrafts[table]?.length)
+  })
+
+  function resetEmptyTable() {
+    const table = currentTable()
+    const cartCount = (kernel.state.tableDrafts[table] || []).length
+    openConfirm({
+      title: '清除桌位資料',
+      message: `確定清除「${table}」的客資與計時？${cartCount ? `顧客未送出的購物車（${cartCount} 項）也會一併清除。` : ''}`,
+      confirmText: '確認清除',
+      onConfirm: async () => {
+        try {
+          await data.resetEmptyTable(table)
+        } catch (error) {
+          alert(`清除失敗：${getErrorMessage(error)}`)
+        }
+      },
+    })
+  }
 
   const staffSummary = computed(() => {
     const state = live.state()
@@ -269,6 +305,8 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     activeCategory.value = defaultCategory
     activeTab.value = 'menu'
     closeBuilder()
+    // Show this table's stored customer right away instead of the previous table's inputs while loading.
+    syncCustomerInputs(table)
     router.showPage('orderPage')
     await data.ensureCatalog()
     await data.startTableLiveSession(nextMode, table)
@@ -416,7 +454,7 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
         batchId: batch.batchId,
         entries: batch.entries.map((entry) => (entry.entryId === result.entry.entryId ? result.entry : entry)),
         updateSubmittedBatch: data.updateSubmittedBatch,
-        printKitchenTicket,
+        printKitchenTicket: printNewKitchenTicket,
       })
       closeBuilder()
       renderOrderSession()
@@ -559,7 +597,7 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
         customer: readCustomerInfo(),
         submitCustomerDraft: data.submitCustomerDraft,
         createStaffBatch: data.createStaffBatch,
-        printKitchenTicket,
+        printKitchenTicket: printNewKitchenTicket,
       })
       return true
     } catch (error) {
@@ -607,18 +645,23 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     return printer.print(receipt, isTicket)
   }
 
-  function printKitchenTicket(batch: PosOrderBatch) {
-    return printReceipt(
-      {
-        seq: batch.requestLabel,
-        table: batch.table,
-        time: formatDateTime(batch.updatedAt),
-        lines: flattenBatchLines(batch, kernel.helpers.normalizeEntryForDisplay),
-        original: batch.subtotal,
-        total: batch.subtotal,
-      },
-      true
+  function printKitchenTicket(...batches: PosOrderBatch[]) {
+    return printReceipt(buildKitchenTicket(batches, kernel.helpers), true)
+  }
+
+  function markPrinted(table: string, batches: PosOrderBatch[]) {
+    const batchIds = batches.filter((batch) => batch.printPending).map((batch) => batch.batchId)
+    return batchIds.length > 0 ? data.markBatchesPrinted(table, batchIds) : undefined
+  }
+
+  // A new ticket also carries the table's batches accepted without printing, so none are left behind.
+  async function printNewKitchenTicket(batch: PosOrderBatch) {
+    const deferred = (kernel.state.submittedBatches[batch.table] || []).filter(
+      (candidate) => candidate.printPending && candidate.batchId !== batch.batchId
     )
+    const batches = [...deferred, batch]
+    await printKitchenTicket(...batches)
+    await markPrinted(batch.table, batches)
   }
 
   async function reprintSubmittedBatch(batchId: string) {
@@ -628,20 +671,29 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
       return
     }
     await printKitchenTicket(batch)
+    await markPrinted(batch.table, [batch])
   }
 
   // ---- reprint modal ----
 
-  const reprintModal = reactive({
-    open: false,
-    batches: [] as PosOrderBatch[],
-    selected: new Set<string>(),
-    allChecked: false,
+  const reprintModal = reactive({ open: false, selected: new Set<string>() })
+
+  const reprintBatches = computed(() => {
+    live.state()
+    return kernel.state.activeSubmittedBatches
   })
 
+  const reprintAllChecked = computed(
+    () =>
+      reprintBatches.value.length > 0 && reprintBatches.value.every((batch) => reprintModal.selected.has(batch.batchId))
+  )
+
   function openReprintModal() {
-    reprintModal.batches = [...kernel.state.activeSubmittedBatches]
     reprintModal.selected.clear()
+    // Unprinted batches start selected so they get to the kitchen.
+    for (const batch of kernel.state.activeSubmittedBatches) {
+      if (batch.printPending) reprintModal.selected.add(batch.batchId)
+    }
     reprintModal.open = true
   }
 
@@ -655,19 +707,20 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
   }
 
   function toggleAllReprint(checked: boolean) {
-    reprintModal.allChecked = checked
-    for (const batch of reprintModal.batches) {
+    for (const batch of reprintBatches.value) {
       setReprintSelected(batch.batchId, checked)
     }
   }
 
-  async function confirmReprintSelection() {
-    const batchIds = reprintModal.batches
-      .map((batch) => batch.batchId)
-      .filter((batchId) => reprintModal.selected.has(batchId))
-    for (const batchId of batchIds) {
-      await reprintSubmittedBatch(batchId)
+  async function confirmReprintSelection({ merge = false } = {}) {
+    const batches = reprintBatches.value.filter((batch) => reprintModal.selected.has(batch.batchId))
+    if (batches.length === 0) {
+      alert('請先勾選要列印的訂單')
+      return
     }
+    if (merge) await printKitchenTicket(...batches)
+    else for (const batch of batches) await printKitchenTicket(batch)
+    await markPrinted(currentTable(), batches)
     closeReprintModal()
   }
 
@@ -938,9 +991,15 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
         table,
         batchId,
         acceptPendingBatch: data.acceptPendingBatch,
-        printKitchenTicket,
+        printKitchenTicket: printNewKitchenTicket,
       })
     )
+  }
+
+  // The batch stays flagged as unprinted until it rides along on the table's next kitchen ticket
+  // or is printed from 補單.
+  function acceptPendingBatchWithoutPrint() {
+    return settlePendingBatch((table, batchId) => data.acceptPendingBatch(table, batchId, { printPending: true }))
   }
 
   function rejectPendingBatch() {
@@ -990,6 +1049,8 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
   })
 
   return {
+    canResetEmptyTable,
+    resetEmptyTable,
     mode,
     qrMode,
     seatLabel,
@@ -1010,6 +1071,8 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     confirmDialog,
     qrModal,
     reprintModal,
+    reprintBatches,
+    reprintAllChecked,
     paymentModal,
     splitModal,
     splitEntries,
@@ -1065,6 +1128,7 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
     confirmDiscount,
     resetDiscount,
     acceptPendingBatch,
+    acceptPendingBatchWithoutPrint,
     rejectPendingBatch,
   }
 }
