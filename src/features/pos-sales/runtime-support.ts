@@ -523,3 +523,7 @@ export function getFloatingBarViewModel(
     primaryAction: 'open-payment',
   }
 }
+
+export function pendingCardKey(table: string, batchId: string) {
+  return `${table}:${batchId}`
+}

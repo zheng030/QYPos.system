@@ -9,9 +9,11 @@ import { clickText, display, findByText, login, mountApp, mountLoggedInApp } fro
 
 vi.mock('@/shared/firebase-compat', () => import('./firebase-compat.test-support'))
 
+let audio: ReturnType<typeof mockAudioContext>
+
 beforeEach(() => {
   sessionStorage.clear()
-  mockAudioContext()
+  audio = mockAudioContext()
   vi.stubGlobal('alert', vi.fn())
   vi.stubGlobal(
     'confirm',
@@ -97,7 +99,7 @@ describe('App', () => {
     ).toEqual(['顧客點餐', '這台裝置', '資料與維護'])
     expect(
       [...document.querySelectorAll('#settingsPage .settings-row-text strong')].map((title) => title.textContent)
-    ).toEqual(['掃碼提示視窗', '新訂單鈴聲', '鈴聲音量', '同步紀錄'])
+    ).toEqual(['掃碼提示視窗', '新訂單鈴聲', '鈴聲', '鈴聲音量', '同步紀錄'])
     await clickText('#settingsPage button', '匯出')
     expect(alert).toHaveBeenCalledWith('目前沒有同步紀錄')
 
@@ -157,22 +159,20 @@ describe('App', () => {
     expect(display('#home')).toBe('grid')
   })
 
-  it('rings the staff device once for each order a customer submits', async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  it('loops the chosen sound while a customer order waits, stops once it is accepted, and stays quiet while muted', async () => {
     vi.stubGlobal('print', vi.fn())
     const { runtime } = await mountLoggedInApp()
-    expect(play).not.toHaveBeenCalled()
+    expect(audio.played()).toEqual([])
 
     await runtime.data.submitCustomerDraft('01桌', [createEntry()], {})
     await flushPromises()
 
     expect(document.getElementById('pendingBatchOverlay')?.classList.contains('show')).toBe(true)
-    expect(play).toHaveBeenCalledTimes(1)
-    expect((play.mock.contexts[0] as HTMLAudioElement).src).toContain('sounds/new-order.mp3')
+    expect(audio.sounding()).toEqual([{ url: '/sounds/foodpanda.mp3', loop: true }])
 
     await clickText('#pendingBatchOverlay button', '接單並列印')
     expect(document.getElementById('pendingBatchOverlay')?.classList.contains('show')).toBe(false)
-    expect(play).toHaveBeenCalledTimes(1)
+    expect(audio.sounding()).toEqual([])
 
     await clickText('#home .menu-btn', '系統設定')
     findCheckbox('#newOrderBellToggle').click()
@@ -180,14 +180,13 @@ describe('App', () => {
     await runtime.data.submitCustomerDraft('02桌', [createEntry({ entryId: 'e_2' })], {})
     await flushPromises()
     expect(document.getElementById('pendingBatchOverlay')?.classList.contains('show')).toBe(true)
-    expect(play).toHaveBeenCalledTimes(1)
+    expect(audio.sounding()).toEqual([])
 
+    // 試聽 plays one cycle, muted or not.
     await clickText('#settingsPage button', '試聽')
-    expect(play).toHaveBeenCalledTimes(2)
+    expect(audio.sounding()).toEqual([{ url: '/sounds/foodpanda.mp3', loop: false }])
   })
-
   it('prints an order accepted for later together with the next order accepted at its table', async () => {
-    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     const tickets: string[] = []
     vi.stubGlobal(
       'print',
@@ -218,47 +217,51 @@ describe('App', () => {
   })
 
   it('keeps the customer phone silent when it submits its own order', async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
     history.replaceState(null, '', '/?table=01%E6%A1%8C')
     try {
       const { runtime } = await mountApp()
       expect(display('#orderPage')).toBe('block')
-      document.dispatchEvent(new Event('pointerdown'))
+      document.dispatchEvent(new Event('pointerup'))
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
 
       await runtime.data.submitCustomerDraft('01桌', [createEntry()], {})
       await flushPromises()
 
       expect(runtime.kernel.state.pendingBatches['01桌']).toHaveLength(1)
-      expect(play).not.toHaveBeenCalled()
+      expect(audio.createContext).not.toHaveBeenCalled()
     } finally {
       history.replaceState(null, '', '/')
     }
   })
 
-  it('adjusts the bell volume in settings and restores it after reopening the app', async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  it('adjusts the bell volume and sound in settings and restores them after reopening the app', async () => {
     const { wrapper, runtime } = await mountLoggedInApp()
     await runtime.admin.openSettingsPage()
     await wrapper.get('#newOrderBellVolume').setValue('35')
     expect(runtime.bell.volume.value).toBe(35)
     expect(wrapper.get('output[for="newOrderBellVolume"]').text()).toBe('35%')
-    expect(play).not.toHaveBeenCalled()
+    expect(audio.played()).toEqual([])
     await clickText('#settingsPage button', '試聽')
-    expect(play).toHaveBeenCalledTimes(1)
+    expect(audio.played()).toHaveLength(1)
     await wrapper.get('#newOrderBellVolume').setValue('0')
     expect(runtime.bell.volume.value).toBe(0)
-    expect(play).toHaveBeenCalledTimes(1)
-    expect(runtime.bell.playing.value).toBe(true)
+    expect(audio.played()).toHaveLength(1)
+    expect(runtime.bell.previewing.value).toBe(true)
+    await clickText('#settingsPage button', '停止試聽')
+    expect(audio.sounding()).toEqual([])
     await wrapper.get('#newOrderBellVolume').setValue('65')
+    // Choosing a sound plays it once.
+    await clickText('#settingsPage button', 'Uber Eats')
+    expect(audio.sounding()).toEqual([{ url: '/sounds/ubereats.mp3', loop: false }])
+    expect(findByText('#settingsPage button', 'Uber Eats').getAttribute('aria-pressed')).toBe('true')
     wrapper.unmount()
     const reopened = await mountLoggedInApp()
     await reopened.runtime.admin.openSettingsPage()
     await flushPromises()
     expect((reopened.wrapper.get('#newOrderBellVolume').element as HTMLInputElement).value).toBe('65')
     expect(reopened.wrapper.get('output[for="newOrderBellVolume"]').text()).toBe('65%')
+    expect(reopened.runtime.bell.sound.value).toBe('ubereats')
   })
-
   it('shows the saved scan notice before the customer menu and lets the customer in on confirm', async () => {
     history.replaceState(null, '', '/?table=01%E6%A1%8C')
     try {
@@ -373,61 +376,50 @@ describe('App', () => {
   })
 
   it('unlocks sound inside the first staff gesture and removes listeners on unmount', async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
-    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
     const { runtime, wrapper } = await mountApp()
-    document.dispatchEvent(new Event('pointerdown'))
-    expect(play).toHaveBeenCalledTimes(1)
-    expect((play.mock.contexts[0] as HTMLAudioElement).muted).toBe(true)
+    document.dispatchEvent(new Event('pointerup'))
+    expect(audio.createContext).toHaveBeenCalledTimes(1)
+    expect(audio.context.resume).toHaveBeenCalledTimes(1)
     expect(display('#app-container')).toBe('none')
     await flushPromises()
-    expect(runtime.bell.playing.value).toBe(false)
-    expect(pause).toHaveBeenCalledTimes(1)
+    expect(audio.sounding()).toEqual([])
+    expect(runtime.bell.blocked.value).toBe(false)
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
-    expect(play).toHaveBeenCalledTimes(1)
+    // Only the silent unlock frame.
+    expect(audio.sources).toHaveLength(1)
     wrapper.unmount()
-    document.dispatchEvent(new Event('pointerdown'))
-    expect(play).toHaveBeenCalledTimes(1)
+    expect(audio.context.close).toHaveBeenCalledTimes(1)
+    document.dispatchEvent(new Event('pointerup'))
+    expect(audio.sources).toHaveLength(1)
   })
-
-  it('offers a direct playback retry when blocked, and stops before settling orders', async () => {
-    const play = vi
-      .spyOn(HTMLMediaElement.prototype, 'play')
-      .mockRejectedValueOnce(new Error('blocked'))
-      .mockResolvedValue()
-    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+  it('asks for a tap while the browser blocks the bell, loops until paused, and rings again for a new order', async () => {
+    vi.stubGlobal('print', vi.fn())
     const { runtime } = await mountLoggedInApp()
+    const loop = [{ url: '/sounds/foodpanda.mp3', loop: true }]
+    // The browser keeps the audio blocked until the page is tapped, however often the bell tries.
+    audio.context.resume.mockResolvedValue(undefined)
     await runtime.data.submitCustomerDraft('01桌', [createEntry()], {})
     await flushPromises()
     expect(runtime.bell.blocked.value).toBe(true)
+
+    // The tap unlocks the bell and starts the loop for the order already waiting.
+    audio.context.resume.mockImplementation(async () => {
+      audio.context.state = 'running'
+    })
     await clickText('#pendingBatchOverlay button', '啟用鈴聲')
-    expect(runtime.bell.playing.value).toBe(true)
-    await clickText('#pendingBatchOverlay button', '停止鈴聲')
-    expect(runtime.bell.playing.value).toBe(false)
+    expect(audio.sounding()).toEqual(loop)
+    await clickText('#pendingBatchOverlay button', '暫停鈴聲')
+    expect(audio.sounding()).toEqual([])
     expect(runtime.bell.enabled.value).toBe(true)
-    for (const action of ['acceptPendingBatch', 'rejectPendingBatch'] as const) {
-      let resolve!: () => void
-      const completion = new Promise<void>((done) => {
-        resolve = done
-      })
-      if (action === 'acceptPendingBatch') {
-        vi.spyOn(runtime.data, action).mockImplementationOnce(async () => {
-          await completion
-          return null
-        })
-      } else {
-        vi.spyOn(runtime.data, action).mockImplementationOnce(() => completion)
-      }
-      await runtime.bell.preview()
-      pause.mockClear()
-      const settling = runtime.sales[action]()
-      expect(pause).toHaveBeenCalledTimes(1)
-      expect(runtime.bell.playing.value).toBe(false)
-      resolve()
-      await settling
-      await flushPromises()
-    }
-    expect(play).toHaveBeenCalledTimes(4)
+
+    // A new order rings again; accepting the paused one keeps ringing for it, accepting it stops the loop.
+    await runtime.data.submitCustomerDraft('02桌', [createEntry({ entryId: 'e_2' })], {})
+    await flushPromises()
+    expect(audio.sounding()).toEqual(loop)
+    await clickText('#pendingBatchOverlay button', '接單並列印')
+    expect(audio.sounding()).toEqual(loop)
+    await clickText('#pendingBatchOverlay button', '接單並列印')
+    expect(audio.sounding()).toEqual([])
   })
 })
 

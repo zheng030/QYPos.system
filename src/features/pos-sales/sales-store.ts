@@ -979,7 +979,6 @@ export function createSalesStore({ kernel, data, live, router, printer, bell }: 
   async function settlePendingBatch(settle: (table: string, batchId: string) => Promise<unknown>) {
     const current = pendingOverlay.value
     if (!current) return
-    bell.stop()
     await settle(current.table, current.preview.batchId)
     resetPendingDetail()
     renderOrderSession()

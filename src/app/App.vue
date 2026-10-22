@@ -21,11 +21,13 @@ import ToastContainer from '@/shared/ui/ToastContainer.vue'
 
 import { usePosRuntime } from './runtime'
 
-const { printer, toast, shell, kernel, bell } = usePosRuntime()
+const { printer, toast, shell, kernel, sound, bell } = usePosRuntime()
 const { appVisible } = shell
 
+// Browsers allow audio only after a gesture: the first staff tap or key press unlocks the audio output. pointerup,
+// not pointerdown: a touch only counts as a gesture once the finger lifts. Customer phones never ring.
 function removeSoundListeners() {
-  document.removeEventListener('pointerdown', unlockStaffSound, true)
+  document.removeEventListener('pointerup', unlockStaffSound, true)
   document.removeEventListener('keydown', unlockStaffSound, true)
 }
 
@@ -36,12 +38,13 @@ function unlockStaffSound() {
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', unlockStaffSound, true)
+  document.addEventListener('pointerup', unlockStaffSound, true)
   document.addEventListener('keydown', unlockStaffSound, true)
 })
 onUnmounted(() => {
   removeSoundListeners()
-  void bell.dispose()
+  bell.dispose()
+  void sound.dispose()
 })
 </script>
 

@@ -10,7 +10,7 @@ import EntryThumb from './EntryThumb.vue'
 import SplitEntryList from './SplitEntryList.vue'
 
 const { kernel, sales, bell } = usePosRuntime()
-const { playing: bellPlaying, blocked: bellBlocked, enabled: bellEnabled } = bell
+const { ringing: bellRinging, blocked: bellBlocked, enabled: bellEnabled } = bell
 const {
   confirmDialog,
   paymentModal,
@@ -263,8 +263,8 @@ function inputChecked(event: Event) {
         </template>
       </div>
       <div class="pending-overlay-actions">
-        <button v-if="bellPlaying" type="button" class="btn-effect cancel" @click="bell.stop()">停止鈴聲</button>
-        <button v-else-if="bellBlocked && bellEnabled" type="button" class="btn-effect cancel" @click="bell.preview()">啟用鈴聲</button>
+        <button v-if="bellRinging" type="button" class="btn-effect cancel" @click="bell.pause()">暫停鈴聲</button>
+        <button v-else-if="bellBlocked && bellEnabled" type="button" class="btn-effect cancel" @click="bell.unlock()">啟用鈴聲</button>
         <button type="button" class="btn-effect cancel" @click="sales.rejectPendingBatch()">拒絕</button>
         <button type="button" class="btn-effect confirm-primary" @click="sales.acceptPendingBatchWithoutPrint()">接單・稍後合印</button>
         <button type="button" class="btn-effect confirm-success" @click="sales.acceptPendingBatch()">接單並列印</button>

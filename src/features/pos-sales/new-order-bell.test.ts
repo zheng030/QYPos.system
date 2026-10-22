@@ -1,133 +1,227 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { shallowRef } from 'vue'
+import { flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PosOrderBatch } from '@/features/pos-kernel/types'
+import { createSoundOutput } from '@/shared/ui/sound-player'
+import { mockAudioContext } from '@/shared/ui/sound-player.test-support'
 
-import { createNewOrderBell } from './new-order-bell'
+import { createNewOrderBell, NEW_ORDER_SOUNDS } from './new-order-bell'
+
+const FOODPANDA = NEW_ORDER_SOUNDS.foodpanda.url
+const UBEREATS = NEW_ORDER_SOUNDS.ubereats.url
 
 function pending(...batchIds: string[]) {
   return batchIds.map((batchId) => ({ batchId }) as PosOrderBatch)
 }
 
+let audio: ReturnType<typeof mockAudioContext>
+
 function createBell() {
-  const play = vi.fn(async () => {})
-  const stop = vi.fn()
-  const unlock = vi.fn(async () => {})
-  const setVolume = vi.fn()
-  const dispose = vi.fn(async () => {})
-  return {
-    play,
-    stop,
-    unlock,
-    setVolume,
-    dispose,
-    bell: createNewOrderBell({ play, stop, unlock, setVolume, dispose, playing: shallowRef(false) }),
-  }
+  return createNewOrderBell(createSoundOutput().createPlayer())
+}
+
+function sounding() {
+  return audio.sounding()
 }
 
 beforeEach(() => {
   localStorage.clear()
+  audio = mockAudioContext()
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('new order bell', () => {
-  it('defaults to full volume and remembers volume independently from muting', () => {
-    const { bell, setVolume } = createBell()
+  it('remembers the volume and the sound on this device, independently from muting', async () => {
+    const bell = createBell()
     expect(bell.volume.value).toBe(100)
-    expect(setVolume).toHaveBeenCalledWith(1)
+    expect(bell.sound.value).toBe('foodpanda')
     bell.setVolume(35)
-    expect(setVolume).toHaveBeenLastCalledWith(0.35)
     bell.setEnabled(false)
+    await bell.setSound('ubereats')
+
     const reopened = createBell()
-    expect(reopened.bell.volume.value).toBe(35)
-    expect(reopened.setVolume).toHaveBeenCalledWith(0.35)
-    reopened.bell.setEnabled(true)
-    reopened.bell.setVolume(0)
-    expect(reopened.bell.enabled.value).toBe(true)
-    expect(reopened.setVolume).toHaveBeenLastCalledWith(0)
+    expect(reopened.volume.value).toBe(35)
+    expect(reopened.sound.value).toBe('ubereats')
+    expect(reopened.enabled.value).toBe(false)
+    await reopened.preview()
+    expect(audio.gains.at(-1)?.gain.value).toBe(0.35)
   })
 
-  it('rings once per batch that starts waiting, across tables', () => {
-    const { play, bell } = createBell()
-
+  it('loops while a batch waits on any table and stops when nothing waits', async () => {
+    const bell = createBell()
     bell.sync({})
-    expect(play).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(sounding()).toEqual([])
 
     bell.sync({ '01桌': pending('b1') })
-    expect(play).toHaveBeenCalledTimes(1)
+    await flushPromises()
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
+    expect(bell.ringing.value).toBe(true)
 
-    // Another table's update re-sends the batch that is already waiting.
-    bell.sync({ '01桌': pending('b1'), '02桌': undefined })
-    expect(play).toHaveBeenCalledTimes(1)
+    // Another table's update re-sends the batch that is already waiting: the loop goes on, not restarts.
+    bell.sync({ '01桌': pending('b1'), '02桌': pending('b2') })
+    await flushPromises()
+    expect(audio.played()).toHaveLength(1)
+
+    // Accepting one of two keeps ringing for the other.
+    bell.sync({ '02桌': pending('b2') })
+    await flushPromises()
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
+
+    bell.sync({ '02桌': undefined })
+    expect(sounding()).toEqual([])
+    expect(bell.ringing.value).toBe(false)
+  })
+
+  it('pauses the batches waiting now, and rings again for a new one', async () => {
+    const bell = createBell()
+    bell.sync({ '01桌': pending('b1') })
+    await flushPromises()
+    bell.pause()
+    expect(sounding()).toEqual([])
+    expect(bell.enabled.value).toBe(true)
+
+    bell.sync({ '01桌': pending('b1') })
+    await flushPromises()
+    expect(sounding()).toEqual([])
 
     bell.sync({ '01桌': pending('b1'), '02桌': pending('b2') })
-    expect(play).toHaveBeenCalledTimes(2)
+    await flushPromises()
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
 
-    // Accepting b1 leaves only b2 waiting: nothing new, no ring.
-    bell.sync({ '02桌': pending('b2') })
-    expect(play).toHaveBeenCalledTimes(2)
-
-    bell.sync({ '02桌': pending('b2', 'b3') })
-    expect(play).toHaveBeenCalledTimes(3)
+    // Pausing again and accepting b2 leaves only paused b1: still silent.
+    bell.pause()
+    bell.sync({ '01桌': pending('b1') })
+    await flushPromises()
+    expect(sounding()).toEqual([])
   })
 
-  it('stays silent while muted and remembers the choice on this device', () => {
-    const { play, bell } = createBell()
-
+  it('never rings while muted, and rings at once when turned back on with an order waiting', async () => {
+    const bell = createBell()
     bell.setEnabled(false)
     bell.sync({ '01桌': pending('b1') })
-    expect(play).not.toHaveBeenCalled()
-    expect(createBell().bell.enabled.value).toBe(false)
+    await flushPromises()
+    expect(sounding()).toEqual([])
 
-    // Batches seen while muted do not ring later on.
     bell.setEnabled(true)
-    bell.sync({ '01桌': pending('b1') })
-    expect(play).not.toHaveBeenCalled()
-    expect(createBell().bell.enabled.value).toBe(true)
-  })
-
-  it('exposes blocked playback and clears it on a successful manual retry', async () => {
-    const { play, bell } = createBell()
-    play.mockImplementationOnce(async () => {
-      throw new DOMException('play() needs a user gesture', 'NotAllowedError')
-    })
-
-    bell.sync({ '01桌': pending('b1') })
-    await Promise.resolve()
-    expect(bell.blocked.value).toBe(true)
-    await bell.preview()
-
-    expect(play).toHaveBeenCalledTimes(2)
-    expect(bell.blocked.value).toBe(false)
-  })
-
-  it('stops this reminder without muting or forgetting existing batches', () => {
-    const { play, stop, bell } = createBell()
-    bell.sync({ '01桌': pending('b1') })
-    bell.stop()
-    expect(stop).toHaveBeenCalledTimes(1)
-    expect(bell.enabled.value).toBe(true)
-    bell.sync({ '01桌': pending('b1') })
-    expect(play).toHaveBeenCalledTimes(1)
-    bell.sync({ '01桌': pending('b1', 'b2') })
-    expect(play).toHaveBeenCalledTimes(2)
+    await flushPromises()
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
     bell.setEnabled(false)
-    expect(stop).toHaveBeenCalledTimes(2)
+    expect(sounding()).toEqual([])
   })
 
-  it('ignores a late playback failure after stopping', async () => {
-    const { play, bell } = createBell()
-    let reject!: (error: Error) => void
-    play.mockImplementationOnce(
-      () =>
-        new Promise((_, fail) => {
-          reject = fail
-        })
-    )
+  it('switches a live loop to the chosen sound, and otherwise plays one cycle', async () => {
+    const bell = createBell()
+    await bell.setSound('ubereats')
+    expect(sounding()).toEqual([{ url: UBEREATS, loop: false }])
+    expect(bell.previewing.value).toBe(true)
+    audio.played()[0].end()
+    expect(bell.previewing.value).toBe(false)
+
     bell.sync({ '01桌': pending('b1') })
-    bell.stop()
-    reject(new Error('interrupted'))
-    await Promise.resolve()
+    await flushPromises()
+    await bell.setSound('foodpanda')
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
+    expect(bell.ringing.value).toBe(true)
+
+    // 試聽 does nothing while it rings.
+    await bell.preview()
+    expect(audio.played()).toHaveLength(3)
+  })
+
+  it('stops a preview without touching the bell', async () => {
+    const bell = createBell()
+    await bell.preview()
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: false }])
+    bell.stopPreview()
+    expect(sounding()).toEqual([])
+    expect(bell.previewing.value).toBe(false)
+    expect(bell.enabled.value).toBe(true)
+  })
+
+  it('sets blocked when the browser rejects playback, and the unlock starts the loop for orders already waiting', async () => {
+    const bell = createBell()
+    audio.context.resume.mockResolvedValueOnce(undefined)
+    bell.sync({ '01桌': pending('b1') })
+    await flushPromises()
+    expect(bell.blocked.value).toBe(true)
+    expect(bell.ringing.value).toBe(false)
+
+    await bell.unlock()
+    await flushPromises()
     expect(bell.blocked.value).toBe(false)
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
+    bell.dispose()
+  })
+
+  it('keeps asking for a tap while the browser still blocks audio: a new order never shows the bell ringing', async () => {
+    vi.useFakeTimers()
+    try {
+      const bell = createBell()
+      // The browser leaves resume() pending until the page is tapped.
+      audio.context.resume.mockImplementation(() => new Promise(() => {}))
+      bell.sync({ '01桌': pending('b1') })
+      await vi.advanceTimersByTimeAsync(600)
+      expect(bell.blocked.value).toBe(true)
+
+      bell.sync({ '01桌': pending('b1'), '02桌': pending('b2') })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(bell.ringing.value).toBe(false)
+      expect(bell.blocked.value).toBe(true)
+
+      // A tap meanwhile lets the loop start.
+      audio.context.resume.mockImplementation(async () => {
+        audio.context.state = 'running'
+      })
+      await bell.unlock()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
+      expect(bell.ringing.value).toBe(true)
+      bell.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores a playback failure that comes after the bell stopped', async () => {
+    const bell = createBell()
+    audio.context.resume.mockResolvedValueOnce(undefined)
+    bell.sync({ '01桌': pending('b1') })
+    // Accepted on another device before the browser said no.
+    bell.sync({})
+    await flushPromises()
+
+    expect(bell.blocked.value).toBe(false)
+  })
+
+  it('keeps the screen awake while on, and restarts the loop when the page shows again', async () => {
+    const release = vi.fn(async () => {})
+    const request = vi.fn(async () => ({ released: false, release }))
+    vi.stubGlobal('navigator', { wakeLock: { request } })
+    const bell = createBell()
+    await bell.unlock()
+    expect(request).toHaveBeenCalledExactlyOnceWith('screen')
+
+    bell.sync({ '01桌': pending('b1') })
+    await flushPromises()
+    // The OS suspended the audio while the page was hidden.
+    audio.context.state = 'suspended'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(audio.played()).toHaveLength(2)
+    expect(sounding()).toEqual([{ url: FOODPANDA, loop: true }])
+
+    audio.context.state = 'suspended'
+    audio.context.resume.mockResolvedValueOnce(undefined)
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(bell.blocked.value).toBe(true)
+
+    bell.setEnabled(false)
+    expect(release).toHaveBeenCalledTimes(1)
+    bell.dispose()
   })
 })

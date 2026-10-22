@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { usePosRuntime } from '@/app/runtime'
+import { NEW_ORDER_SOUNDS, type NewOrderSound } from '@/features/pos-sales/new-order-bell'
 
 const { router, shell, admin, sales, bell } = usePosRuntime()
-const { enabled: bellEnabled, volume: bellVolume, playing: bellPlaying } = bell
+const {
+  enabled: bellEnabled,
+  volume: bellVolume,
+  sound: bellSound,
+  ringing: bellRinging,
+  previewing: bellPreviewing,
+} = bell
+const soundChoices = Object.keys(NEW_ORDER_SOUNDS) as NewOrderSound[]
 const { noticeForm, noticeEditor } = admin
 
 function checkedOf(event: Event) {
@@ -90,10 +98,11 @@ function volumeOf(event: Event) {
       <div class="settings-row">
         <div class="settings-row-text">
           <strong>新訂單鈴聲</strong>
-          <span>顧客送出訂單時響鈴提醒，只影響這台裝置</span>
+          <span>顧客送出訂單時循環響鈴，直到接單或按暫停，只影響這台裝置；開啟時螢幕保持常亮，避免漏單</span>
         </div>
         <div class="settings-row-actions">
-          <button v-if="bellPlaying" type="button" class="settings-action-btn btn-effect" @click="bell.stop()">停止鈴聲</button>
+          <button v-if="bellRinging" type="button" class="settings-action-btn btn-effect" @click="bell.pause()">暫停鈴聲</button>
+          <button v-else-if="bellPreviewing" type="button" class="settings-action-btn btn-effect" @click="bell.stopPreview()">停止試聽</button>
           <button v-else type="button" class="settings-action-btn btn-effect" @click="bell.preview()">🔔 試聽</button>
           <label class="toggle-switch">
             <input
@@ -105,6 +114,24 @@ function volumeOf(event: Event) {
             >
             <span class="slider" />
           </label>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-text">
+          <strong>鈴聲</strong>
+          <span>選擇後會播放一次</span>
+        </div>
+        <div class="settings-row-actions" role="group" aria-label="鈴聲">
+          <button
+            v-for="choice in soundChoices"
+            :key="choice"
+            type="button"
+            class="settings-action-btn btn-effect"
+            :aria-pressed="bellSound === choice"
+            @click="bell.setSound(choice)"
+          >
+            {{ NEW_ORDER_SOUNDS[choice].label }}
+          </button>
         </div>
       </div>
       <div class="settings-row">

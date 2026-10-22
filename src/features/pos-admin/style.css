@@ -139,6 +139,11 @@
     font-weight: 700;
 }
 
+.settings-action-btn[aria-pressed='true'] {
+    background: #0369a1;
+    color: #fff;
+}
+
 .settings-action-btn:disabled,
 .settings-save-btn:disabled {
     opacity: 0.45;

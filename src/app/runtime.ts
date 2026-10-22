@@ -5,13 +5,13 @@ import { createAdminStore } from '@/features/pos-admin/admin-store'
 import { createPosDataService } from '@/features/pos-data/runtime'
 import { createPosKernel } from '@/features/pos-kernel/runtime'
 import { createReportingStore } from '@/features/pos-reporting/reporting-store'
-import { createNewOrderBell, NEW_ORDER_SOUND_URL } from '@/features/pos-sales/new-order-bell'
+import { createNewOrderBell } from '@/features/pos-sales/new-order-bell'
 import { createSalesStore } from '@/features/pos-sales/sales-store'
 import { createShellStore } from '@/features/pos-shell/shell-store'
 import { bindBodyClass } from '@/shared/ui/body-class'
 import { createImagePreview } from '@/shared/ui/image-preview'
 import { createReceiptPrinter } from '@/shared/ui/receipt-printer'
-import { createSoundPlayer } from '@/shared/ui/sound-player'
+import { createSoundOutput } from '@/shared/ui/sound-player'
 import { createToastService } from '@/shared/ui/toast'
 
 import { createLiveState } from './live-state'
@@ -25,7 +25,8 @@ function createRuntime() {
   const printer = createReceiptPrinter()
   const imagePreview = createImagePreview()
   const toast = createToastService()
-  const bell = createNewOrderBell(createSoundPlayer(NEW_ORDER_SOUND_URL))
+  const sound = createSoundOutput()
+  const bell = createNewOrderBell(sound.createPlayer())
 
   bindBodyClass('receipt-printing', () => printer.job.value !== null)
 
@@ -55,7 +56,22 @@ function createRuntime() {
     await checkin.ensureData()
   }
 
-  return { kernel, data, router, printer, imagePreview, toast, bell, shell, sales, reporting, admin, checkin, start }
+  return {
+    kernel,
+    data,
+    router,
+    printer,
+    imagePreview,
+    toast,
+    sound,
+    bell,
+    shell,
+    sales,
+    reporting,
+    admin,
+    checkin,
+    start,
+  }
 }
 
 export type PosRuntime = ReturnType<typeof createRuntime>

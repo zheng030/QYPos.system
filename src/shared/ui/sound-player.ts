@@ -4,94 +4,134 @@ export type SoundPlayer = {
   playing: Readonly<Ref<boolean>>
   setVolume(volume: number): void
   unlock(): Promise<void>
-  play(): Promise<void>
+  play(url: string, options?: { loop?: boolean }): Promise<void>
   stop(): void
-  dispose(): Promise<void>
 }
 
-// Unlock and playback share one element because browser permissions are per media element.
-export function createSoundPlayer(src: string): SoundPlayer {
-  let output: { element: HTMLAudioElement; context: AudioContext; gain: GainNode } | null = null
-  let volume = 1
-  let operation = 0
-  const playing = shallowRef(false)
+// A blocked context's resume() can stay pending until the next gesture, so playback gives up after a moment.
+const RESUME_TIMEOUT_MS = 500
 
-  function getOutput() {
-    if (!output) {
-      const element = new Audio(src)
-      const context = new AudioContext()
-      const gain = context.createGain()
-      gain.gain.value = volume
-      context.createMediaElementSource(element).connect(gain)
-      gain.connect(context.destination)
-      output = { element, context, gain }
-      element.addEventListener('ended', () => {
-        if (output?.element.ended) playing.value = false
-      })
-      element.addEventListener('pause', () => {
-        if (output?.element.paused) playing.value = false
-      })
-    }
-    return output
+async function resume(context: AudioContext) {
+  if (context.state !== 'running') {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([context.resume(), new Promise((done) => (timer = setTimeout(done, RESUME_TIMEOUT_MS)))])
+    clearTimeout(timer)
+  }
+  if (context.state !== 'running') throw new DOMException('Audio needs a tap on the page first', 'NotAllowedError')
+}
+
+// One AudioContext for the whole app: the browser unlocks it once, and every bell plays decoded buffers through
+// it, so a loop wraps sample-accurately and switching sounds needs no new permission.
+export function createSoundOutput() {
+  let context: AudioContext | null = null
+  const buffers = new Map<string, Promise<AudioBuffer>>()
+  const players = new Set<SoundPlayer>()
+
+  function getContext() {
+    context ??= new AudioContext()
+    return context
   }
 
-  function stop() {
-    operation++
-    if (output) {
-      output.element.pause()
-      output.element.currentTime = 0
-      output.element.muted = false
+  function load(url: string) {
+    let buffer = buffers.get(url)
+    if (!buffer) {
+      buffer = fetch(url)
+        .then((response) => response.arrayBuffer())
+        .then((data) => getContext().decodeAudioData(data))
+      // A failed download is fetched again on the next play.
+      buffer.catch(() => buffers.delete(url))
+      buffers.set(url, buffer)
     }
-    playing.value = false
+    return buffer
+  }
+
+  // Runs inside the staff gesture: resume and start a silent frame synchronously, before any await.
+  function unlock() {
+    const audio = getContext()
+    // iOS mutes Web Audio under the ringer's silent switch unless the session plays back like media.
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+    if (session) session.type = 'playback'
+    const silence = audio.createBufferSource()
+    silence.buffer = audio.createBuffer(1, 1, audio.sampleRate)
+    silence.connect(audio.destination)
+    silence.start()
+    return resume(audio)
+  }
+
+  function createPlayer(): SoundPlayer {
+    let gain: GainNode | null = null
+    let source: AudioBufferSourceNode | null = null
+    let volume = 1
+    let operation = 0
+    const playing = shallowRef(false)
+
+    function getGain(audio: AudioContext) {
+      if (!gain) {
+        gain = audio.createGain()
+        gain.gain.value = volume
+        gain.connect(audio.destination)
+      }
+      return gain
+    }
+
+    function stop() {
+      operation++
+      const previous = source
+      source = null
+      previous?.stop()
+      playing.value = false
+    }
+
+    const player: SoundPlayer = {
+      playing: readonly(playing),
+      setVolume(next) {
+        volume = Math.min(1, Math.max(0, next))
+        if (!gain || !context) return
+        const now = context.currentTime
+        // A short ramp avoids clicks when adjusting the volume during playback.
+        gain.gain.cancelScheduledValues(now)
+        gain.gain.setValueAtTime(gain.gain.value, now)
+        gain.gain.linearRampToValueAtTime(volume, now + 0.02)
+      },
+      unlock,
+      async play(url, { loop = false } = {}) {
+        stop()
+        const current = operation
+        playing.value = true
+        const audio = getContext()
+        try {
+          const [buffer] = await Promise.all([load(url), resume(audio)])
+          if (operation !== current) return
+          const node = audio.createBufferSource()
+          node.buffer = buffer
+          node.loop = loop
+          node.connect(getGain(audio))
+          node.onended = () => {
+            if (source !== node) return
+            source = null
+            playing.value = false
+          }
+          node.start()
+          source = node
+        } catch (error) {
+          if (operation === current) playing.value = false
+          throw error
+        }
+      },
+      stop,
+    }
+    players.add(player)
+    return player
   }
 
   return {
-    playing: readonly(playing),
-    setVolume(next) {
-      volume = Math.min(1, Math.max(0, next))
-      if (!output) return
-      const { context, gain } = output
-      const currentGain = gain.gain.value
-      const now = context.currentTime
-      // A short ramp avoids clicks when adjusting the volume during playback.
-      gain.gain.cancelScheduledValues(now)
-      gain.gain.setValueAtTime(currentGain, now)
-      gain.gain.linearRampToValueAtTime(volume, now + 0.02)
-    },
-    async unlock() {
-      const current = ++operation
-      const { element, context } = getOutput()
-      element.muted = true
-      try {
-        // Resume and play synchronously inside the staff gesture, before any network awaits.
-        await Promise.all([context.resume(), element.play()])
-      } finally {
-        if (operation === current) {
-          element.pause()
-          element.currentTime = 0
-          element.muted = false
-        }
-      }
-    },
-    async play() {
-      const current = ++operation
-      const { element, context } = getOutput()
-      element.muted = false
-      element.currentTime = 0
-      playing.value = true
-      try {
-        await Promise.all([context.resume(), element.play()])
-      } catch (error) {
-        if (operation === current) stop()
-        throw error
-      }
-    },
-    stop,
+    createPlayer,
     async dispose() {
-      stop()
-      const previous = output
-      output = null
-      await previous?.context.close()
+      for (const player of players) player.stop()
+      const previous = context
+      context = null
+      buffers.clear()
+      await previous?.close()
     },
   }
 }
