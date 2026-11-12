@@ -884,6 +884,13 @@ const categories: PosMenuCategory[] = [
             courseKind: 'drink',
             basePrice: 50,
           }),
+          singleItem({
+            id: 'drink.calpis',
+            name: '可爾必思',
+            categoryKey: 'drink',
+            courseKind: 'drink',
+            basePrice: 50,
+          }),
         ],
       },
     ],
